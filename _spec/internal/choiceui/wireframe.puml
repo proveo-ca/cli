@@ -1010,7 +1010,7 @@ title Choice prompt wireframe — one card, and how a gated element is drawn
   TWO LOCAL SLOTS (2026-11-20, user: "NEVER show 3 options, only top Chinese,
   and top non-Chinese for the 2 memory ranges"). Column 3 holds the top
   non-Chinese model and column 4 the top Chinese one:
-    small ≥ 96 GiB: Nemotron, then Flash Next.
+    small 96–256 GiB, and every larger host: Ripple (Ollama ≥ 0.40.16), then Flash Next.
     mini 24–96 GiB: Inkling (Apple silicon on Ollama ≥ 0.40.17), then Qwen 3.8.
     nano 8–24 GiB: Bolt, then MiMo.
     pico 6–8 GiB: LFM3, then MiniCPM5.

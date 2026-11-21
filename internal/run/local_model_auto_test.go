@@ -70,7 +70,8 @@ func TestAutoLocalModelNeedsAFit(t *testing.T) {
 }
 
 func TestAutoLocalModelChecksOnlyTheActiveTier(t *testing.T) {
-	want := []string{localModelFor("Nemotron"), localModelFor("Flash Next")}
+	stubOllamaHost(t, "linux/amd64", "0.40.17")
+	want := []string{localModelFor("Ripple"), localModelFor("Flash Next")}
 	asked := stubFitting(t, want[1])
 	rs := &Spec{Man: manifest.Manifest{Name: "hermes"}}
 	p := &Params{Target: "hermes"}

@@ -1,0 +1,37 @@
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#8b5cf6, #0a84ff, #22c55e, #f59e0b, #ffffff"
+---
+%% purpose: IFBench, % instruction following, for the selected memory-range presets (2026-11-21).
+%% Grouped by memory range, pico → small; one bar series per range, keyed in the title. non-CN / CN: developer origin.
+%% Each preset shows its official base model's published score; the abliterated builds publish none.
+%% † marks a score from another vendor's card, used where the model's own card has none.
+%% Vendor-reported; harnesses differ, so cross-card comparisons are approximate. Notes per bar:
+%%   Bolt E4B: reasoning mode
+%%   Ripple-65B: Ricursive's card
+%%   Qwen3.8-Flash-Next: Qwen's card; NVIDIA's run reports 75.6
+%% Not published: Inkling 2 Mini, MiMo-V2.6.
+%% Source per bar (xychart draws no notes or links, so they live here):
+%%   LFM3-1.7B: https://huggingface.co/LiquidAI/LFM3-1.7B
+%%   MiniCPM5-2B: https://huggingface.co/openbmb/MiniCPM5-2B
+%%   Bolt E4B: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16
+%%   Qwen 3.8 27B: https://huggingface.co/Qwen/Qwen3.8-27B
+%%   Ripple-65B: https://huggingface.co/ricursiveAI/Ripple-65B-Preview
+%%   Qwen3.8-Flash-Next: https://huggingface.co/Qwen/Qwen3.8-Flash-Next
+%% Sources: _spec/model-benchmarks/sources.md · presets: internal/run/model_row.go (localModels)
+xychart-beta horizontal
+  title "IFBench % · 🟪 pico   🟦 nano   🟩 mini   🟧 small"
+  x-axis ["pico · LFM3-1.7B · non-CN · 73.03", "pico · MiniCPM5-2B · CN · 66.3", "nano · Bolt E4B · non-CN · 63.79", "mini · Qwen 3.8 27B · CN · 79.5", "small · Ripple-65B · non-CN · 79.2", "small · Qwen3.8-Flash-Next · CN · 81.3"]
+  y-axis "score" 0 --> 100
+  %% pico
+  bar [73.03, 66.3, 0, 0, 0, 0]
+  %% nano
+  bar [0, 0, 63.79, 0, 0, 0]
+  %% mini
+  bar [0, 0, 0, 79.5, 0, 0]
+  %% small
+  bar [0, 0, 0, 0, 79.2, 81.3]
+  %% mask: zero bars still draw at a minimum width; this background-coloured series hides them
+  bar [0, 0, 0, 0, 0, 0]

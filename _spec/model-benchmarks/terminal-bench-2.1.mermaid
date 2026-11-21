@@ -1,0 +1,59 @@
+---
+config:
+  xyChart:
+    width: 980
+    height: 620
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#8b5cf6, #0a84ff, #22c55e, #f59e0b, #eab308, #ef4444, #ffffff"
+---
+%% purpose: Terminal-Bench 2.1 for the selected presets, plus cloud-class references (2026-11-21).
+%% Grouped by memory class, pico → large; one bar series per class, keyed in the title. non-CN / CN: developer origin.
+%% Presets (pico–small) show their official base model's published score; the abliterated builds publish none.
+%% small is 96–256 GB (its presets also serve larger hosts). medium (256–512 GB) and large (512 GB+) are
+%% references with no preset, picked by memory, then by score.
+%% † a score from another vendor's card. V: Vals' Terminal-Bench 2.1 board (Terminus 2), shared by all four references.
+%% Harnesses differ between preset cards, so cross-card comparisons are approximate. Notes per bar:
+%%   LFM3-1.7B: OpenCode harness
+%%   MiniCPM5-2B: its card credits Artificial Analysis
+%%   MiMo-V2.6 9B: harness not stated
+%%   Inkling 2 Mini: pi v0.83.0 harness
+%%   Qwen 3.8 27B: Terminus harness
+%%   Ripple-65B: Terminus 2 (Ricursive's card)
+%%   Qwen3.8-Flash-Next: NVIDIA's run on the Nemotron 3.5 Super card; absent from Qwen's card
+%%   Gemini 3.8 Flash: Vals; vendor 89.4; size [Speculation] ~250–300B params (Gemini 3.5 Flash estimate), ~250–300 GB at FP8
+%%   DeepSeek V4.1 Flash: Vals; vendor 90.6; FP4/FP8 checkpoint 510.3 GB, counted by weights (under 512)
+%%   Claude Opus 5.5: Vals; size [Speculation] Opus-class estimates start at 0.6T params
+%%   Kimi K3: Vals; Kimi Code 88.3; official checkpoint 1,560.9 GB
+%% Not published: Bolt E4B (no coding or agentic rows on its card).
+%% Source per bar (xychart draws no notes or links, so they live here):
+%%   LFM3-1.7B: https://huggingface.co/LiquidAI/LFM3-1.7B
+%%   MiniCPM5-2B: https://huggingface.co/openbmb/MiniCPM5-2B (the card credits Artificial Analysis)
+%%   MiMo-V2.6 9B: https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Distill-Qwen-9B
+%%   Inkling 2 Mini: https://huggingface.co/thinkingmachines/Inkling-2-Mini
+%%   Qwen 3.8 27B: https://huggingface.co/Qwen/Qwen3.8-27B
+%%   Ripple-65B: https://huggingface.co/ricursiveAI/Ripple-65B-Preview
+%%   Qwen3.8-Flash-Next †: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16 (NVIDIA's run)
+%%   Gemini 3.8 Flash: https://vals.ai/benchmarks/terminal-bench-2-1 · size estimate https://gigazine.net/gsc_news/en/20260520-gemini-3-5-flash-parameter
+%%   DeepSeek V4.1 Flash: https://vals.ai/benchmarks/terminal-bench-2-1 · checkpoint https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash
+%%   Claude Opus 5.5: https://vals.ai/benchmarks/terminal-bench-2-1 · size estimate https://eigenigma.io/en/articles/estimating-parameter-counts-of-claude-5-and-gpt-5-6/
+%%   Kimi K3: https://vals.ai/benchmarks/terminal-bench-2-1 · checkpoint https://huggingface.co/moonshotai/Kimi-K3
+%% Sources: _spec/model-benchmarks/sources.md · presets: internal/run/model_row.go (localModels)
+xychart-beta horizontal
+  title "TB 2.1 % · 🟪pico 🟦nano 🟩mini 🟧small 🟨medium 🟥large · †other vendor · V Vals"
+  x-axis ["pico · LFM3-1.7B · non-CN · 12.92", "pico · MiniCPM5-2B · CN · 8.6", "nano · MiMo-V2.6 9B · CN · 37.1", "mini · Inkling 2 Mini · non-CN · 71.6", "mini · Qwen 3.8 27B · CN · 73", "small · Ripple-65B · non-CN · 80.5", "small · Qwen3.8-Flash-Next · CN · 85.8 †", "medium · Gemini 3.8 Flash · non-CN · 81.27 V", "medium · DeepSeek V4.1 Flash · CN · 74.53 V", "large · Claude Opus 5.5 · non-CN · 87.64 V", "large · Kimi K3 · CN · 80.9 V"]
+  y-axis "score" 0 --> 100
+  %% pico
+  bar [12.92, 8.6, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  %% nano
+  bar [0, 0, 37.1, 0, 0, 0, 0, 0, 0, 0, 0]
+  %% mini
+  bar [0, 0, 0, 71.6, 73, 0, 0, 0, 0, 0, 0]
+  %% small
+  bar [0, 0, 0, 0, 0, 80.5, 85.8, 0, 0, 0, 0]
+  %% medium
+  bar [0, 0, 0, 0, 0, 0, 0, 81.27, 74.53, 0, 0]
+  %% large
+  bar [0, 0, 0, 0, 0, 0, 0, 0, 0, 87.64, 80.9]
+  %% mask: zero bars still draw at a minimum width; this background-coloured series hides them
+  bar [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

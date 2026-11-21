@@ -31,7 +31,7 @@ compose with this repo's per-sandbox isolated-microVM model.
 ## Local models on the model row
 
 The model row picks the source, riskier to safer: Qwen 3.8 27B, API keys (an external provider through your keys), or
-Inkling 2 Mini 26B-A5B. Presets come per memory range (pico 6–8 · nano 8–24 · mini 24–96 · small 96+ GB), one
+Inkling 2 Mini 26B-A5B. Presets come per memory range (pico 6–8 · nano 8–24 · mini 24–96 · small 96–256 GB, also serving larger hosts), one
 non-Chinese and one Chinese, all abliterated (refusal-stripped) builds sourced on Hugging Face and under 6 months old.
 Most are `hf.co/…` pulls; builds Ollama cannot pull (sharded GGUFs, MLX safetensors) are imported from a pinned
 Hugging Face revision with `ollama create`, which needs disk for the download plus Ollama's copy. The full list is

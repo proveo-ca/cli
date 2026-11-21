@@ -26,7 +26,7 @@ const (
 
 // Memory ranges, by the least installed GiB each starts at.
 const (
-	tierSmall = 96 // small: 96 GB and up
+	tierSmall = 96 // small: 96 to 256 GB, and every larger host
 	tierMini  = 24 // mini: 24 to 96 GB
 	tierNano  = 8  // nano: 8 to 24 GB
 	tierPico  = 6  // pico: 6 to 8 GB
@@ -77,11 +77,11 @@ type localModel struct {
 
 // localModels are the row's local choices; per tier and column the first one the host's Ollama serves wins.
 var localModels = []localModel{
-	{name: "Nemotron", repo: "nemotron-3.5-super", short: "nemotron", size: "120B-A12B",
-		lead: "Nemotron 3.5 Super 120B-A12B heretic (spiritfather), a ~80 GiB import", released: "2026-10-12", abliterated: true,
-		tags:    map[string]string{"": "proveo/nemotron-3.5-super-heretic:120b-a12b-i1-q4_k_m"},
-		builds:  map[string]string{"": "GGUF"},
-		imports: map[string]sbx.Import{"": importNemotronHeretic}, tier: tierSmall, column: 2},
+	{name: "Ripple", repo: "ripple-65b", short: "ripple", size: "65B",
+		lead: "Ripple-65B Preview abliterated (0xKitkat), Q5_K_M", released: "2026-11-04", abliterated: true,
+		tags:   map[string]string{"": "hf.co/0xKitkat/Ripple-65B-Preview-abliterated-GGUF:Q5_K_M"},
+		builds: map[string]string{"": "GGUF"},
+		floors: map[string]string{"": "0.40.16"}, tier: tierSmall, column: 2},
 	{name: "Flash Next", repo: "qwen3.8-flash-next", short: "flash-next", size: "125B-A6B",
 		lead: "Qwen3.8-Flash-Next 125B-A6B abliterated v2 (huihui), a ~87 GiB import", released: "2026-08-24", abliterated: true,
 		tags:    map[string]string{"": "proveo/qwen3.8-flash-next-abliterated:125b-a6b-ud-iq4_xs"},
@@ -122,13 +122,6 @@ var localModels = []localModel{
 
 // Pinned Hugging Face imports: a revision and each large file's LFS sha256.
 var (
-	importNemotronHeretic = sbx.Import{Repo: "spiritfather/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-heretic-ara-i1-GGUF",
-		Revision: "28261d680b80c4c5c2724d5f0a3ebb74e2f41b4f", Files: []sbx.ImportFile{
-			{Path: "i1-Q4_K_M/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-heretic-ara.i1-Q4_K_M-00001-of-00002.gguf",
-				SHA256: "4f11337644f7df8f0d61f72f9816c89c461a8b53cc341cdcac572bbf7347d053", Size: 44456972480},
-			{Path: "i1-Q4_K_M/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-heretic-ara.i1-Q4_K_M-00002-of-00002.gguf",
-				SHA256: "f8a5f340a07a99820e149852eb6b6c870dd58b7a06332632778340559691ff19", Size: 41594110368},
-		}}
 	importFlashNextAbliterated = sbx.Import{Repo: "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
 		Revision: "cbc7fba13f1939ac3fa42b18d77ccf43847d74ef", Files: []sbx.ImportFile{
 			{Path: "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf",

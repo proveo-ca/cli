@@ -93,8 +93,8 @@ func TestModelRowSwitchesPresetsAtTheHostCapacityCutoffs(t *testing.T) {
 		{(24 << 30) - 1, []string{"Bolt", "MiMo"}, []int{0, 1, 2, 3}},
 		{24 << 30, []string{"Qwen 3.8"}, []int{0, 1, 3}},
 		{(96 << 30) - 1, []string{"Qwen 3.8"}, []int{0, 1, 3}},
-		{96 << 30, []string{"Nemotron", "Flash Next"}, []int{0, 1, 2, 3}},
-		{128 << 30, []string{"Nemotron", "Flash Next"}, []int{0, 1, 2, 3}},
+		{96 << 30, []string{"Flash Next"}, []int{0, 1, 3}},
+		{128 << 30, []string{"Flash Next"}, []int{0, 1, 3}},
 	} {
 		keys := env(map[string]string{"OPENCODE_API_KEY": "zen"})
 		man := opencodeMan()
@@ -117,7 +117,7 @@ func TestAnExplicitModelCanCrossTheTierBoundary(t *testing.T) {
 		tier        int
 	}{
 		{"qwen3.8:latest", "Qwen 3.8", tierSmall},
-		{"nemotron-3.5-super:120b-a12b-nvfp4", "Nemotron", tierMini},
+		{"hf.co/0xKitkat/Ripple-65B-Preview-abliterated-GGUF:Q5_K_M", "Ripple", tierMini},
 		{"qwen3.8-flash-next:125b-a6b-q4_K_M", "Flash Next", 0},
 	} {
 		r, _ := modelRow(hermesImagesMan(), c.tag, c.tier)
@@ -137,7 +137,7 @@ func TestAnExplicitModelCanCrossTheTierBoundary(t *testing.T) {
 
 func TestLargePresetsArePinnedHuggingFaceImports(t *testing.T) {
 	t.Parallel()
-	for _, repo := range []string{"nemotron-3.5-super", "qwen3.8-flash-next"} {
+	for _, repo := range []string{"qwen3.8-flash-next"} {
 		m := preset(repo)
 		imp, ok := sbx.ImportFor(m.tagFor("linux/amd64"))
 		if !ok {
@@ -445,7 +445,7 @@ func TestMiniColumnTwoIsTheInklingImportOnAppleSilicon(t *testing.T) {
 func TestEveryRangeOffersItsPair(t *testing.T) {
 	t.Parallel()
 	for tier, want := range map[int][]string{
-		tierSmall: {"Nemotron", "Flash Next"}, tierNano: {"Bolt", "MiMo"}, tierPico: {"LFM3", "MiniCPM5"}, 0: nil,
+		tierSmall: {"Ripple", "Flash Next"}, tierNano: {"Bolt", "MiMo"}, tierPico: {"LFM3", "MiniCPM5"}, 0: nil,
 	} {
 		if got := names(lineupFor(tier, "linux/amd64", "0.40.17")); !slices.Equal(got, want) {
 			t.Errorf("%s offers %v, want %v", cmp.Or(tierName(tier), "below pico"), got, want)
@@ -555,7 +555,7 @@ func TestInklingOwnsItsLibraryAndHuggingFaceBuilds(t *testing.T) {
 	for tag, label := range map[string]string{
 		"hf.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF:Q5_K_M": "Qwen 3.8",
 		"hf.co/Vortecks/LFM3-1.7B-Heretic-Abliterated-GGUF:Q4_K_M":   "LFM3",
-		"proveo/nemotron-3.5-super-heretic:120b-a12b-i1-q4_k_m":      "Nemotron",
+		"hf.co/0xKitkat/Ripple-65B-Preview-abliterated-GGUF:Q8_0":    "Ripple",
 	} {
 		if got := modelLabelFor(tag); got != label {
 			t.Errorf("%s maps to %q, want %q", tag, got, label)
@@ -623,5 +623,16 @@ func TestTheHintWarnsPastThreeMonths(t *testing.T) {
 	}
 	if h := bolt.hintLead(); strings.Contains(h, "over 3 months") {
 		t.Errorf("Bolt hint = %q, want no warning at 29 days", h)
+	}
+}
+
+func TestTheSmallRangeOffersRippleFromOllama0_40_16(t *testing.T) {
+	t.Parallel()
+	for version, want := range map[string][]string{
+		"0.40.16": {"Ripple", "Flash Next"}, "0.40.17-rc4": {"Ripple", "Flash Next"}, "0.40.15": {"Flash Next"}, "": {"Flash Next"},
+	} {
+		if got := names(lineupFor(tierSmall, "linux/amd64", version)); !slices.Equal(got, want) {
+			t.Errorf("Ollama %q offers %v in small, want %v", version, got, want)
+		}
 	}
 }

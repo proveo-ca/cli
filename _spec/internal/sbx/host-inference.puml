@@ -196,11 +196,15 @@ skinparam noteTextAlignment left
 ' and a VRAM-based default (num_ctx 32768 at 37.4 GiB), i.e. already tuned.
 '
 ' ── MODEL ROW MAPPING (2026-11-21) ─────────────────────────────────────────
-' MEMORY RANGES are named (owner): small ≥ 96 · mini 24–96 · nano 8–24 · pico 6–8 GiB
+' MEMORY RANGES are named (owner): small 96–256 · mini 24–96 · nano 8–24 · pico 6–8 GiB
 '   (modelTier, tierName). The pico floor was raised from 2 to 4 to 6 GiB (owner), because no
 '   model runs hermes at 64K under ~2.8 GiB. Each range offers one non-Chinese and one Chinese preset.
+'   For reference only (owner, 2026-11-21): "medium" models need 256–512 GB and "large" ones 512 GB+.
+'   No preset targets them, so small's presets serve every host from 96 GB up (owner: "small serves 96 GB+").
+'   _spec/model-benchmarks charts them beside the presets.
 '   range  non-Chinese                                   Chinese
-'   small  Nemotron 3.5 Super heretic   (import, GGUF)   Qwen3.8-Flash-Next abliterated v2 (import, GGUF)
+'   small  Ripple-65B Preview abliterated (hf.co pull,   Qwen3.8-Flash-Next abliterated v2 (import, GGUF)
+'            Ollama ≥ 0.40.16)
 '   mini   Inkling 2 Mini uncensored    (import, MLX,    Qwen 3.8 27B abliterated (hf.co pull)
 '            Apple silicon, Ollama ≥ 0.40.17; the GGUF pull waits for Ollama to load inkling2_loop)
 '   nano   Nemotron 3.5 Bolt E4B heretic (hf.co pull)    MiMo-V2.6 Distill Qwen 9B ARA abliterated (hf.co pull)
@@ -208,6 +212,14 @@ skinparam noteTextAlignment left
 '   The exact tags, revisions and digests live in internal/run/model_row.go (localModels).
 '   pico prefers the larger quants that still fit 6 GiB at 64K (owner): LFM3 Q8_0 needs 3.47 GiB,
 '   MiniCPM5 Q6_K 5.56 GiB (Q8_0 needs 6.13).
+' SMALL NON-CHINESE (2026-11-21, owner picked "Ripple everywhere" over keeping Nemotron or chaining Inkling):
+'   Ripple-65B Preview (Ricursive, 2026-11-04, 65B dense, Apache-2.0) beats Nemotron 3.5 Super on its own
+'   card's table: Terminal-Bench 2.1 80.5 (Terminus 2) vs 62.78, SWE-bench Verified 76.5 vs 71.07, IFBench 79.2.
+'   Inkling 2 Mini leads SWE-V (79.2) and MCP Atlas (82.7 vs 71.67), but proveo serves it on Apple silicon only.
+'   0xKitkat's abliterated Q5_K_M (42.6 GiB) is one file, so it is an hf.co pull on every platform; Q8_0 is sharded.
+'   Ollama's library build (family ricursive) requires 0.40.16, hence the floor. [Inference] Dense 65B decodes slower
+'   than the MoE presets. Nemotron's 80 GiB heretic import was retired with it.
+'   Harnesses differ across cards; one card re-ran Nemotron's SWE-V at 61.2 against NVIDIA's 71.07.
 ' Muse Glimmer was dropped (2026-11-21). The-freezer's abliterated GGUF answers empty or
 '   " to=self" under Ollama, even with the official glimmer renderer and parser copied onto it.
 '
@@ -246,8 +258,8 @@ skinparam noteTextAlignment left
 '     sha256 vs the pin; a mismatch removes the file and stops
 '     HEAD/POST /api/blobs/sha256:<digest>, then POST /api/create {model, files: {path: digest}}
 '     the download is removed after create; progress is one live line per file
-' Pinned: Nemotron heretic i1-Q4_K_M 80.1 GiB (2 shards) · Flash-Next v2 UD-IQ4_XS
-'   87.2 GiB (3 shards) · Inkling OpenUncensored NVFP4 18.8 GiB (12 files, rc4's inkling2 importer).
+' Pinned: Flash-Next v2 UD-IQ4_XS 87.2 GiB (3 shards) · Inkling OpenUncensored NVFP4 18.8 GiB
+'   (12 files, rc4's inkling2 importer).
 '   The small imports were not run here; the host lacks the disk (owner: "simply pin the sources").
 ' Pinned by internal/sbx/host_import_test.go (download, resume, pin mismatch, disk, create error,
 '   EnsureHostOllama routing) against fake HF and Ollama servers.
