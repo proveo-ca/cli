@@ -2,9 +2,10 @@
 !include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
 skinparam noteTextAlignment left
 ' purpose: how a local model reaches an sbx agent — the host's Ollama on the host GPU, one port across the VM boundary
-' covers: internal/sbx/host_ollama.go (LocalModelEnv, EnsureHostOllama, HostOllamaPolicyHost)
+' covers: internal/sbx/host_ollama.go (LocalModelEnv, EnsureHostOllama, HostOllamaPolicyHost, HostOllamaVersion)
+' covers: internal/sbx/host_import.go, internal/sbx/host_import_test.go
 ' covers: internal/sbx/host_ollama_test.go
-' covers: internal/sbx/host_memory.go (HostAcceleratorCapacity, memoryFor, amdVRAM)
+' covers: internal/sbx/host_memory.go (HostAcceleratorCapacity, capacityFor, integratedCapacity, apuCapacity, memoryFor, amdVRAM)
 ' covers: internal/sbx/host_memory_test.go
 ' covers: internal/run/local_model_fit.go (admitOversizedModel)
 ' covers: internal/run/local_model_fit_test.go
@@ -12,7 +13,7 @@ skinparam noteTextAlignment left
 ' covers: internal/run/local_model_auto_test.go
 ' covers: internal/choiceui/oversized_model.go (AskOversizedModel)
 ' covers: internal/choiceui/oversized_model_test.go
-' covers: internal/run/model_row.go (localModels, tagFor)
+' covers: internal/run/model_row.go (localModels, tagFor, servedBy, lineupFor)
 ' covers: internal/run/run.go (promptChoices, launchSandbox)
 ' covers: internal/backend/sandbox/sandbox.go (Spec allow, proxyOnlyVar)
 ' covers: internal/backend/sandbox/host_inference_test.go
@@ -194,20 +195,123 @@ skinparam noteTextAlignment left
 ' context or slot flag. The operator's Ollama had OLLAMA_CONTEXT_LENGTH=131072
 ' and a VRAM-based default (num_ctx 32768 at 37.4 GiB), i.e. already tuned.
 '
-' ── MODEL ROW MAPPING ──────────────────────────────────────────────────────
-'                      darwin/arm64            linux/amd64 (and any other host)
-'   Qwen 3.8 27B     → qwen3.8:27b-mlx         qwen3.8:latest       (27b-q4_K_M)
-'   Muse Glimmer 30B → muse-glimmer:30b-mlx    muse-glimmer:latest  (30b-q4_K_M)
-'   Nemotron 3.5 Super → nemotron-3.5-super:120b-a12b-q4_K_M on both
-'   Qwen3.8-Flash-Next → qwen3.8-flash-next:125b-mlx on Apple silicon
-'                        qwen3.8-flash-next:125b-a6b-q4_K_M elsewhere
+' ── MODEL ROW MAPPING (2026-11-21) ─────────────────────────────────────────
+' MEMORY RANGES are named (owner): small 96–256 · mini 24–96 · nano 8–24 · pico 6–8 GiB
+'   (modelTier, tierName). The pico floor was raised from 2 to 4 to 6 GiB (owner), because no
+'   model runs hermes at 64K under ~2.8 GiB. Each range offers one non-Chinese and one Chinese preset.
+'   For reference only (owner, 2026-11-21): "medium" models need 256–512 GB and "large" ones 512 GB+.
+'   No preset targets them, so small's presets serve every host from 96 GB up (owner: "small serves 96 GB+").
+'   _spec/model-benchmarks charts them beside the presets.
+'   range  non-Chinese                                   Chinese
+'   small  Ripple-65B Preview abliterated (hf.co pull,   Qwen3.8-Flash-Next abliterated v2 (import, GGUF)
+'            Ollama ≥ 0.40.16)
+'   mini   Inkling 2 Mini uncensored    (import, MLX,    Qwen 3.8 27B abliterated (hf.co pull)
+'            Apple silicon, Ollama ≥ 0.40.17; the GGUF pull waits for Ollama to load inkling2_loop)
+'   nano   Nemotron 3.5 Bolt E4B heretic (hf.co pull)    MiMo-V2.6 Distill Qwen 9B ARA abliterated (hf.co pull)
+'   pico   LFM3 1.7B heretic Q8_0       (hf.co pull)     MiniCPM5 2B heretic Q6_K (hf.co pull)
+'   The exact tags, revisions and digests live in internal/run/model_row.go (localModels).
+'   pico prefers the larger quants that still fit 6 GiB at 64K (owner): LFM3 Q8_0 needs 3.47 GiB,
+'   MiniCPM5 Q6_K 5.56 GiB (Q8_0 needs 6.13).
+' SMALL NON-CHINESE (2026-11-21, owner picked "Ripple everywhere" over keeping Nemotron or chaining Inkling):
+'   Ripple-65B Preview (Ricursive, 2026-11-04, 65B dense, Apache-2.0) beats Nemotron 3.5 Super on its own
+'   card's table: Terminal-Bench 2.1 80.5 (Terminus 2) vs 62.78, SWE-bench Verified 76.5 vs 71.07, IFBench 79.2.
+'   Inkling 2 Mini leads SWE-V (79.2) and MCP Atlas (82.7 vs 71.67), but proveo serves it on Apple silicon only.
+'   0xKitkat's abliterated Q5_K_M (42.6 GiB) is one file, so it is an hf.co pull on every platform; Q8_0 is sharded.
+'   Ollama's library build (family ricursive) requires 0.40.16, hence the floor. [Inference] Dense 65B decodes slower
+'   than the MoE presets. Nemotron's 80 GiB heretic import was retired with it.
+'   Harnesses differ across cards; one card re-ran Nemotron's SWE-V at 61.2 against NVIDIA's 71.07.
+' Muse Glimmer was dropped (2026-11-21). The-freezer's abliterated GGUF answers empty or
+'   " to=self" under Ollama, even with the official glimmer renderer and parser copied onto it.
 '
-' The form offers the first pair at 24 ≤ capacity < 96 GiB. At capacity ≥
+' ── SOURCE ORDER (2026-11-21, owner) ───────────────────────────────────────
+' "ideal is hugging face + abliterated, ollama create is fallback #1,
+'  non-abliterated official is fallback #2"; also "Assert all models are sourced in
+'  HuggingFace" and "Forbid models over 6 months old, warn when they are 3 months old".
+'   1. hf.co/<repo>:<quant> Ollama pull of an abliterated build
+'   2. import of an abliterated HF build (HF IMPORT, below)
+'   3. official build, not abliterated (none is listed today; each slot has an abliterated source)
+' Same-label builds chain as separate localModels entries. lineup takes the first
+'   one the host serves per (range, column), and label lookups (preferred) resolve
+'   to the served build.
+' Enforced by internal/run/model_row_test.go TestEveryPresetIsAFreshHuggingFaceBuild:
+'   every tag is an hf.co pull or a pinned 40-hex HF revision, and every base model
+'   is under 6 months old (it logs a warning past 3). Repo ids are unique. The row
+'   hint appends "released YYYY-MM-DD, over 3 months old" (TestTheHintWarnsPastThreeMonths).
+'   Age counts from the base model's release, not the abliterated upload.
+'   Expect the test to fail as presets age; it is how a refresh gets scheduled.
+' Verified 2026-11-21 against HF's Ollama registry (/v2/<repo>/manifests/<quant>):
+'   every pinned hf.co pull answers 200. The checks also found two dead ends:
+'   AtomicChat's Inkling AD-Q4_K is "not a valid quantization scheme", and AtomicChat's Bolt
+'   AD-Q4_K_M is "a sharded GGUF" (Bolt moved to mradermacher's heretic-3 i1-Q4_K_M).
+'
+' ── HF IMPORT (2026-11-21) ─────────────────────────────────────────────────
+' HF's registry refuses sharded GGUFs to Ollama: HTTP 400, "Ollama does not yet support
+'   pulling sharded GGUF via the registry; please download the shards and merge them locally
+'   with `ollama create`" (ollama#5245). Every small-range build is sharded (files > 50 GB).
+'   Safetensors (MLX) builds have no pull path at all.
+' sbx.Import pins a repo, a revision and each file (LFS sha256 for large files).
+'   run's init registers each preset's import under its local tag (proveo/<name>:<quant>).
+'   EnsureHostOllama imports a registered tag that Ollama lacks, and pulls anything else.
+'   importOllama:
+'     free disk ≥ 2 × size − already downloaded (download + Ollama's blob copy), else refuse
+'     GET /<repo>/resolve/<revision>/<path> into the cache, resuming a .part with Range
+'     sha256 vs the pin; a mismatch removes the file and stops
+'     HEAD/POST /api/blobs/sha256:<digest>, then POST /api/create {model, files: {path: digest}}
+'     the download is removed after create; progress is one live line per file
+' Pinned: Flash-Next v2 UD-IQ4_XS 87.2 GiB (3 shards) · Inkling OpenUncensored NVFP4 18.8 GiB
+'   (12 files, rc4's inkling2 importer).
+'   The small imports were not run here; the host lacks the disk (owner: "simply pin the sources").
+' Pinned by internal/sbx/host_import_test.go (download, resume, pin mismatch, disk, create error,
+'   EnsureHostOllama routing) against fake HF and Ollama servers.
+'
+' The form offers the mini pair at 24 ≤ capacity < 96 GiB. At capacity ≥
 ' 96 GiB it offers the second pair. Capacity is installed VRAM, summed
 ' across detected cards, or installed unified memory on Apple silicon.
 ' NVIDIA total rounds to the nearest GiB for driver-reserved memory.
 ' CPU-only and unknown capacity show no presets. An explicit --local-model
-' remains available at every capacity and retains its exact tag.
+' remains available at every capacity and retains its exact tag
+' (2026-11-20, user: "keep current behaviour" for typed and remembered tags below 24 GiB).
+'
+' ── INTEGRATED GPUS COUNT WHERE OLLAMA LOADS ONTO THEM (2026-11-20) ────────
+' user: "make sure M5 is not the only chip with unified memory capabilities,
+' AMD has options, research who else"; then picked GB10/Thor, Jetson Orin,
+' Strix Halo and the OLLAMA_IGPU_ENABLE opt-in. Apple keeps hw.memsize.
+' Rule: count only what Ollama itself loads onto the GPU. Ollama main
+' (afc7c060, 2026-11-20) has two rules for every iGPU:
+'   discover/runner.go filterIntegratedGPUs drops an iGPU unless it is CUDA,
+'   ROCm gfx1151, or OLLAMA_IGPU_ENABLE=1.
+'   server/sched.go availableMemoryForGPU caps an iGPU at the host's free RAM.
+' capacityFor(linux), first match wins:
+'   nvidia-smi total numeric               → that, rounded to the GiB (discrete)
+'   amdgpu card, not an APU                → summed mem_info_vram_total (discrete)
+'   nvidia-smi prints [N/A] (GB10, Thor)   → /proc/meminfo MemTotal
+'   arm64 + /etc/nv_tegra_release (Jetson) → MemTotal
+'   amdgpu APU with KFD gfx_target_version 110501 (Strix Halo), or any APU with
+'     OLLAMA_IGPU_ENABLE=1                 → min(max(vram_total, gtt_total), MemTotal)
+'   vendor 0x8086 with OLLAMA_IGPU_ENABLE=1 → MemTotal [Inference: Vulkan heaps ≈ RAM]
+'   else                                   → 0 (Strix Point, Phoenix, Intel, Snapdragon X)
+' An APU is Ollama's discover/amd.go classification (no board_info, no
+' mem_info_vram_vendor, small VRAM, GTT ≥ 4×VRAM). gfx1151 also counts as an APU at any carve-out.
+' The KFD node is matched to the card via drm_render_minor ↔ device/drm/renderD<n>.
+' The min() keeps the OS's share honest. With a 96 GiB carve-out on 128 GiB, the OS sees
+'   ~31 GiB, and Ollama caps the model there (ollama#16462). Open ollama#19670
+'   would lift that cap; revisit the min() if it merges.
+' memoryFor(linux) reports Pool "unified memory" with Free = MemAvailable for
+'   these hosts, which is Ollama's own iGPU free figure. So the fit question's
+'   consequence reads "pushes the host into swap", not a GPU/CPU split.
+' Apple stays hw.memsize (user: "Keep hw.memsize"). Ollama's real budget is
+'   Metal recommendedMaxWorkingSetSize, measured at 0.78 × hw.memsize on the
+'   M4 Pro 48 GB. The launch fit check measures free unified memory anyway.
+' https://github.com/ollama/ollama/blob/main/discover/runner.go
+' https://github.com/ollama/ollama/blob/main/server/sched.go
+' https://github.com/ollama/ollama/blob/main/discover/amd.go
+' https://github.com/ollama/ollama/pull/16429
+' https://github.com/ollama/ollama/issues/16462
+' https://github.com/ollama/ollama/pull/19670
+' https://docs.nvidia.com/dgx/dgx-spark/known-issues.html
+' https://github.com/mostlygeek/llama-swap/issues/782
+' https://forums.developer.nvidia.com/t/gpu-memory-usage-not-visible-in-nvidia-smi/347122
+' https://rocm.docs.amd.com/en/latest/reference/system-optimization/rdna3-5.html
 ' The cache preserves a large model's custom quantization. The registered
 ' GGUF and MLX presets still map to the current host's build.
 '
@@ -221,6 +325,68 @@ skinparam noteTextAlignment left
 ' https://ollama.com/library/qwen3.8-flash-next/tags
 ' https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4
 ' https://huggingface.co/Qwen/Qwen3.8-Flash-Next
+' ── ABLITERATED (2026-11-21) ───────────────────────────────────────────────
+' Abliterated (refusal-stripped) builds are preferred for every local preset.
+' Research for updates before changing a preset: newer abliterated builds,
+'   pullable MLX tags (none yet), and an Ollama release that loads Inkling's GGUF.
+' Keep in mind with agent-browser: the agent drives the operator's signed-in
+'   Chrome, and without refusal training a skill's "blocked" rule rests on
+'   instruction-following alone.
+'
+' ── OLLAMA FLOOR: INKLING REPLACES GLIMMER WHERE OLLAMA SERVES IT (2026-11-20) ─
+' user: "Replace current Glimmer with Inkling Mini 26B"; forks answered:
+'   non-Mac → "Inkling everywhere via HF GGUF"; Linux GGUF → "Dormant GGUF, Glimmer now";
+'   quant → unsloth UD-Q4_K_M; old Ollama → "offer Glimmer for older ollama versions";
+'   verification → "upgrade when stable" (e2e waits for a stable 0.40.17).
+' Rule: localModel.floors[platform] is the least host Ollama version
+' ("" any, "unreleased" none yet). lineup(tier) keeps, per (tier, column),
+' the first localModels entry the host's Ollama serves. Inkling precedes
+' Glimmer at localModel.column 2 (grid column 3), so Glimmer is the fallback.
+'   floors: darwin/arm64 → 0.40.17 · every other platform → unreleased
+'   version: GET /api/version once per process (sbx.HostOllamaVersion);
+'            "0.40.17-rc4" counts as 0.40.17; unknown, unparsable or 0.0.0 ⇒ fallback.
+'   Ollama 0.40.17 on darwin/arm64  ⇒ API keys | . | Inkling | Qwen 3.8
+'   Ollama < 0.40.17, none, Linux   ⇒ API keys | . | Glimmer | Qwen 3.8
+' The row draws at most two local models (TWO LOCAL SLOTS in
+' _spec/internal/choiceui/wireframe.puml). A typed preset takes its column's slot.
+' ""--local-model muse-glimmer:30b-mlx"" on Ollama 0.40.17 reads Glimmer | Qwen 3.8.
+' A remembered preset re-resolves to its column's pick (hostTagFor → columnPick),
+' and so does a legacy hermes-muse-glimmer variant.
+' A typed inkling-2-mini tag on an older Ollama keeps Inkling in its slot. The pull then
+' fails with Ollama's own message: the stream's error field carries server/images.go's
+' requires check [Inference: streaming error shape, not observed].
+' Auto-pick (BEST HOST MODEL) asks FittingHostModels for the lineup's tags only.
+' Ollama registry (2026-11-20): latest, 26b-a5b and 26b-a5b-nvfp4 share one config
+'   blob — model_format safetensors, requires "0.40.17", renderer/parser inkling2,
+'   capabilities completion·vision·tools·thinking; 1250 tensor layers = 18.78 GiB.
+'   The tag page labels 26b-a5b-nvfp4 MLX and says "Requires a Mac with 32GB+ memory".
+' Ollama v0.40.17 is a pre-release (rc4, 2026-11-10); v0.40.16 is the latest
+'   stable. The operator's M4 Pro runs 0.40.16, so it shows Glimmer.
+' Linux GGUF is dormant because no Ollama release loads inkling2_loop:
+'   Ollama main and v0.40.17-rc4 pin LLAMA_CPP_VERSION b12257, 343 commits behind
+'   llama.cpp PR #32694 "Inkling 2 Mini" (merge 29b52d39, 2026-11-20 22:01 UTC).
+'   Ollama's own Inkling code is mlxrunner/model/inkling2 (MLX only).
+'   Enabling it means setting the "" floor to the first Ollama release whose
+'   LLAMA_CPP_VERSION contains 29b52d39.
+'   GGUF: ggml-org ships IQ4_NL 16.42 GiB, Q8_0 25.91 GiB, BF16 and no Q4_K_M.
+'   unsloth ships UD-Q4_K_M at 15.47 GiB.
+' Fit: [Inference] /api/show on a safetensors tag carries no attention metadata
+'   (as with the -mlx tags), so the estimate is 18.78 + 18.78/8 + 1 ≈ 22.1 GiB.
+'   A per-layer count lands close: 4 global layers (5, 11, 17, 23) with the
+'   looped core (layers 6–17, 3 passes) give 8 global applications ×
+'   8 KV heads × 256 × 2 B = 32 KiB/token ⇒ 2 GiB at 64K, plus 40 sliding-window
+'   applications × 1024 tokens ≈ 160 MiB [Inference: one KV cache per pass].
+' Model card: 26.4B total, 3.4B active (5.4B effective with the loop), 1M context,
+'   Apache 2.0, released 2026-11-20. Its warning: "less reliable than larger models at
+'   following detailed instructions" when using tools.
+' https://huggingface.co/thinkingmachines/Inkling-2-Mini
+' https://ollama.com/library/inkling-2-mini
+' https://github.com/ollama/ollama/releases/tag/v0.40.17-rc4
+' https://github.com/ollama/ollama/pull/19799
+' https://github.com/ggml-org/llama.cpp/pull/32694
+' https://huggingface.co/unsloth/Inkling-2-Mini-GGUF
+' https://huggingface.co/ggml-org/Inkling-2-Mini-GGUF
+'
 ' The row sets p.LocalModel and nothing else (2026-09-27), so picking an option
 ' and passing the flag are the same run on either backend.
 ' MLX on Apple Silicon, measured 2026-09-27 on an M4 Pro 48 GB, Ollama 0.34.4,

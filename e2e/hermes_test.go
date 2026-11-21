@@ -308,8 +308,10 @@ func TestHermesLocalModelE2E(t *testing.T) {
 	}
 
 	models := []struct{ label, want string }{
-		{"qwen3.8", env("PROVEO_TEST_QWEN_TAG", "qwen3.8:latest")},
-		{"muse-glimmer", env("PROVEO_TEST_MUSE_GLIMMER_TAG", "muse-glimmer:latest")},
+		{"qwen3.8", env("PROVEO_TEST_QWEN_TAG", "hf.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF:Q4_K_M")},
+		{"inkling-2-mini", env("PROVEO_TEST_INKLING_TAG", "proveo/inkling-2-mini-uncensored:26b-a5b-nvfp4")},
+		{"bolt", env("PROVEO_TEST_BOLT_TAG", "hf.co/mradermacher/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16-heretic-3-i1-GGUF:i1-Q4_K_M")},
+		{"mimo", env("PROVEO_TEST_MIMO_TAG", "hf.co/mradermacher/MiMo-V2.6-Distill-Qwen-9B-ARA-Abliterated-i1-GGUF:i1-IQ4_XS")},
 	}
 	for _, m := range models {
 		t.Run(m.label, func(t *testing.T) {

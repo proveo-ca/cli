@@ -18,15 +18,12 @@ func autoLocalModel(rs *Spec, p *Params, getenv func(string) string, capacity fu
 		len(rs.Creds.Detected) > 0 || envflag.Off(getenv(sbx.EnvLocalModelAuto)) {
 		return ""
 	}
-	tier := modelTier(capacity())
-	if tier == 0 {
-		return ""
-	}
 	var tags []string
-	for _, m := range localModels {
-		if m.tier == tier {
-			tags = append(tags, m.tag())
-		}
+	for _, m := range lineup(modelTier(capacity())) {
+		tags = append(tags, m.tag())
+	}
+	if len(tags) == 0 {
+		return ""
 	}
 	fit := fittingHostModels(tags, rs.Man.Capabilities.LocalModel.Context, getenv)
 	if len(fit) == 0 {
