@@ -2222,7 +2222,9 @@
         "internal/run/model_row.go",
         "internal/run/run.go",
         "internal/backend/sandbox/sandbox.go",
-        "internal/backend/sandbox/host_inference_test.go"
+        "internal/backend/sandbox/host_inference_test.go",
+        "internal/sbx/host_import.go",
+        "internal/sbx/host_import_test.go"
       ],
       "fingerprint": null
     },

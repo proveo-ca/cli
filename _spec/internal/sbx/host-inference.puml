@@ -3,6 +3,7 @@
 skinparam noteTextAlignment left
 ' purpose: how a local model reaches an sbx agent — the host's Ollama on the host GPU, one port across the VM boundary
 ' covers: internal/sbx/host_ollama.go (LocalModelEnv, EnsureHostOllama, HostOllamaPolicyHost, HostOllamaVersion)
+' covers: internal/sbx/host_import.go, internal/sbx/host_import_test.go
 ' covers: internal/sbx/host_ollama_test.go
 ' covers: internal/sbx/host_memory.go (HostAcceleratorCapacity, capacityFor, integratedCapacity, apuCapacity, memoryFor, amdVRAM)
 ' covers: internal/sbx/host_memory_test.go
@@ -194,16 +195,64 @@ skinparam noteTextAlignment left
 ' context or slot flag. The operator's Ollama had OLLAMA_CONTEXT_LENGTH=131072
 ' and a VRAM-based default (num_ctx 32768 at 37.4 GiB), i.e. already tuned.
 '
-' ── MODEL ROW MAPPING ──────────────────────────────────────────────────────
-'                      darwin/arm64            linux/amd64 (and any other host)
-'   Qwen 3.8 27B     → qwen3.8:27b-mlx         qwen3.8:latest       (27b-q4_K_M)
-'   Inkling 2 Mini   → inkling-2-mini:26b-a5b-nvfp4   hf.co/unsloth/Inkling-2-Mini-GGUF:UD-Q4_K_M (dormant)
-'   Muse Glimmer 30B → muse-glimmer:30b-mlx    muse-glimmer:latest  (30b-q4_K_M)
-'   Nemotron 3.5 Super → nemotron-3.5-super:120b-a12b-q4_K_M on both
-'   Qwen3.8-Flash-Next → qwen3.8-flash-next:125b-mlx on Apple silicon
-'                        qwen3.8-flash-next:125b-a6b-q4_K_M elsewhere
+' ── MODEL ROW MAPPING (2026-11-21) ─────────────────────────────────────────
+' MEMORY RANGES are named (owner): small ≥ 96 · mini 24–96 · nano 8–24 · pico 6–8 GiB
+'   (modelTier, tierName). The pico floor was raised from 2 to 4 to 6 GiB (owner), because no
+'   model runs hermes at 64K under ~2.8 GiB. Each range offers one non-Chinese and one Chinese preset.
+'   range  non-Chinese                                   Chinese
+'   small  Nemotron 3.5 Super heretic   (import, GGUF)   Qwen3.8-Flash-Next abliterated v2 (import, GGUF)
+'   mini   Inkling 2 Mini uncensored    (import, MLX,    Qwen 3.8 27B abliterated (hf.co pull)
+'            Apple silicon, Ollama ≥ 0.40.17; the GGUF pull waits for Ollama to load inkling2_loop)
+'   nano   Nemotron 3.5 Bolt E4B heretic (hf.co pull)    MiMo-V2.6 Distill Qwen 9B ARA abliterated (hf.co pull)
+'   pico   LFM3 1.7B heretic Q8_0       (hf.co pull)     MiniCPM5 2B heretic Q6_K (hf.co pull)
+'   The exact tags, revisions and digests live in internal/run/model_row.go (localModels).
+'   pico prefers the larger quants that still fit 6 GiB at 64K (owner): LFM3 Q8_0 needs 3.47 GiB,
+'   MiniCPM5 Q6_K 5.56 GiB (Q8_0 needs 6.13).
+' Muse Glimmer was dropped (2026-11-21). The-freezer's abliterated GGUF answers empty or
+'   " to=self" under Ollama, even with the official glimmer renderer and parser copied onto it.
 '
-' The form offers the first pair (Qwen + Inkling or Glimmer) at 24 ≤ capacity < 96 GiB. At capacity ≥
+' ── SOURCE ORDER (2026-11-21, owner) ───────────────────────────────────────
+' "ideal is hugging face + abliterated, ollama create is fallback #1,
+'  non-abliterated official is fallback #2"; also "Assert all models are sourced in
+'  HuggingFace" and "Forbid models over 6 months old, warn when they are 3 months old".
+'   1. hf.co/<repo>:<quant> Ollama pull of an abliterated build
+'   2. import of an abliterated HF build (HF IMPORT, below)
+'   3. official build, not abliterated (none is listed today; each slot has an abliterated source)
+' Same-label builds chain as separate localModels entries. lineup takes the first
+'   one the host serves per (range, column), and label lookups (preferred) resolve
+'   to the served build.
+' Enforced by internal/run/model_row_test.go TestEveryPresetIsAFreshHuggingFaceBuild:
+'   every tag is an hf.co pull or a pinned 40-hex HF revision, and every base model
+'   is under 6 months old (it logs a warning past 3). Repo ids are unique. The row
+'   hint appends "released YYYY-MM-DD, over 3 months old" (TestTheHintWarnsPastThreeMonths).
+'   Age counts from the base model's release, not the abliterated upload.
+'   Expect the test to fail as presets age; it is how a refresh gets scheduled.
+' Verified 2026-11-21 against HF's Ollama registry (/v2/<repo>/manifests/<quant>):
+'   every pinned hf.co pull answers 200. The checks also found two dead ends:
+'   AtomicChat's Inkling AD-Q4_K is "not a valid quantization scheme", and AtomicChat's Bolt
+'   AD-Q4_K_M is "a sharded GGUF" (Bolt moved to mradermacher's heretic-3 i1-Q4_K_M).
+'
+' ── HF IMPORT (2026-11-21) ─────────────────────────────────────────────────
+' HF's registry refuses sharded GGUFs to Ollama: HTTP 400, "Ollama does not yet support
+'   pulling sharded GGUF via the registry; please download the shards and merge them locally
+'   with `ollama create`" (ollama#5245). Every small-range build is sharded (files > 50 GB).
+'   Safetensors (MLX) builds have no pull path at all.
+' sbx.Import pins a repo, a revision and each file (LFS sha256 for large files).
+'   run's init registers each preset's import under its local tag (proveo/<name>:<quant>).
+'   EnsureHostOllama imports a registered tag that Ollama lacks, and pulls anything else.
+'   importOllama:
+'     free disk ≥ 2 × size − already downloaded (download + Ollama's blob copy), else refuse
+'     GET /<repo>/resolve/<revision>/<path> into the cache, resuming a .part with Range
+'     sha256 vs the pin; a mismatch removes the file and stops
+'     HEAD/POST /api/blobs/sha256:<digest>, then POST /api/create {model, files: {path: digest}}
+'     the download is removed after create; progress is one live line per file
+' Pinned: Nemotron heretic i1-Q4_K_M 80.1 GiB (2 shards) · Flash-Next v2 UD-IQ4_XS
+'   87.2 GiB (3 shards) · Inkling OpenUncensored NVFP4 18.8 GiB (12 files, rc4's inkling2 importer).
+'   The small imports were not run here; the host lacks the disk (owner: "simply pin the sources").
+' Pinned by internal/sbx/host_import_test.go (download, resume, pin mismatch, disk, create error,
+'   EnsureHostOllama routing) against fake HF and Ollama servers.
+'
+' The form offers the mini pair at 24 ≤ capacity < 96 GiB. At capacity ≥
 ' 96 GiB it offers the second pair. Capacity is installed VRAM, summed
 ' across detected cards, or installed unified memory on Apple silicon.
 ' NVIDIA total rounds to the nearest GiB for driver-reserved memory.
@@ -264,6 +313,14 @@ skinparam noteTextAlignment left
 ' https://ollama.com/library/qwen3.8-flash-next/tags
 ' https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4
 ' https://huggingface.co/Qwen/Qwen3.8-Flash-Next
+' ── ABLITERATED (2026-11-21) ───────────────────────────────────────────────
+' Abliterated (refusal-stripped) builds are preferred for every local preset.
+' Research for updates before changing a preset: newer abliterated builds,
+'   pullable MLX tags (none yet), and an Ollama release that loads Inkling's GGUF.
+' Keep in mind with agent-browser: the agent drives the operator's signed-in
+'   Chrome, and without refusal training a skill's "blocked" rule rests on
+'   instruction-following alone.
+'
 ' ── OLLAMA FLOOR: INKLING REPLACES GLIMMER WHERE OLLAMA SERVES IT (2026-11-20) ─
 ' user: "Replace current Glimmer with Inkling Mini 26B"; forks answered:
 '   non-Mac → "Inkling everywhere via HF GGUF"; Linux GGUF → "Dormant GGUF, Glimmer now";

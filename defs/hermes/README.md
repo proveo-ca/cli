@@ -31,11 +31,11 @@ compose with this repo's per-sandbox isolated-microVM model.
 ## Local models on the model row
 
 The model row picks the source, riskier to safer: Qwen 3.8 27B, API keys (an external provider through your keys), or
-Inkling 2 Mini 26B-A5B. Inkling needs Ollama ≥ 0.40.17 on Apple silicon (`inkling-2-mini:26b-a5b-nvfp4`, MLX); an older
-Ollama, and every other host until an Ollama release loads its GGUF, gets Muse Glimmer 30B in that column instead.
-Each local option is a `--local-model` value for this host — "… MLX" on macOS arm64
-(`qwen3.8:27b-mlx`, `muse-glimmer:30b-mlx`, 2.6x the generation speed of GGUF measured on an M4 Pro),
-"… GGUF" elsewhere (`qwen3.8:latest`, `muse-glimmer:latest`). On sbx the model runs on **your host's
+Inkling 2 Mini 26B-A5B. Presets come per memory range (pico 6–8 · nano 8–24 · mini 24–96 · small 96+ GB), one
+non-Chinese and one Chinese, all abliterated (refusal-stripped) builds sourced on Hugging Face and under 6 months old.
+Most are `hf.co/…` pulls; builds Ollama cannot pull (sharded GGUFs, MLX safetensors) are imported from a pinned
+Hugging Face revision with `ollama create`, which needs disk for the download plus Ollama's copy. The full list is
+`localModels` in `internal/run/model_row.go`. A typed official tag (`--local-model qwen3.8:27b-mlx`) is kept as typed. On sbx the model runs on **your host's
 Ollama** and hermes reaches it at `host.docker.internal:11434`. A tag you have not pulled is pulled for you
 before launch, with progress (`PROVEO_LOCAL_MODEL_PULL=0` turns that off). proveo refuses when Ollama is
 not running. When the model is larger than free memory (VRAM on a discrete GPU, unified memory on Apple

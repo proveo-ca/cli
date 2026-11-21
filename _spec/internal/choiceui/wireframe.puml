@@ -1010,8 +1010,12 @@ title Choice prompt wireframe — one card, and how a gated element is drawn
   TWO LOCAL SLOTS (2026-11-20, user: "NEVER show 3 options, only top Chinese,
   and top non-Chinese for the 2 memory ranges"). Column 3 holds the top
   non-Chinese model and column 4 the top Chinese one:
-    24–96 GiB: Inkling (Glimmer below its Ollama floor), then Qwen 3.8.
-    ≥ 96 GiB: Nemotron, then Flash Next.
+    small ≥ 96 GiB: Nemotron, then Flash Next.
+    mini 24–96 GiB: Inkling (Apple silicon on Ollama ≥ 0.40.17), then Qwen 3.8.
+    nano 8–24 GiB: Bolt, then MiMo.
+    pico 6–8 GiB: LFM3, then MiniCPM5.
+    A column whose builds no host can serve stays empty. Mini on Linux reads
+    ""API keys | . | . | Qwen 3.8"".
   A typed preset takes its own column's slot, even across tiers.
   ""--local-model qwen3.8:latest"" on a 96 GiB host reads ""Nemotron | Qwen 3.8"".
   A typed unlisted tag replaces the pair (user: "Replaces the pair"), so
@@ -1022,10 +1026,10 @@ title Choice prompt wireframe — one card, and how a gated element is drawn
   card down to 16 at 80, where column 4 starts at 66.
   27B and 30B live in the hint. Glimmer's hint still says Muse Glimmer.
   Inkling's hint says ""Inkling 2 Mini 26B-A5B, MLX"".
-  GGUF and MLX are the hint, not the label:
-  darwin/arm64 says MLX (""qwen3.8:27b-mlx"", ""muse-glimmer:30b-mlx"",
-  ""inkling-2-mini:26b-a5b-nvfp4""), every other host says GGUF
-  (""qwen3.8:latest"", ""muse-glimmer:latest"").
+  GGUF and MLX are the hint, not the label. Since 2026-11-21 the 24–96 GiB presets
+  are abliterated GGUF on every host, so the hint says GGUF and names the variant
+  (""Qwen 3.8 27B abliterated (huihui), GGUF, …""). The tags are in
+  _spec/internal/sbx/host-inference.puml (ABLITERATED).
   Picking one on a plan harness also
   answers auth = ""local model"", which withholds the plan credential.
   ""--local-model <tag>"" preselects the option whose Ollama repo owns the tag and,

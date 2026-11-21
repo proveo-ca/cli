@@ -130,7 +130,9 @@ func EnsureHostOllama(model string, ctx int, getenv func(string) string, p *ui.P
 			p = ui.New(io.Discard)
 		}
 		start := model + " — pulling into the host's Ollama"
-		if size, known := registrySize(model); known {
+		if imp, ok := ImportFor(model); ok {
+			start = fmt.Sprintf("%s — importing %s from Hugging Face into the host's Ollama · %.1f GiB", model, imp.Repo, gib(imp.size()))
+		} else if size, known := registrySize(model); known {
 			start += fmt.Sprintf(" · %.1f GiB", gib(size))
 			if err := checkFit(ollamaModel{Name: model, Size: size}, ctx, getenv); err != nil {
 				ui.Logf("%s would not fit in memory right now (%v); pulling anyway, the load check decides", model, err)
@@ -140,7 +142,11 @@ func EnsureHostOllama(model string, ctx int, getenv func(string) string, p *ui.P
 		if p.Plain {
 			p.Asyncf("%s", start)
 		}
-		if pulled, err = pullOllama(model, p); err != nil {
+		if imp, ok := ImportFor(model); ok {
+			if pulled, err = importOllama(model, imp, p); err != nil {
+				return 0, fmt.Errorf("import %s into the host's Ollama: %w", model, err)
+			}
+		} else if pulled, err = pullOllama(model, p); err != nil {
 			return 0, fmt.Errorf("pull %s into the host's Ollama: %w%s", model, err, hint)
 		}
 		if tags, err = listOllama("/api/tags"); err != nil {

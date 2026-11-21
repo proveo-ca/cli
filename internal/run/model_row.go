@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/proveo-ca/proveo/internal/choiceui"
 	"github.com/proveo-ca/proveo/internal/credentials"
@@ -21,52 +22,145 @@ const (
 	rowModel     = "model"
 	modelAPIKeys = "API keys"
 	modelPlan    = "plan"
-	modelTier24  = 24
-	modelTier96  = 96
 )
 
+// Memory ranges, by the least installed GiB each starts at.
+const (
+	tierSmall = 96 // small: 96 GB and up
+	tierMini  = 24 // mini: 24 to 96 GB
+	tierNano  = 8  // nano: 8 to 24 GB
+	tierPico  = 6  // pico: 6 to 8 GB
+)
+
+// memoryRanges orders the ranges from the largest floor down.
+var memoryRanges = []struct {
+	floor int
+	name  string
+}{{tierSmall, "small"}, {tierMini, "mini"}, {tierNano, "nano"}, {tierPico, "pico"}}
+
+// modelTier is the floor of the range capacity falls in; 0 below pico.
 func modelTier(capacity uint64) int {
-	switch {
-	case capacity >= modelTier96<<30:
-		return modelTier96
-	case capacity >= modelTier24<<30:
-		return modelTier24
-	default:
-		return 0
+	for _, r := range memoryRanges {
+		if capacity >= uint64(r.floor)<<30 {
+			return r.floor
+		}
 	}
+	return 0
+}
+
+// tierName names the range a tier floor starts; "" for none.
+func tierName(tier int) string {
+	for _, r := range memoryRanges {
+		if r.floor == tier {
+			return r.name
+		}
+	}
+	return ""
 }
 
 // ollamaUnreleased is a floor no Ollama release meets yet.
 const ollamaUnreleased = "unreleased"
 
 // localModel is one row choice: repo and its tags' repos claim a tag, tags and builds pick this host's build,
-// floors gate it on the host's Ollama version.
+// floors gate it on the host's Ollama version, imports build a platform's tag from Hugging Face files.
 type localModel struct {
 	name, repo, short, size string // short is the topology box; size is the hint, not the cell
+	lead                    string // the hint's opening words
+	released                string // the base model's release, YYYY-MM-DD
+	abliterated             bool
 	tags                    map[string]string
 	builds                  map[string]string
 	floors                  map[string]string // "" any version; ollamaUnreleased none yet
+	imports                 map[string]sbx.Import
 	tier, column            int
 }
 
 // localModels are the row's local choices; per tier and column the first one the host's Ollama serves wins.
 var localModels = []localModel{
-	{"Qwen 3.8", "qwen3.8", "qwen3.8", "27B",
-		map[string]string{"darwin/arm64": "qwen3.8:27b-mlx", "": "qwen3.8:latest"},
-		map[string]string{"darwin/arm64": "MLX", "": "GGUF"}, nil, modelTier24, 3},
-	{"Inkling", "inkling-2-mini", "inkling", "26B-A5B",
-		map[string]string{"darwin/arm64": "inkling-2-mini:26b-a5b-nvfp4", "": "hf.co/unsloth/Inkling-2-Mini-GGUF:UD-Q4_K_M"},
-		map[string]string{"darwin/arm64": "MLX", "": "GGUF"},
-		map[string]string{"darwin/arm64": "0.40.17", "": ollamaUnreleased}, modelTier24, 2},
-	{"Glimmer", "muse-glimmer", "glimmer", "30B",
-		map[string]string{"darwin/arm64": "muse-glimmer:30b-mlx", "": "muse-glimmer:latest"},
-		map[string]string{"darwin/arm64": "MLX", "": "GGUF"}, nil, modelTier24, 2},
-	{"Nemotron", "nemotron-3.5-super", "nemotron", "120B-A12B",
-		map[string]string{"": "nemotron-3.5-super:120b-a12b-q4_K_M"},
-		map[string]string{"": "GGUF"}, nil, modelTier96, 2},
-	{"Flash Next", "qwen3.8-flash-next", "flash-next", "125B-A6B",
-		map[string]string{"darwin/arm64": "qwen3.8-flash-next:125b-mlx", "": "qwen3.8-flash-next:125b-a6b-q4_K_M"},
-		map[string]string{"darwin/arm64": "MLX", "": "GGUF"}, nil, modelTier96, 3},
+	{name: "Nemotron", repo: "nemotron-3.5-super", short: "nemotron", size: "120B-A12B",
+		lead: "Nemotron 3.5 Super 120B-A12B heretic (spiritfather), a ~80 GiB import", released: "2026-10-12", abliterated: true,
+		tags:    map[string]string{"": "proveo/nemotron-3.5-super-heretic:120b-a12b-i1-q4_k_m"},
+		builds:  map[string]string{"": "GGUF"},
+		imports: map[string]sbx.Import{"": importNemotronHeretic}, tier: tierSmall, column: 2},
+	{name: "Flash Next", repo: "qwen3.8-flash-next", short: "flash-next", size: "125B-A6B",
+		lead: "Qwen3.8-Flash-Next 125B-A6B abliterated v2 (huihui), a ~87 GiB import", released: "2026-08-24", abliterated: true,
+		tags:    map[string]string{"": "proveo/qwen3.8-flash-next-abliterated:125b-a6b-ud-iq4_xs"},
+		builds:  map[string]string{"": "GGUF"},
+		imports: map[string]sbx.Import{"": importFlashNextAbliterated}, tier: tierSmall, column: 3},
+	{name: "Inkling", repo: "inkling-2-mini", short: "inkling", size: "26B-A5B",
+		lead: "Inkling 2 Mini 26B-A5B uncensored (AtomicChat)", released: "2026-11-20", abliterated: true,
+		tags:   map[string]string{"": "hf.co/AtomicChat/Inkling-2-Mini-Uncensored-GGUF:IQ3_S"},
+		builds: map[string]string{"": "GGUF"},
+		floors: map[string]string{"": ollamaUnreleased}, tier: tierMini, column: 2},
+	{name: "Inkling", repo: "inkling-2-mini-mlx", short: "inkling", size: "26B-A5B",
+		lead: "Inkling 2 Mini 26B-A5B uncensored (OpenUncensored), an MLX import", released: "2026-11-20", abliterated: true,
+		tags:    map[string]string{"darwin/arm64": "proveo/inkling-2-mini-uncensored:26b-a5b-nvfp4"},
+		builds:  map[string]string{"darwin/arm64": "MLX"},
+		floors:  map[string]string{"darwin/arm64": "0.40.17", "": ollamaUnreleased},
+		imports: map[string]sbx.Import{"darwin/arm64": importInklingUncensored}, tier: tierMini, column: 2},
+	{name: "Qwen 3.8", repo: "qwen3.8", short: "qwen3.8", size: "27B",
+		lead: "Qwen 3.8 27B abliterated (huihui)", released: "2026-08-05", abliterated: true,
+		tags:   map[string]string{"": "hf.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF:Q4_K_M"},
+		builds: map[string]string{"": "GGUF"}, tier: tierMini, column: 3},
+	{name: "Bolt", repo: "nemotron-3.5-bolt", short: "bolt", size: "E4B",
+		lead: "Nemotron 3.5 Bolt E4B heretic (mradermacher)", released: "2026-10-23", abliterated: true,
+		tags:   map[string]string{"": "hf.co/mradermacher/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16-heretic-3-i1-GGUF:i1-Q4_K_M"},
+		builds: map[string]string{"": "GGUF"}, tier: tierNano, column: 2},
+	{name: "MiMo", repo: "mimo-v2.6", short: "mimo", size: "9B",
+		lead: "MiMo-V2.6 Distill Qwen 9B abliterated (ARA)", released: "2026-09-21", abliterated: true,
+		tags:   map[string]string{"": "hf.co/mradermacher/MiMo-V2.6-Distill-Qwen-9B-ARA-Abliterated-i1-GGUF:i1-IQ4_XS"},
+		builds: map[string]string{"": "GGUF"}, tier: tierNano, column: 3},
+	{name: "LFM3", repo: "lfm3", short: "lfm3", size: "1.7B",
+		lead: "LFM3 1.7B heretic (Vortecks), Q8_0", released: "2026-10-23", abliterated: true,
+		tags:   map[string]string{"": "hf.co/Vortecks/LFM3-1.7B-Heretic-Abliterated-GGUF:Q8_0"},
+		builds: map[string]string{"": "GGUF"}, tier: tierPico, column: 2},
+	{name: "MiniCPM5", repo: "minicpm5", short: "minicpm5", size: "2B",
+		lead: "MiniCPM5 2B heretic (Abiray), Q6_K", released: "2026-09-06", abliterated: true,
+		tags:   map[string]string{"": "hf.co/Abiray/MiniCPM5-2B-heretic-abliterated-GGUF:Q6_K"},
+		builds: map[string]string{"": "GGUF"}, tier: tierPico, column: 3},
+}
+
+// Pinned Hugging Face imports: a revision and each large file's LFS sha256.
+var (
+	importNemotronHeretic = sbx.Import{Repo: "spiritfather/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-heretic-ara-i1-GGUF",
+		Revision: "28261d680b80c4c5c2724d5f0a3ebb74e2f41b4f", Files: []sbx.ImportFile{
+			{Path: "i1-Q4_K_M/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-heretic-ara.i1-Q4_K_M-00001-of-00002.gguf",
+				SHA256: "4f11337644f7df8f0d61f72f9816c89c461a8b53cc341cdcac572bbf7347d053", Size: 44456972480},
+			{Path: "i1-Q4_K_M/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-heretic-ara.i1-Q4_K_M-00002-of-00002.gguf",
+				SHA256: "f8a5f340a07a99820e149852eb6b6c870dd58b7a06332632778340559691ff19", Size: 41594110368},
+		}}
+	importFlashNextAbliterated = sbx.Import{Repo: "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
+		Revision: "cbc7fba13f1939ac3fa42b18d77ccf43847d74ef", Files: []sbx.ImportFile{
+			{Path: "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf",
+				SHA256: "5ce89370720f8bf90890f439361282104c1aa1482d4013bb9a50923e758e71a4", Size: 10946624},
+			{Path: "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00002-of-00003.gguf",
+				SHA256: "ede87d3bd3e354d43f0e710b2df6791d3479e396847e53adbe2b48be7ba6d663", Size: 49835229856},
+			{Path: "unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00003-of-00003.gguf",
+				SHA256: "f8aa8bd7ba134b3b7fe4fc95b9131fc8f6678ace374a0fa6e632225031665995", Size: 43836407744},
+		}}
+	importInklingUncensored = sbx.Import{Repo: "OpenUncensored/Inkling-2-Mini-Uncensored",
+		Revision: "4e5f06d72b5a70c9dcd5e8046aea576eb3ee8487", Files: []sbx.ImportFile{
+			{Path: "chat_template.jinja", Size: 6868},
+			{Path: "config.json", Size: 2699},
+			{Path: "generation_config.json", Size: 98},
+			{Path: "hf_quant_config.json", Size: 67924},
+			{Path: "model-00001-of-00001.safetensors", SHA256: "a841d90643aec49a9dd07968ee96a26fe0a9d829d0f27901ebb5cb3938c99227", Size: 19526019168},
+			{Path: "model.safetensors.index.json", Size: 109300},
+			{Path: "mtp.safetensors", SHA256: "7c3b651317f01f73bcf4e1dceba66ef8b7e1a1eac6bc171e882e690a4b10a1d2", Size: 635801416},
+			{Path: "processor_config.json", Size: 461},
+			{Path: "special_tokens_map.json", Size: 529},
+			{Path: "tiktoken/tokenizer.model", SHA256: "f170372dd655728909228220d77cf6b8104a59f38a91262a7d2c4027906ec0d8", Size: 3386494},
+			{Path: "tokenizer.json", SHA256: "7f332727f9a3f093dd452a39cc978e6757627e5dad1b0673aa4e75174f236dd6", Size: 26178678},
+			{Path: "tokenizer_config.json", Size: 13235},
+		}}
+)
+
+func init() {
+	for _, m := range localModels {
+		for platform, imp := range m.imports {
+			sbx.RegisterImport(m.tagFor(platform), imp)
+		}
+	}
 }
 
 // hostOllamaVersion is the host Ollama's version, read once per process.
@@ -145,6 +239,27 @@ func lineupFor(tier int, platform, version string) []localModel {
 
 func lineup(tier int) []localModel { return lineupFor(tier, ollamaPlatform(), hostOllamaVersion()) }
 
+// preferred lists every preset, the ones this host's lineups serve first, so a label two builds share names the served one.
+func preferred() []localModel {
+	var out []localModel
+	seen := map[string]bool{}
+	add := func(m localModel) {
+		if !seen[m.repo] {
+			seen[m.repo] = true
+			out = append(out, m)
+		}
+	}
+	for _, r := range memoryRanges {
+		for _, m := range lineup(r.floor) {
+			add(m)
+		}
+	}
+	for _, m := range localModels {
+		add(m)
+	}
+	return out
+}
+
 // repoOf strips the tag from an Ollama model reference.
 func repoOf(ref string) string {
 	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
@@ -167,14 +282,19 @@ func modelHelp(localModel string) map[string]string {
 	h := map[string]string{
 		modelAPIKeys: "no local model: the agent uses an external LLM provider through your keys, brokered like any usage key",
 	}
+	for _, m := range preferred() {
+		if _, set := h[m.label()]; !set {
+			h[m.label()] = modelHint(m, "same as --local-model "+m.tag()+" on "+ollamaPlatform()+": the host's Ollama serves it, no key")
+		}
+	}
 	claimed := false
 	for _, m := range localModels {
-		h[m.label()] = modelHint(m, "same as --local-model "+m.tag()+" on "+ollamaPlatform()+": the host's Ollama serves it, no key")
 		if m.owns(localModel) {
 			claimed = true
 			if localModel != m.tag() {
 				h[m.label()] = modelHint(m, "keeps your --local-model "+localModel+" (the row picks "+m.tag()+" on "+ollamaPlatform()+")")
 			}
+			break
 		}
 	}
 	if localModel != "" && !claimed {
@@ -183,24 +303,26 @@ func modelHelp(localModel string) map[string]string {
 	return h
 }
 
+// presetNow is the clock the age hint reads.
+var presetNow = time.Now
+
+// presetAge is how long ago m's base model was released; ok is false for an unparsable date.
+func (m localModel) presetAge() (time.Duration, bool) {
+	t, err := time.Parse(time.DateOnly, m.released)
+	return presetNow().Sub(t), err == nil
+}
+
+const (
+	presetWarnAge   = 92 * 24 * time.Hour  // three months
+	presetForbidAge = 183 * 24 * time.Hour // six months
+)
+
 func (m localModel) hintLead() string {
-	switch m.repo {
-	case "inkling-2-mini":
-		return "Inkling 2 Mini " + m.size
-	case "muse-glimmer":
-		return "Muse Glimmer " + m.size
-	case "nemotron-3.5-super":
-		return "Nemotron 3.5 Super " + m.size + " (~90 GB weights)"
-	case "qwen3.8-flash-next":
-		if ollamaPlatform() == "darwin/arm64" {
-			return "Qwen3.8-Flash-Next " + m.size + " (~105 GB weights, 128 GB unified recommended)"
-		}
-		return "Qwen3.8-Flash-Next " + m.size + " (~120 GB weights, 128 GB VRAM recommended)"
+	lead := cmp.Or(m.lead, m.name)
+	if age, ok := m.presetAge(); ok && age > presetWarnAge {
+		lead += " · released " + m.released + ", over 3 months old"
 	}
-	if m.size != "" {
-		return m.size
-	}
-	return m.name
+	return lead
 }
 
 func modelHint(m localModel, rest string) string {
@@ -303,7 +425,7 @@ func localModelFor(option string) string {
 	if option == modelAPIKeys {
 		return ""
 	}
-	for _, m := range localModels {
+	for _, m := range preferred() {
 		if m.label() == option {
 			return m.tag()
 		}
@@ -330,28 +452,34 @@ func hostTagFor(tag string) string {
 		if !m.owns(tag) {
 			continue
 		}
-		if m.tier == modelTier24 || tag == m.tagFor("") || tag == m.tagFor("darwin/arm64") {
-			return columnPick(m).tag()
+		if m.tier == tierMini || tag == m.tagFor("") || tag == m.tagFor("darwin/arm64") {
+			if pick, ok := columnPick(m); ok {
+				return pick.tag()
+			}
+			return tag
 		}
 	}
 	return tag
 }
 
-// columnPick is the model this host's lineup offers in m's tier and column, else m.
-func columnPick(m localModel) localModel {
+// columnPick is the model this host's lineup offers in m's tier and column; ok is false when it offers none.
+func columnPick(m localModel) (localModel, bool) {
 	for _, o := range lineup(m.tier) {
 		if o.column == m.column {
-			return o
+			return o, true
 		}
 	}
-	return m
+	return m, false
 }
 
 // legacyVariantTag maps a cached modelVariant image key to its --local-model value.
 func legacyVariantTag(variant string) string {
 	for _, m := range localModels {
 		if variant == "hermes-"+m.repo {
-			return columnPick(m).tag()
+			if pick, ok := columnPick(m); ok {
+				return pick.tag()
+			}
+			return m.tag()
 		}
 	}
 	return ""
@@ -440,9 +568,9 @@ func pinModelCols(r *choiceui.Row, tier int) {
 		switch {
 		case tier > 0 && ollamaPlatform() == "darwin/arm64":
 			label = fmt.Sprintf("local (%d GB unified)", tier)
-		case tier == modelTier96:
+		case tier == tierSmall:
 			label = "local (96 GB VRAM tier)"
-		case tier == modelTier24:
+		case tier == tierMini:
 			label = "local (needs 24 GB VRAM)"
 		}
 		r.ColumnGroups = append(r.ColumnGroups, choiceui.ColumnGroup{Label: label, First: max(first, 2), Last: last})
@@ -499,7 +627,7 @@ func localBesideHost(option string) (string, bool) {
 	if option == "" || !isLocalOption(option) {
 		return "", false
 	}
-	for _, m := range localModels {
+	for _, m := range preferred() {
 		if m.label() == option {
 			return m.label(), true
 		}
@@ -515,7 +643,7 @@ func modelShort(option string) string {
 	case credentials.AuthSubscription, modelPlan:
 		return "plan"
 	}
-	for _, m := range localModels {
+	for _, m := range preferred() {
 		if m.label() == option {
 			return m.short
 		}
