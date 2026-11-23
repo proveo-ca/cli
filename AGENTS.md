@@ -19,3 +19,16 @@
 - If any part is unverified, label the entire response.
 - For LLM behavior claims (including yourself), include:
   - [Inference] or [Unverified], with a note that it’s based on observed patterns.
+
+4. Git Rules:
+- The `git-sync-turn` stop hook (`packages/lib/hooks/git-sync-turn.sh`) runs at every turn end. It stages all changes except `.env*`, keys and credential files, commits them as `[proveo] <subject>`, and pushes the branch.
+- Expect `[proveo]` commits you did not author between turns.
+- `PROVEO_GIT_SYNC=off` disables the hook. `PROVEO_GIT_SYNC_MSG=off` keeps the commit and skips the model-written subject.
+- Diff red/green checks against `git merge-base HEAD origin/<target>`, never `HEAD`.
+- Before rewriting history, list `git log <base>..HEAD`. Squash or force-push `[proveo]` commits only with approval, via `--force-with-lease=<branch>:<sha>`.
+- Never reply to a human. On PRs, issues, review threads, chat and email, propose drafts only. The human posts them.
+- Never resolve a review thread unless asked for that thread.
+- PR description:
+  - `## What`, `## Why`, `## How`, in that order, each ≤ 256 characters including its heading.
+  - Never mention a stack, commit hashes, branch names or file paths.
+  - Move logs and known gaps to a ticket, and say where they went.
