@@ -7,200 +7,182 @@
 <title>Proveo Dashboard Proposal</title>
 <style>
   :root {
-    --bg: #141916;
-    --surface: #1a211d;
-    --raised: #202923;
-    --line: #344239;
-    --text: #edf2eb;
-    --muted: #a3b1a7;
-    --accent: #d3f589;
-    --accent-bg: #29382a;
-    --sky: #a9d7da;
+    color-scheme: dark;
+    --bg: #111416;
+    --surface: #171b1e;
+    --raised: #252b2e;
+    --line: #424b50;
+    --text: #e2e9eb;
+    --muted: #a0adb1;
+    --accent: #b5dea0;
+    --accent-bg: #283930;
+    --sky: #a9d8e5;
     --amber: #f1c18d;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
-    font-family: "Geist", "Inter", system-ui, sans-serif;
+    font: clamp(12px, 1vw, 14px)/1.5 var(--mono);
     color: var(--text);
     background: var(--bg);
-    font-synthesis: none;
   }
   *, *::before, *::after { box-sizing: border-box; }
-  body { margin: 0; min-width: 280px; }
-  h1, h2, h3, p, ol, ul, dl, dd, pre { margin: 0; }
-  button, input { font: inherit; }
-  button { color: inherit; }
-  button, summary { cursor: pointer; }
-  a { color: var(--accent); text-underline-offset: 3px; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  body { margin: 0; min-width: 280px; padding: clamp(0px, 2vw, 22px); }
+  h1, h2, h3, p, ol, ul, dl, dd, pre { margin: 0; font: inherit; }
+  button, select, code, kbd { font: inherit; }
+  button { color: inherit; cursor: pointer; }
+  summary { cursor: pointer; }
+  a { color: var(--sky); text-underline-offset: 3px; }
+  :focus-visible { outline: 1px solid var(--sky); outline-offset: -1px; }
   [hidden] { display: none !important; }
-  .mono, code, pre { font-family: var(--mono); }
-  .muted { color: var(--muted); }
-  .subtext { color: var(--muted); font-size: .84rem; line-height: 1.55; }
-  .kicker { font: .7rem/1.4 var(--mono); letter-spacing: .07em; color: var(--muted); text-transform: uppercase; }
-  .wrap { width: min(1480px, 100%); margin-inline: auto; padding-inline: clamp(16px, 3vw, 46px); }
-  .top { border-bottom: 1px solid var(--line); background: #181e1a; }
-  .bar { display: flex; min-height: 62px; align-items: stretch; gap: clamp(12px, 3vw, 38px); }
-  .brand { display: flex; align-items: center; gap: 9px; font: 700 1rem var(--mono); }
-  .mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: var(--accent); color: #1d2916; font-size: .8rem; }
-  .tabs { display: flex; align-items: stretch; gap: 3px; }
-  .tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 0 clamp(10px, 2vw, 22px); color: var(--muted); font: .83rem var(--mono); }
-  .tab:hover { background: var(--surface); color: var(--text); }
-  .tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent); }
-  .top-end { margin-left: auto; display: flex; gap: 15px; align-items: center; }
-  .prototype { font: .68rem var(--mono); color: var(--muted); }
-  .button { display: inline-flex; align-items: center; justify-content: center; gap: .4em; padding: 8px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); font-weight: 600; font-size: .79rem; text-decoration: none; }
-  .button:hover { border-color: var(--muted); }
-  .button.primary { background: var(--accent); border-color: var(--accent); color: #202b17; }
-  .button.primary:hover { background: #e4ffa9; }
-  .button.clear { background: transparent; }
-  .workspace { padding-block: 33px 24px; }
-  .intro { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 22px; }
-  .path { font: .78rem var(--mono); color: var(--accent); display: flex; gap: 9px; align-items: center; overflow-wrap: anywhere; }
-  h1 { margin-block: 9px 7px; font-size: clamp(1.9rem, 4vw, 2.85rem); line-height: 1.06; letter-spacing: -.045em; font-weight: 660; }
-  .intro-side { text-align: right; flex-shrink: 0; }
-  .intro-side .kicker { margin-bottom: 8px; }
-  .layout-picker { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #171d19; gap: 2px; }
-  .layout-picker button { padding: 7px 9px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); font-size: .76rem; font-weight: 610; white-space: nowrap; }
-  .layout-picker button:hover { color: var(--text); }
-  .layout-picker button[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: #435440; }
-  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 18px; }
-  .metric { padding: 12px 14px; display: flex; gap: 9px; flex-wrap: wrap; align-items: baseline; }
-  .metric + .metric { border-left: 1px solid var(--line); }
-  .metric strong { font: 620 1.08rem var(--mono); }
+  .terminal-shell { border: 1px solid var(--line); max-width: 1580px; margin: 0 auto; min-height: calc(100svh - 44px); background: var(--surface); }
+  .terminal-shell[data-tab="sbx"] { max-width: 1160px; min-height: 0; }
+  .subtext, .kicker { color: var(--muted); }
+  .kicker { font-size: .92rem; }
+  .top { background: var(--raised); border-bottom: 1px solid var(--line); }
+  .bar, .workbar, .footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 5px 10px; }
+  .bar { min-height: 38px; }
+  .brand { font-weight: bold; white-space: nowrap; }
+  .mark, .path { color: var(--sky); }
+  .tabs, .layout-picker { display: flex; align-items: center; gap: 4px; }
+  .tab, .layout-picker button, .button { border: 0; background: transparent; padding: 2px 6px; color: var(--muted); white-space: nowrap; }
+  .tab:hover, .layout-picker button:hover, .button:hover { background: var(--raised); color: var(--text); }
+  .tab[aria-selected="true"], .layout-picker button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
+  .tab[aria-selected="true"]::before { content: "["; }
+  .tab[aria-selected="true"]::after { content: "]"; }
+  .switch-hint { margin-left: auto; color: var(--muted); }
+  .switch-hint[data-armed="true"] { color: var(--accent); }
+  kbd { color: var(--sky); font-weight: bold; }
+  .button { text-align: left; color: var(--text); }
+  .button.primary { color: var(--accent); }
+  .button[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); }
+  .workbar { border-bottom: 1px solid var(--line); min-height: 36px; }
+  .workbar h1 { font-weight: bold; }
+  .path { overflow-wrap: anywhere; }
+  .layout-picker { margin-left: auto; flex-wrap: wrap; }
+  .metrics { border-bottom: 1px solid var(--line); display: flex; gap: 4px 18px; flex-wrap: wrap; padding: 5px 10px; }
+  .metric { display: flex; gap: .6ch; align-items: baseline; color: var(--muted); }
+  .metric strong { color: var(--text); }
   .metric:first-child strong { color: var(--accent); }
-  .metric span { color: var(--muted); font-size: .78rem; }
-  .grid { display: grid; grid-template-columns: minmax(180px, .64fr) minmax(0, 1.95fr) minmax(280px, 1fr); align-items: start; gap: 15px; }
-  .panel { border: 1px solid var(--line); border-radius: 9px; background: var(--surface); min-width: 0; }
-  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 14px; border-bottom: 1px solid var(--line); }
-  .panel-head h2 { font-size: .87rem; font-weight: 650; }
-  .panel-tools { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
-  .panel-tools .button { padding: 5px 8px; }
-  .panel-body { padding: 13px 14px; }
-  .files .panel-body { padding: 8px 9px 12px; }
-  .files .panel-head .kicker { color: var(--sky); }
+  .grid { display: grid; grid-template-columns: minmax(170px, .58fr) minmax(0, 2fr) minmax(280px, 1.04fr); min-height: max(555px, calc(100svh - 190px)); }
+  .panel { min-width: 0; }
+  .grid > .panel + .panel { border-left: 1px solid var(--line); }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--raised); }
+  .panel-head h2 { min-width: 0; font-weight: bold; overflow-wrap: anywhere; }
+  .panel-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .panel-body { padding: 7px 10px; }
+  .files .panel-body { padding: 5px 6px; }
   .tree { list-style: none; padding: 0; }
-  .tree .tree { padding-left: 11px; border-left: 1px solid var(--line); margin-left: 9px; }
-  .tree summary, .file { padding: 6px 5px; font: .73rem/1.35 var(--mono); overflow-wrap: anywhere; width: 100%; text-align: left; }
-  .tree summary { color: var(--muted); }
-  .tree summary::marker { color: var(--accent); }
-  .file { background: transparent; border: 1px solid transparent; border-radius: 5px; color: var(--text); display: block; }
-  .file:hover, .file[aria-current="true"] { background: var(--raised); border-color: var(--line); color: var(--accent); }
-  .file::before { content: "·"; color: var(--muted); margin-right: 7px; }
-  .file-footer { margin-top: 14px; padding: 10px 4px 1px; border-top: 1px solid var(--line); }
-  .file-footer .button { width: 100%; }
-  .section + .section { margin-top: 16px; }
-  .section .kicker, .column .kicker { margin-bottom: 8px; }
-  .tasks { display: grid; gap: 7px; }
-  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; text-align: left; padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: #1d2620; }
-  .task:hover { border-color: #71826d; }
-  .task[aria-pressed="true"] { background: var(--accent-bg); border-color: #839b60; box-shadow: inset 2px 0 var(--accent); }
+  .tree .tree { padding-left: .8ch; border-left: 1px solid var(--line); margin-left: 1ch; }
+  .tree summary, .file { padding: 3px 5px; overflow-wrap: anywhere; width: 100%; text-align: left; }
+  .tree summary { color: var(--sky); }
+  .file { background: transparent; border: 0; display: block; }
+  .file::before { content: "·"; color: var(--muted); margin-right: 1ch; }
+  .file:hover, .file[aria-current="true"] { background: var(--accent-bg); color: var(--accent); }
+  .section + .section { margin-top: 11px; }
+  .section .kicker, .column .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--sky); }
+  .section .kicker::after, .column .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
+  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1ch; text-align: left; padding: 4px 5px 4px 2.6ch; position: relative; border: 0; border-bottom: 1px solid #282f32; background: transparent; }
+  .task:last-child { border-bottom-color: transparent; }
+  .task:hover { background: var(--raised); }
+  .task[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
+  .task[aria-pressed="true"]::before { content: "›"; position: absolute; left: .8ch; top: 4px; }
   .task-heading, .task-meta { display: block; overflow-wrap: anywhere; }
-  .task-heading { font-size: .87rem; font-weight: 650; line-height: 1.38; }
-  .task-meta { margin-top: 4px; color: var(--muted); font: .67rem/1.5 var(--mono); }
-  .state { display: inline-flex; align-items: baseline; gap: 5px; color: var(--muted); font: .67rem/1.4 var(--mono); white-space: nowrap; }
+  .task-heading { font-weight: bold; }
+  .task-meta { color: var(--muted); font-size: .88rem; }
+  .state { display: inline-flex; align-items: baseline; gap: .6ch; color: var(--muted); font-size: .88rem; }
   .state.review, .state.saved { color: var(--accent); }
   .state.active { color: var(--sky); }
   .state.warn { color: var(--amber); }
-  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .column { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #171e19; }
-  .column .task { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px; }
-  .empty { color: var(--muted); font-size: .76rem; padding: 6px 0; }
-  .slot { display: grid; grid-template-columns: 50px minmax(0, 1fr); align-items: center; gap: 9px; }
-  .slot time { font: .75rem var(--mono); color: var(--sky); }
-  .inspector h3 { font-size: 1.13rem; letter-spacing: -.02em; line-height: 1.24; overflow-wrap: anywhere; }
-  .inspector .state { white-space: normal; }
-  .inspector p + p, .inspector h3 + p { margin-top: 6px; }
-  .facts { margin-block: 11px; display: grid; gap: 6px; }
-  .fact { background: #171e19; border-radius: 5px; padding: 4px 6px; display: grid; grid-template-columns: 45px minmax(0, 1fr); gap: 7px; align-items: baseline; }
-  .fact dt { color: var(--muted); font-size: .7rem; }
-  .fact dd { font: .68rem/1.5 var(--mono); overflow-wrap: anywhere; }
-  .file-link { border: 0; background: transparent; color: var(--accent); font: inherit; text-decoration: underline; text-align: left; padding: 0; }
-  .phases { border-top: 1px solid var(--line); padding-top: 10px; }
-  .phases ol { color: var(--muted); list-style: none; padding: 0; margin-block: 6px 9px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 5px; }
-  .phase { font: .69rem/1.45 var(--mono); padding: 4px; display: flex; gap: 5px; min-width: 0; align-items: baseline; }
+  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: -7px -10px; }
+  .column { min-width: 0; padding: 7px 8px; }
+  .column + .column { border-left: 1px solid var(--line); }
+  .column .task { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .empty { color: var(--muted); padding: 3px 0; }
+  .slot { display: grid; grid-template-columns: 6ch minmax(0, 1fr); align-items: start; gap: 1ch; }
+  .slot time { padding-top: 4px; color: var(--amber); }
+  .inspector h3 { color: var(--accent); font-weight: bold; overflow-wrap: anywhere; }
+  .inspector p + p, .inspector h3 + p { margin-top: 4px; }
+  .facts { margin-block: 9px; }
+  .fact { display: grid; grid-template-columns: 9ch minmax(0, 1fr); gap: 1ch; align-items: baseline; }
+  .fact dt { color: var(--muted); }
+  .fact dd { overflow-wrap: anywhere; }
+  .file-link { border: 0; background: transparent; color: var(--sky); text-align: left; padding: 0; overflow-wrap: anywhere; }
+  .file-link:hover { color: var(--accent); }
+  .phases { border-top: 1px solid var(--line); padding-top: 7px; }
+  .phases ol { color: var(--muted); list-style: none; padding: 0; margin-block: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px; }
+  .phase { padding: 2px; display: flex; gap: 4px; align-items: baseline; }
   .phase.complete { color: var(--text); }
-  .phase[aria-current="step"] { color: var(--accent); background: var(--accent-bg); border-radius: 5px; }
-  .phases .subtext { font-size: .73rem; }
-  .evidence { margin-block: 11px; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: #181f1a; }
-  .evidence .subtext { font-size: .76rem; }
-  .actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-  .file-preview, .terminal pre { color: var(--text); background: #111813; border: 1px solid var(--line); border-radius: 7px; padding: 12px; font: .76rem/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .file-preview { margin-block: 12px; }
-  .terminal { min-height: 450px; }
-  .terminal-empty { display: grid; justify-items: start; align-content: center; gap: 15px; min-height: 360px; max-width: 590px; margin-inline: auto; padding: 28px 16px; }
-  .terminal-empty h2 { font-size: 1.2rem; }
-  .terminal-empty code { color: var(--accent); font-size: 1rem; }
-  .terminal pre { margin: 16px; white-space: pre; overflow-x: auto; }
-  .uploader { display: grid; gap: 7px; }
-  .uploader input { max-width: 100%; font-size: .78rem; color: var(--muted); }
-  .footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px; padding-top: 13px; }
-  .footer .subtext { font-size: .75rem; }
-  dialog { color: var(--text); background: var(--surface); padding: 0; border: 1px solid var(--line); border-radius: 10px; width: min(610px, calc(100% - 28px)); }
-  dialog::backdrop { background: #090e0bdc; }
-  dialog .panel-body { padding: 16px; }
-  dialog .panel-body > * + * { margin-top: 11px; }
-  dialog li + li { margin-top: 6px; }
-  .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .launch-fields label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: .78rem; }
-  .launch-fields select { width: 100%; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 7px; }
-  .toast { position: fixed; z-index: 1; bottom: 16px; right: 16px; margin-left: 16px; padding: 10px 14px; border-radius: 7px; border: 1px solid #718855; background: var(--accent-bg); color: var(--accent); font-size: .83rem; }
+  .phase[aria-current="step"] { color: var(--accent); background: var(--accent-bg); }
+  .evidence { margin-block: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  .file-preview { margin-block: 8px; padding: 6px; background: var(--bg); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .editor-lines { list-style: none; margin-top: 7px; padding: 5px 0; color: var(--text); }
+  .editor-lines li { display: grid; grid-template-columns: 5ch minmax(0, 1fr); }
+  .editor-lines li > span { padding-right: 2ch; text-align: right; color: var(--muted); user-select: none; }
+  .editor-lines code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
+  #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker, #dashboard-keys),
+  #proveo:not([data-mode="editor"]) #editor-keys { display: none; }
+  .sbx-preview { margin: 0; }
+  .sbx-preview img { display: block; width: 100%; height: auto; }
+  .sbx-preview figcaption { text-align: right; padding: 4px 10px; border-top: 1px solid var(--line); background: var(--raised); }
+  .footer { background: var(--raised); border-top: 1px solid var(--line); min-height: 36px; }
+  .keybar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; }
+  .footer-note { margin-left: auto; }
+  .toast { color: var(--accent); }
   .toast:empty { display: none; }
-  @media (max-width: 1050px) {
-    .grid { grid-template-columns: minmax(145px, .52fr) minmax(0, 1.78fr) minmax(248px, 1fr); gap: 10px; }
-    .panel-head, .panel-body { padding-inline: 10px; }
+  dialog { color: var(--text); background: var(--surface); padding: 0; border: 1px solid var(--sky); width: min(640px, calc(100% - 24px)); }
+  dialog::backdrop { background: #070a0bbb; }
+  dialog .panel-body { padding: 10px; }
+  dialog .panel-body > * + *, dialog li + li { margin-top: 8px; }
+  .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .launch-fields label { display: grid; gap: 4px; min-width: 0; color: var(--muted); }
+  .launch-fields select { color: var(--text); background: var(--raised); width: 100%; border: 1px solid var(--line); border-radius: 0; padding: 4px; }
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: minmax(135px, .54fr) minmax(0, 1.65fr) minmax(242px, 1fr); }
     .board { grid-template-columns: 1fr; }
+    .column + .column { border-top: 1px solid var(--line); border-left: 0; }
   }
-  @media (max-width: 790px) {
-    .intro { align-items: start; flex-direction: column; }
-    .intro-side { text-align: left; }
-    .grid { grid-template-columns: minmax(145px, .5fr) minmax(0, 1fr); align-items: start; }
-    .inspector { grid-column: 2; }
+  @media (max-width: 760px) {
+    .layout-picker { margin-left: 0; }
+    .grid { grid-template-columns: minmax(130px, .45fr) minmax(0, 1fr); min-height: 0; }
+    .inspector { grid-column: 2; border-top: 1px solid var(--line); }
     .files { grid-row: span 2; }
+    #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(112px, .42fr) minmax(0, 1fr); min-height: 400px; }
+    #proveo[data-mode="editor"] .inspector { border-top: 0; }
   }
   @media (max-width: 500px) {
-    .bar { gap: 8px; }
-    .brand { gap: 5px; font-size: .86rem; }
-    .mark { width: 23px; height: 23px; }
-    .prototype { display: none; }
-    .workspace { padding-block: 20px; }
-    .metrics { grid-template-columns: 1fr 1fr; }
-    .metric:nth-child(3) { border-left: 0; }
-    .metric:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .bar, .workbar, .footer { gap: 3px 8px; }
+    .switch-hint { margin-left: 0; }
     .grid { display: flex; flex-direction: column; }
-    .grid > * { width: 100%; }
-    .files { order: 3; }
+    .grid > .panel + .panel { border-left: 0; }
+    .files { order: 3; border-top: 1px solid var(--line); }
+    #proveo[data-mode="editor"] .grid { display: grid; }
+    #proveo[data-mode="editor"] .files { order: 0; grid-row: auto; border-top: 0; border-right: 1px solid var(--line); }
+    .footer-note { margin-left: 0; }
   }
 </style>
 </head>
 <body>
+<div class="terminal-shell" id="terminal-shell" data-tab="proveo">
 <header class="top">
-  <div class="wrap bar">
-    <span class="brand"><span class="mark" aria-hidden="true">&gt;_</span>proveo</span>
+  <div class="bar">
+    <span class="brand"><span class="mark" aria-hidden="true">$</span> proveo</span>
     <nav class="tabs" role="tablist" aria-label="Dashboard">
       <button type="button" class="tab" id="tab-proveo" role="tab" aria-controls="proveo" aria-selected="true">proveo</button>
       <button type="button" class="tab" id="tab-sbx" role="tab" aria-controls="sbx" aria-selected="false" tabindex="-1">sbx</button>
     </nav>
-    <div class="top-end">
-      <span class="prototype">Prototype · sample data</span>
-      <button type="button" class="button clear" id="proposal-button">Proposal</button>
-    </div>
+    <span class="switch-hint" id="switch-hint"><kbd>Ctrl+G</kbd> <kbd>Tab</kbd> switch view</span>
   </div>
 </header>
 
-<main class="wrap workspace">
-  <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo">
-    <div class="intro">
-      <div>
-        <p class="path"><span aria-hidden="true">⌁</span> ~/projects/proveo</p>
-        <h1 id="view-title">Morning review</h1>
-        <p class="subtext" id="view-subtitle">Pick up the work agents left overnight.</p>
-      </div>
-      <div class="intro-side">
-        <p class="kicker">Choose a layout</p>
-        <div class="layout-picker" role="group" aria-label="Proveo layout proposals">
-          <button type="button" data-view="queue" aria-pressed="true">Review queue</button>
-          <button type="button" data-view="board" aria-pressed="false">Task board</button>
-          <button type="button" data-view="schedule" aria-pressed="false">Schedule</button>
-        </div>
+<main>
+  <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
+    <div class="workbar">
+      <h1 id="view-title">Morning review</h1>
+      <p class="path">~/projects/proveo</p>
+      <div class="layout-picker" role="group" aria-label="Proveo layout proposals">
+        <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
+        <button type="button" data-view="board" aria-pressed="false"><kbd>2</kbd> Task board</button>
+        <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
       </div>
     </div>
     <div class="metrics" id="metrics" aria-label="Workspace summary"></div>
@@ -209,15 +191,13 @@
         <header class="panel-head"><h2 id="files-heading">Files</h2><span class="kicker">pwd</span></header>
         <div class="panel-body">
           <div id="filetree"></div>
-          <div class="file-footer"><button type="button" class="button clear" id="fresh-button">Open in Fresh <span aria-hidden="true">↗</span></button></div>
         </div>
       </aside>
-      <section class="panel" aria-labelledby="work-heading">
+      <section class="panel task-panel" aria-labelledby="work-heading">
         <header class="panel-head">
           <h2 id="work-heading">Review queue</h2>
           <div class="panel-tools">
             <span class="kicker" id="work-clock">Mon · 08:42 local</span>
-            <button type="button" class="button clear" id="new-instance">+ New instance</button>
           </div>
         </header>
         <div class="panel-body" id="work"></div>
@@ -228,52 +208,46 @@
       </aside>
     </div>
     <footer class="footer">
-      <span class="subtext">Schedule window <span class="mono">22:00–06:00 local</span></span>
+      <div class="keybar" id="dashboard-keys">
+        <span class="subtext"><kbd>↑↓</kbd> tasks</span>
+        <button type="button" class="button" id="fresh-key"><kbd>e</kbd> Fresh</button>
+        <button type="button" class="button" id="new-instance"><kbd>n</kbd> New instance</button>
+        <button type="button" class="button" id="proposal-button"><kbd>?</kbd> Proposal</button>
+      </div>
+      <div class="keybar" id="editor-keys">
+        <button type="button" class="button" id="editor-back"><kbd>Esc</kbd> Return to Proveo</button>
+        <span class="subtext">Read-only file preview</span>
+      </div>
+      <span class="toast" id="toast" role="status"></span>
+      <span class="subtext footer-note">Sample workspace · night window 22:00–06:00 local</span>
     </footer>
   </section>
 
   <section id="sbx" role="tabpanel" aria-labelledby="tab-sbx" hidden>
-    <div class="intro">
-      <div>
-        <p class="path">~/projects/proveo</p>
-        <h1>Native sbx</h1>
-        <p class="subtext">MicroVMs, network, ports, and egress.</p>
-      </div>
-    </div>
-    <section class="panel terminal" aria-labelledby="terminal-heading">
-      <header class="panel-head"><h2 id="terminal-heading">Terminal</h2><span class="kicker">sbx</span></header>
-      <div class="terminal-empty" id="terminal-empty">
-        <h2>Open the native dashboard</h2>
-        <p class="subtext">The proposed terminal app hands this tab to the stock <code>sbx</code> command. Exit sbx to return to Proveo. This HTML preview can display a native plain-text capture.</p>
-        <button type="button" class="button" id="sbx-command"><span class="mono">$ sbx</span> · Copy command</button>
-        <a href="https://docs.docker.com/ai/sandboxes/usage/#interactive-mode">Docker’s interactive mode ↗</a>
-      </div>
-      <pre id="terminal-capture" aria-label="Native sbx capture" hidden></pre>
-      <div class="panel-body uploader">
-        <label class="subtext" for="capture-file">Load a plain-text sbx capture</label>
-        <input type="file" id="capture-file" accept="text/plain,.txt,.log">
-      </div>
-    </section>
+    <figure class="sbx-preview">
+      <img src="sbx-dashboard.png" width="1480" height="882" alt="Docker Sandboxes terminal dashboard showing sandbox status, resource usage, and allowed and blocked network requests.">
+      <figcaption class="subtext"><a href="https://docs.docker.com/ai/sandboxes/get-started/#whats-next">Docker’s sbx dashboard screenshot ↗</a></figcaption>
+    </figure>
   </section>
 </main>
+</div>
 
 <dialog id="dialog" aria-labelledby="dialog-title">
   <header class="panel-head">
     <h2 id="dialog-title"></h2>
-    <form method="dialog"><button type="submit" class="button clear">Close</button></form>
+    <form method="dialog"><button type="submit" class="button"><kbd>Esc</kbd> Close</button></form>
   </header>
   <div class="panel-body" id="dialog-body"></div>
 </dialog>
-<div class="toast" id="toast" role="status"></div>
 
 <script>
   "use strict"
 
   const phases = ["Spec", "Verification", "Spec revision", "Live verification", "Upgrade", "PR", "Review", "Merge"]
   const views = {
-    queue: ["Morning review", "Pick up the work agents left overnight.", "Review queue", "Mon · 08:42 local"],
-    board: ["Task board", "Follow each task from spec through evidence and review.", "Tasks by stage", ""],
-    schedule: ["Night schedule", "Plan agent work at night and reserve the day for review.", "Run timeline", "Local time"],
+    queue: ["Morning review", "Review queue", "Mon · 08:42 local"],
+    board: ["Task board", "Tasks by stage", "7 sample tasks"],
+    schedule: ["Night schedule", "Run timeline", "Local time"],
   }
   const taskStates = {
     review: ["Ready for review", "◇"],
@@ -285,14 +259,14 @@
   }
   const tasks = [
     {
-      id: "PRV-284", title: "Persist instance history", agent: "Codex", source: "Linear",
+      id: "PRV-284", slug: "history", title: "Persist instance history", agent: "Codex", source: "Linear",
       phase: 6, state: "review", time: "05:43", instance: "codex-83f91a", revision: "1c2f6e4", pr: "Draft #104",
       branch: "proveo/prv-284/session-history", session: "Checkpoint saved", saved: true,
       summary: "The host recovered both native session IDs after the VMs exited. Review the ownership rule before opening the PR.",
       evidence: ["Unit suite · 42 passed", "Live sbx · two same-pwd instances resumed by ID", "Spec · workspace-instances.puml"],
     },
     {
-      id: "PLAN-17", title: "Cap overnight run budgets", agent: "Claude Code", source: "Local plan",
+      id: "PLAN-17", slug: "budget", title: "Cap overnight run budgets", agent: "Claude Code", source: "Local plan",
       phase: 6, state: "changes", time: "04:12", instance: "claude-2bf0a1", revision: "daa5c70", pr: "PR #102",
       plan: "_spec/_plans/night-budget.puml",
       branch: "proveo/plan-17/night-budget", session: "Checkpoint saved", saved: true,
@@ -300,21 +274,21 @@
       evidence: ["Unit suite · budget calculation passed", "Live verification · rerun requested after review", "Plan · _spec/_plans/night-budget.puml"],
     },
     {
-      id: "PRV-291", title: "Verify parallel clone isolation", agent: "OpenCode", source: "Linear",
+      id: "PRV-291", slug: "clones", title: "Verify parallel clone isolation", agent: "OpenCode", source: "Linear",
       phase: 3, state: "active", time: "08:10", instance: "opencode-f91c25", revision: "d37fb13",
       branch: "proveo/prv-291/clone-isolation", session: "Native session in VM", saved: false,
       summary: "Compare file edits from two agents launched in the same directory. Each clone has its own branch.",
       evidence: ["Unit suite · distinct instance names passed", "Live verification · two agents still running"],
     },
     {
-      id: "PRV-295", title: "Recover a stopped session", agent: "Hermes", source: "Linear",
+      id: "PRV-295", slug: "recover", title: "Recover a stopped session", agent: "Hermes", source: "Linear",
       phase: 1, state: "blocked", time: "03:20", instance: "hermes-2d841b", revision: "bc059a2",
       branch: "proveo/prv-295/recovery", session: "Final checkpoint needs retry", saved: false,
       summary: "The guest stopped before the final checkpoint reached the host. Review the last good checkpoint and the kept VM.",
       evidence: ["Checkpoint · previous attempt available", "Guest export · unreachable at shutdown"],
     },
     {
-      id: "PLAN-21", title: "Index native session IDs", agent: "Codex", source: "Local plan",
+      id: "PLAN-21", slug: "session-index", title: "Index native session IDs", agent: "Codex", source: "Local plan",
       phase: 0, state: "queued", time: "22:00", instance: "New instance", revision: "8dd8b76",
       plan: "_spec/_plans/session-index.puml",
       branch: "proveo/plan-21/session-index", session: "Awaiting first run", saved: false,
@@ -322,14 +296,14 @@
       evidence: ["Plan · _spec/_plans/session-index.puml", "Schedule · 45 minute budget"],
     },
     {
-      id: "PRV-304", title: "Bind evidence to the review revision", agent: "Claude Code", source: "Linear",
+      id: "PRV-304", slug: "evidence", title: "Bind evidence to the review revision", agent: "Claude Code", source: "Linear",
       phase: 4, state: "queued", time: "23:30", instance: "claude-08a532", revision: "5b119c9",
       branch: "proveo/prv-304/review-evidence", session: "Checkpoint saved", saved: true,
       summary: "Apply the verified upgrade and lift the new commit for review.",
       evidence: ["Unit suite · previous attempt passed", "Live verification · recorded against this revision", "Schedule · 75 minute budget"],
     },
     {
-      id: "PRV-278", title: "Keep clone output per attempt", agent: "Codex", source: "Linear",
+      id: "PRV-278", slug: "output", title: "Keep clone output per attempt", agent: "Codex", source: "Linear",
       phase: 7, state: "merged", time: "Yesterday", instance: "codex-411def", revision: "c0e6b81", pr: "Merged #98",
       branch: "proveo/prv-278/clone-output", session: "Checkpoint saved", saved: true,
       summary: "Merged after the reviewer verified that each attempt keeps its own output.",
@@ -357,7 +331,8 @@
   ]
 
   const $ = (id) => document.getElementById(id)
-  const ui = { view: "queue", task: tasks[0], file: null }
+  const ui = { view: "queue", task: tasks[0], file: null, editing: false, editorFile: null }
+  const filesByPath = new Map()
   let toastTimer
 
   function node(tag, className, content) {
@@ -390,7 +365,7 @@
 
   function metric(label, count) {
     const display = node("div", "metric")
-    display.append(node("strong", "mono", String(count).padStart(2, "0")), node("span", "", label))
+    display.append(node("strong", "", String(count)), node("span", "", label))
     return display
   }
 
@@ -450,9 +425,8 @@
   }
 
   function renderWork() {
-    const [title, subtitle, heading, clock] = views[ui.view]
-    $("view-title").textContent = title
-    $("view-subtitle").textContent = subtitle
+    const [title, heading, clock] = views[ui.view]
+    $("view-title").textContent = ui.editing ? "$ fresh ." : title
     $("work-heading").textContent = heading
     for (const control of document.querySelectorAll("[data-view]")) {
       control.setAttribute("aria-pressed", String(control.dataset.view === ui.view))
@@ -487,7 +461,7 @@
         break
       }
     }
-    $("work-clock").textContent = ui.view === "board" ? tasks.length + " sample tasks" : clock
+    $("work-clock").textContent = clock
   }
 
   function tree(entries, parent = "") {
@@ -501,9 +475,9 @@
         group.append(node("summary", "", name), tree(value, path))
         item.append(group)
       } else {
-        const file = button(name, () => {
-          selectFile({name, path, value})
-        }, "file")
+        const entry = {name, path, value}
+        filesByPath.set(path, entry)
+        const file = button(name, () => selectFile(entry), "file")
         file.dataset.path = path
         item.append(file)
       }
@@ -513,9 +487,34 @@
   }
 
   function selectFile(file) {
-    ui.file = file
-    for (const task of $("work").querySelectorAll(".task")) task.setAttribute("aria-pressed", "false")
+    if (ui.editing) ui.editorFile = file
+    else {
+      ui.file = file
+      for (const task of $("work").querySelectorAll(".task")) task.setAttribute("aria-pressed", "false")
+    }
     renderInspector()
+  }
+
+  function setEditor(open) {
+    ui.editing = open
+    if (open) ui.editorFile = ui.file ?? ui.editorFile ?? filesByPath.get("README.md")
+    $("proveo").dataset.mode = open ? "editor" : "dashboard"
+    $("view-title").textContent = open ? "$ fresh ." : views[ui.view][0]
+    renderInspector()
+    if (open) $("detail-heading").focus()
+    else $("fresh-key").focus()
+  }
+
+  function editorLines(file) {
+    const lines = node("ol", "editor-lines")
+    file.value.split("\n").forEach((text, index) => {
+      const line = node("li")
+      const number = node("span", "", String(index + 1))
+      number.setAttribute("aria-hidden", "true")
+      line.append(number, node("code", "", text))
+      lines.append(line)
+    })
+    return lines
   }
 
   function fact(label, text) {
@@ -560,6 +559,13 @@
     return name === "Claude Code" ? "claudecode" : name.toLowerCase()
   }
 
+  function sandboxName(target, task, suffix) {
+    const agent = target === "claudecode" ? "claude" : target
+    const label = task ? [task.id, task.slug].join("-").toLowerCase() : "adhoc"
+    const room = 32 - agent.length - suffix.length - 2
+    return [agent, label.slice(0, room).replace(/-+$/, ""), suffix].join("-")
+  }
+
   function showNewInstance() {
     const fields = node("div", "launch-fields")
     const harnessLabel = node("label", "", "Agent")
@@ -576,15 +582,18 @@
     ticket.value = ui.task.id
     ticketLabel.append(ticket)
     fields.append(harnessLabel, ticketLabel)
+    const name = node("p", "subtext")
     const command = node("pre", "file-preview")
     const update = () => {
+      const task = tasks.find(({id}) => id === ticket.value)
+      name.textContent = "Example sandbox · " + sandboxName(harness.value, task, "8ec741")
       command.textContent = "proveo run " + harness.value + " --new" + (ticket.value ? " --task " + ticket.value : "")
     }
     fields.addEventListener("change", update)
     update()
     showDialog("New instance in this pwd",
       node("p", "subtext", "This proposed command creates a separate clone and session in the current workspace."),
-      fields, command, button("Copy command", () => copyCommand(command.textContent)),
+      fields, name, command, button("Copy command", () => copyCommand(command.textContent)),
     )
   }
 
@@ -601,17 +610,24 @@
 
   function renderInspector() {
     const detail = $("detail")
-    for (const file of $("filetree").querySelectorAll(".file")) {
-      if (ui.file?.path === file.dataset.path) file.setAttribute("aria-current", "true")
-      else file.removeAttribute("aria-current")
+    const file = ui.editing ? ui.editorFile : ui.file
+    for (const item of $("filetree").querySelectorAll(".file")) {
+      if (file?.path === item.dataset.path) item.setAttribute("aria-current", "true")
+      else item.removeAttribute("aria-current")
     }
-    if (ui.file) {
+    if (ui.editing) {
+      $("detail-heading").textContent = file.path
+      $("detail-context").textContent = "Fresh preview"
+      detail.replaceChildren(editorLines(file))
+      return
+    }
+    if (file) {
       $("detail-heading").textContent = "File preview"
       $("detail-context").textContent = "Sample file"
       detail.replaceChildren(
-        node("h3", "", ui.file.name),
-        node("p", "subtext mono", ui.file.path),
-        node("pre", "file-preview", ui.file.value),
+        node("h3", "", file.name),
+        node("p", "subtext", file.path),
+        node("pre", "file-preview", file.value),
         button("Back to task", () => selectTask(ui.task)),
       )
       return
@@ -627,10 +643,12 @@
       fact("Branch", task.branch),
       fact("Instance", task.instance),
     )
+    if (task.instance !== "New instance") {
+      facts.append(fact("Sandbox", sandboxName(agentTarget(task.agent), task, task.instance.slice(-6))))
+    }
     if (task.plan) {
       facts.append(fact("Plan", button(task.plan, () => {
-        const file = [...$("filetree").querySelectorAll(".file")].find(({dataset}) => dataset.path === task.plan)
-        file?.click()
+        selectFile(filesByPath.get(task.plan))
         $("detail-heading").focus()
       }, "file-link")))
     }
@@ -638,7 +656,7 @@
     const evidence = node("div", "evidence")
     evidence.append(
       status(task.session, task.saved ? "✓" : task.state === "blocked" ? "!" : "○", task.saved ? "saved" : task.state === "blocked" ? "warn" : ""),
-      node("p", "subtext mono", "Evidence · " + task.revision),
+      node("p", "subtext", "Evidence · " + task.revision),
     )
     const actions = node("div", "actions")
     actions.append(button("Review evidence", () => showEvidence(task), "button primary"))
@@ -678,13 +696,35 @@
   }
 
   const tabs = [...document.querySelectorAll('[role="tab"]')]
+  let tabPrefix = false
+  let tabPrefixTimer
+
+  function setTabPrefix(armed) {
+    clearTimeout(tabPrefixTimer)
+    tabPrefix = armed
+    const hint = $("switch-hint")
+    hint.dataset.armed = String(armed)
+    if (armed) {
+      hint.replaceChildren(node("kbd", "", "Tab"), " switch · ", node("kbd", "", "p"), " proveo · ", node("kbd", "", "s"), " sbx")
+      tabPrefixTimer = setTimeout(() => setTabPrefix(false), 2200)
+    } else {
+      hint.replaceChildren(
+        node("kbd", "", "Ctrl+G"), " ", node("kbd", "", "Tab"),
+        $("sbx").hidden ? " switch view" : " return to proveo",
+      )
+    }
+  }
+
   function showTab(chosen, focus = false) {
+    if ($("dialog").open) $("dialog").close()
+    $("terminal-shell").dataset.tab = chosen.getAttribute("aria-controls")
     for (const tab of tabs) {
       const selected = tab === chosen
       tab.setAttribute("aria-selected", String(selected))
       tab.tabIndex = selected ? 0 : -1
       $(tab.getAttribute("aria-controls")).hidden = !selected
     }
+    setTabPrefix(false)
     if (focus) chosen.focus()
   }
 
@@ -705,6 +745,52 @@
     })
   }
 
+  function moveTask(step) {
+    const rows = [...$("work").querySelectorAll(".task")]
+    const current = rows.findIndex(row => row.getAttribute("aria-pressed") === "true")
+    const next = current < 0 ? (step > 0 ? 0 : rows.length - 1) : current + step
+    const row = rows[next]
+    if (row) {
+      row.click()
+      row.focus()
+    }
+  }
+
+  document.addEventListener("keydown", event => {
+    if (event.defaultPrevented) return
+    if (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "g") {
+      event.preventDefault()
+      setTabPrefix(!tabPrefix)
+      return
+    }
+    if (tabPrefix) {
+      const active = tabs.find(tab => tab.getAttribute("aria-selected") === "true")
+      const next = {p: tabs[0], s: tabs[1], Tab: tabs.find(tab => tab !== active)}[event.key]
+      if (next) {
+        event.preventDefault()
+        showTab(next, true)
+        return
+      }
+      setTabPrefix(false)
+    }
+    if ($("proveo").hidden || $("dialog").open || event.ctrlKey || event.metaKey || event.altKey) return
+    if (event.target.closest?.("input, textarea, select, [contenteditable]")) return
+    if (event.key === "Escape" && ui.editing) {
+      event.preventDefault()
+      setEditor(false)
+      return
+    }
+    if (ui.editing) return
+    const control = {"1": "[data-view=queue]", "2": "[data-view=board]", "3": "[data-view=schedule]", e: "#fresh-key", n: "#new-instance", "?": "#proposal-button"}[event.key]
+    if (control) {
+      event.preventDefault()
+      document.querySelector(control).click()
+    } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree")) {
+      event.preventDefault()
+      moveTask(event.key === "ArrowDown" ? 1 : -1)
+    }
+  })
+
   $("proposal-button").addEventListener("click", () => {
     const points = node("ul", "subtext")
     for (const text of [
@@ -716,25 +802,9 @@
     ]) points.append(node("li", "", text))
     showDialog("Workspace instance proposal", points, link("Read the lifecycle spec ↗", "workspace-instances.puml"))
   })
-  $("fresh-button").addEventListener("click", () => showCommand(
-    "Open the workspace in Fresh",
-    "From the working directory, open Fresh’s file explorer and editor. The prototype uses a sample file tree.",
-    "fresh .",
-  ))
+  $("fresh-key").addEventListener("click", () => setEditor(true))
+  $("editor-back").addEventListener("click", () => setEditor(false))
   $("new-instance").addEventListener("click", showNewInstance)
-  $("sbx-command").addEventListener("click", () => copyCommand("sbx"))
-  $("capture-file").addEventListener("change", async (event) => {
-    const file = event.currentTarget.files[0]
-    if (!file) return
-    try {
-      $("terminal-capture").textContent = await file.text()
-      $("terminal-capture").hidden = false
-      $("terminal-empty").hidden = true
-    } catch {
-      notify("Could not read the capture.")
-    }
-    event.target.value = ""
-  })
 
   $("detail-heading").tabIndex = -1
   $("filetree").append(tree(fileTree))

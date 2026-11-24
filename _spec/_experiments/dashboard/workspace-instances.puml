@@ -21,8 +21,14 @@
 ' scope taking precedence. List any number of logical instances under that
 ' workspace, subject to machine capacity and scheduling limits. Generate an
 ' immutable instance ID for each new instance. Store target, optional label,
-' optional task reference and selected Git base alongside it. Derive the sbx
-' name from the instance ID and bind the record to the daemon-reported VM ID.
+' optional task reference and selected Git base alongside it. Name the VM
+' agent-task-shortid, at most 32 ASCII characters in total. Use a ticket key
+' or slug for the task and adhoc when absent. Reserve the agent and suffix
+' before truncating the task slug. Allocate a different suffix if a name
+' already exists. Keep the allocated name when the title changes, and bind
+' the instance record to the daemon-reported VM ID. Discover new Proveo VMs
+' from their records and use the proveo- prefix for legacy discovery.
+' Example: codex-prv-284-history-83f91a.
 ' Every launch creates a separate attempt ID. A task can own several instances.
 ' Sample CLI: proveo run codex --new --task PRV-284; proveo run codex --instance ID.
 ' One host lease per instance covers restore through final save and removal.
@@ -98,9 +104,11 @@
 '
 ' DASHBOARD AND HANDOFF
 ' Bare proveo on an interactive terminal opens Proveo and sbx tabs. Keep
-' help available via --help and on noninteractive invocation. Selecting sbx
-' yields the foreground terminal to the native sbx command with its own
-' input, resize behavior and controls. Returning closes only that view.
+' help available via --help and on noninteractive invocation. Keep the top
+' tabs and switch hint visible above the selected terminal content. Run
+' stock sbx in a PTY sized to its content pane. The multiplexer handles
+' Ctrl+G then Tab to switch views and forwards other keys to the child.
+' Keep sbx running when switching views and propagate content-pane resizes.
 ' Proveo indexes agent, Git, task and schedule data. Start with local plan
 ' paths and explicit ticket URLs. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
