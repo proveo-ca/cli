@@ -165,7 +165,7 @@
 ' -> upgrade -> PR -> review -> merge. Review feedback can reopen the loop.
 ' Evidence attaches to the exact tested revision. A revision change reopens
 ' affected verification. The operator controls posting and merging the PR.
-' View 1 groups Require attention, Working and Queued. View 2 draws
+' View 1 groups Attention required, Working and Queued. View 2 draws
 ' prerequisite-to-dependent paths and explicit extra edges. Validate IDs
 ' and cycles before dispatch. Order the paths deterministically. Fold
 ' long sections into a count such as "3 tasks", with expansion on demand.

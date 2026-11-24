@@ -76,7 +76,7 @@ state "Queued\nwait for prerequisites or resources" as Queued
 state "Reserved\nhold CPU, RAM and disk before launch" as Reserved
 state "Running\nhold through execution" as Running
 state "Settling\nhold through outcome and Git carry" as Settling
-state "Require attention\nreview, failure or invalid request" as Attention
+state "Attention required\nreview, failure or invalid request" as Attention
 state "Complete\naccepted work" as Complete
 
 [*] --> Queued : submit
