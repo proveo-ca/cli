@@ -63,8 +63,22 @@ def diagnostic_config(env, root):
 
 
 def throwaway(native, args):
-    root = Path(tempfile.mkdtemp(prefix="proveo-opencode-throwaway-"))
-    try:
+    child = None
+    pending = []
+
+    def forward(sig, _):
+        if child is None:
+            pending.append(sig)
+            return
+        with contextlib.suppress(ProcessLookupError):
+            child.send_signal(sig)
+
+    with contextlib.ExitStack() as cleanup:
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            previous = signal.signal(sig, forward)
+            cleanup.callback(signal.signal, sig, previous)
+        root = Path(tempfile.mkdtemp(prefix="proveo-opencode-throwaway-"))
+        cleanup.callback(shutil.rmtree, root, ignore_errors=True)
         data = root / "data/opencode"
         data.mkdir(mode=0o700, parents=True)
         (root / "tmp").mkdir(mode=0o700)
@@ -72,17 +86,10 @@ def throwaway(native, args):
                    OPENCODE_DB=str(data / "opencode.db"), TMPDIR=str(root / "tmp"))
         diagnostic_config(env, root)
         child = subprocess.Popen([native, *args], env=env)
-
-        def forward(sig, _):
-            with contextlib.suppress(ProcessLookupError):
-                child.send_signal(sig)
-
-        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            signal.signal(sig, forward)
+        for sig in pending:
+            forward(sig, None)
         code = child.wait()
         return 128 - code if code < 0 else code
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
 
 
 def main():

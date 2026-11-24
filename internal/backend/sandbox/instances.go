@@ -386,10 +386,15 @@ func checkReceiptVM(name string) error {
 
 func canonicalInstancePath(path string) string {
 	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return filepath.Clean(path)
+	if err == nil {
+		return resolved
 	}
-	return filepath.Clean(resolved)
+	path = filepath.Clean(path)
+	parent := filepath.Dir(path)
+	if !errors.Is(err, os.ErrNotExist) || parent == path {
+		return path
+	}
+	return filepath.Join(canonicalInstancePath(parent), filepath.Base(path))
 }
 
 func (i *Instance) bind(attempt string, receipt launchReceipt) error {

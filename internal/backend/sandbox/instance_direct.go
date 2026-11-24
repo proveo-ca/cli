@@ -24,10 +24,11 @@ func directWorkspaceLease(in Input, cfg sbx.RunConfig) (func(), error) {
 		return nil, err
 	}
 	defer gate.Close()
+	home, run := canonicalInstancePath(in.HomeRoot), canonicalInstancePath(in.RunDir)
 	var paths []string
 	for _, m := range cfg.Mounts {
 		path := canonicalInstancePath(m.Host)
-		if !m.ReadOnly && !within(path, canonicalInstancePath(in.HomeRoot)) && !within(path, canonicalInstancePath(in.RunDir)) {
+		if !m.ReadOnly && !within(path, home) && !within(path, run) {
 			paths = append(paths, path)
 		}
 	}

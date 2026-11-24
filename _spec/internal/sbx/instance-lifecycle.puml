@@ -51,6 +51,9 @@
 ' the instance clone. Carry uses per-attempt Git refs and output paths.
 ' Managed reports are extracted to the instance state directory. Legacy
 ' direct mode leases overlapping writable mounts across target names.
+' Resolve symlinks through the deepest existing ancestor of a mount.
+' Append missing path components before comparing leases so /var and
+' /private/var resolve to the same tree even before a scope exists.
 ' A new non-Git instance takes a private directory copy. New instances
 ' get dedicated writable harness home and state. Brokered logins still
 ' come from sbx. Named browser profiles retain their own selectors.

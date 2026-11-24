@@ -239,6 +239,26 @@ class FakeNativeLaunchTests(unittest.TestCase):
         self.assertEqual(process.returncode, 128 + signal.SIGTERM, stderr)
         self.assertEqual(list(self.scratch.iterdir()), [])
 
+    def test_throwaway_forwards_termination_received_during_spawn(self):
+        runtime = load_runtime()
+        child = mock.Mock()
+        child.wait.return_value = -signal.SIGTERM
+        original = signal.getsignal(signal.SIGTERM)
+        self.addCleanup(signal.signal, signal.SIGTERM, original)
+
+        def spawn(*args, **kwargs):
+            handler = signal.getsignal(signal.SIGTERM)
+            self.assertTrue(callable(handler), "spawn began before the signal handler was installed")
+            handler(signal.SIGTERM, None)
+            child.send_signal.assert_not_called()
+            return child
+
+        with mock.patch.dict(os.environ, self.env, clear=True):
+            with mock.patch.object(runtime.subprocess, "Popen", side_effect=spawn):
+                self.assertEqual(runtime.throwaway(str(self.native), ["--help"]), 128 + signal.SIGTERM)
+        child.send_signal.assert_called_once_with(signal.SIGTERM)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), original)
+
     def test_normal_launch_execs_native_command_against_the_engine_database(self):
         runtime = load_runtime()
         for args in (["run", "hello"], ["session", "list"], [], ["debug", "agents"]):

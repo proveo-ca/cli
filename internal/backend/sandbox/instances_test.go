@@ -179,7 +179,6 @@ func TestDirectWorkspaceLeaseRejectsAnOverlappingWriter(t *testing.T) {
 	state, work := t.TempDir(), t.TempDir()
 	instanceInventory(t, state, func() ([]sbx.Listed, bool) { return nil, false })
 	first := sbx.RunConfig{Name: "codex", Mounts: []sbx.Mount{{Host: work}}}
-	second := sbx.RunConfig{Name: "claude", Mounts: []sbx.Mount{{Host: filepath.Join(work, "scope")}}}
 	closeFirst, err := instanceLease(first.Name)
 	if err != nil {
 		t.Fatal(err)
@@ -190,21 +189,36 @@ func TestDirectWorkspaceLeaseRejectsAnOverlappingWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	closeSecond, err := instanceLease(second.Name)
+	closeSecond, err := instanceLease("claude")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeSecond()
-	if release, err := directWorkspaceLease(Input{}, second); err == nil {
-		release()
-		t.Error("acquired two overlapping writable workspaces")
+
+	check := func(t *testing.T, path string) {
+		t.Helper()
+		second := sbx.RunConfig{Name: "claude", Mounts: []sbx.Mount{{Host: path}}}
+		if release, err := directWorkspaceLease(Input{}, second); err == nil {
+			release()
+			t.Error("acquired two overlapping writable workspaces")
+		} else if !strings.Contains(err.Error(), "overlaps the writable workspace") {
+			t.Errorf("overlap returned the wrong error: %v", err)
+		}
+		second.Mounts[0].ReadOnly = true
+		if release, err := directWorkspaceLease(Input{}, second); err != nil {
+			t.Errorf("read-only overlap refused: %v", err)
+		} else {
+			release()
+		}
 	}
-	second.Mounts[0].ReadOnly = true
-	if release, err := directWorkspaceLease(Input{}, second); err != nil {
-		t.Errorf("read-only overlap refused: %v", err)
-	} else {
-		release()
-	}
+	check(t, filepath.Join(work, "scope"))
+	t.Run("missing scope under symlink", func(t *testing.T) {
+		alias := filepath.Join(t.TempDir(), "alias")
+		if err := os.Symlink(work, alias); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		check(t, filepath.Join(alias, "scope", "nested"))
+	})
 }
 
 func TestInstanceCleanupKeepsUnknownVMsAndRefusesReusedNames(t *testing.T) {

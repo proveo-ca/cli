@@ -216,7 +216,7 @@ skinparam noteTextAlignment left
 ' Pinned by TestAFailedEngineCreateThatLeftTheEngineListedSaysSoAfterTheSbxFacts.
 '
 ' ── THE IMAGE SIDE ─────────────────────────────────────────────────────────
-' packages/lib/proveo-opencode-runtime is a 103-line THIN WRAPPER, keeping its
+' packages/lib/proveo-opencode-runtime is a thin wrapper, keeping its
 ' name so the image shim (Dockerfile:93) stays:
 '   * native_command injects `--auto` before `--` for headless `run`, and
 '     `--standalone` for state commands unless `--server` is given (D3);
@@ -226,6 +226,10 @@ skinparam noteTextAlignment left
 '     XDG_STATE_HOME, OPENCODE_DB and TMPDIR, a copy of the config with
 '     service.json {"disabled": true}, signals forwarded, the dir removed;
 '   * everything else is os.execv of the native client.
+' The wrapper installs signal handlers before spawning the native client.
+' Signals received while spawning are forwarded once the child is known.
+' This closes the interval in which termination could leave the child
+' holding the output pipes and the throwaway directory behind.
 '   `debug …` is no longer treated as a diagnostic: it runs against the engine
 '   database (reported; MEASURED that diagnostic() lists only the flags above).
 ' The image no longer gates the seed: proveo-seed and defs/opencode/entrypoint.sh
