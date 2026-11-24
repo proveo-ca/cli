@@ -31,6 +31,11 @@ func hint(k, action string) string {
 }
 
 func (m *dashModel) View() tea.View {
+	if m.exitConfirm != nil {
+		v := m.exitConfirm.View()
+		v.BackgroundColor = dashBG
+		return v
+	}
 	if m.confirm != nil && !m.sbxTab {
 		v := m.confirm.View()
 		v.BackgroundColor = dashBG
@@ -77,7 +82,10 @@ func (m *dashModel) renderDashboard() string {
 			"f  See files   g  See changes   t  See details", "n  new instance   c  host capacity", "Esc  back   Ctrl+C  quit"}, "\n")
 	}
 	h := max(1, m.height-3)
-	left := max(1, (m.width-1)*36/100)
+	left := m.sbxSplit
+	if left == 0 {
+		left = max(1, (m.width-1)*30/100)
+	}
 	right := max(1, m.width-left-1)
 	lf := m.renderFiles(left, h)
 	rf := m.renderTasks(right, h)
@@ -177,7 +185,7 @@ func (m *dashModel) renderTasks(w, h int) []string {
 		taskHeight = max(1, (h+1)/2)
 	}
 	title := []string{"Review queue", "Task graph", "Schedule"}[m.view]
-	header := brand.Bold(true).Render(title) + "  " + muted.Render("1 2 3")
+	header := brand.Bold(true).Render(title)
 	var rows []string
 	anchor := 0
 	if m.view == 1 {
@@ -194,10 +202,13 @@ func (m *dashModel) renderTasks(w, h int) []string {
 			if g == 3 && m.view != 2 {
 				break
 			}
-			rows = append(rows, muted.Render(label))
+			start := len(rows)
 			for i, t := range m.data.Tasks {
 				if taskGroup(t.State) != g {
 					continue
+				}
+				if len(rows) == start {
+					rows = append(rows, muted.Render(label))
 				}
 				if i == m.selected {
 					anchor = len(rows)
@@ -235,7 +246,11 @@ func (m *dashModel) taskLine(i int, t Task) string {
 	}
 	line := m.taskMarker(i) + safeText(t.Title) + "  " + muted.Render(meta)
 	if i == m.selected {
-		line += "  " + hint("t", "See details")
+		action := "See details"
+		if m.details {
+			action = "Hide details"
+		}
+		line += "  " + hint("t", action)
 	}
 	return line
 }
@@ -290,8 +305,17 @@ func (m *dashModel) detailLines(w int) []string {
 		label += " · " + s.at.Local().Format("15:04:05")
 	}
 	rows := []string{muted.Render(label), "CPU " + absent(s.cpu) + "   RAM " + absent(s.ram) + "   Disk " + absent(s.disk)}
-	rows = append(rows, brand.Render(strings.Trim(safeText(t.Git)+" + "+safeText(t.Source), " +")))
 	meta := m.metadata[metadataKey(t)]
+	if meta.linear.Identifier != "" {
+		t.Ticket, t.Source = meta.linear.Identifier, "Linear"
+	}
+	rows = append(rows, brand.Render(strings.Trim(safeText(t.Git)+" + "+safeText(t.Source), " +")))
+	if meta.linear.Title != "" {
+		rows = append(rows, safeText(meta.linear.Title))
+	}
+	if strings.HasPrefix(t.ID, "sbx:") && t.Ticket == "" {
+		rows = append(rows, muted.Render("No task linked"))
+	}
 	if meta.pr != "" {
 		t.PR = meta.pr
 	}

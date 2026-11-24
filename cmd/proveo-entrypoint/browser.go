@@ -13,10 +13,14 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/proveo-ca/proveo/internal/entrypoint"
 	"github.com/proveo-ca/proveo/internal/guestbrowser"
 )
 
 func runBrowser(args []string) error {
+	if len(args) == 3 && args[0] == "hermes-disable" {
+		return entrypoint.DisableHermesBrowser(args[1], args[2])
+	}
 	if len(args) == 1 {
 		switch args[0] {
 		case "check":

@@ -89,22 +89,7 @@ configure_browser() {
     done
   fi
   if [[ "$mode" == none ]]; then
-    /opt/hermes/.venv/bin/python - "$managed/config.yaml" "${HERMES_HOME:-/opt/data}/config.yaml" <<'PYTHON'
-import pathlib
-import sys
-from ruamel.yaml import YAML
-
-yaml = YAML(typ="safe")
-destination, config = map(pathlib.Path, sys.argv[1:])
-saved = (yaml.load(config) or {}) if config.exists() else {}
-managed = (yaml.load(destination) or {}) if destination.exists() else {}
-agent = managed.setdefault("agent", {})
-disabled = agent.get("disabled_toolsets", (saved.get("agent") or {}).get("disabled_toolsets")) or []
-if isinstance(disabled, str):
-    disabled = [disabled]
-agent["disabled_toolsets"] = list(dict.fromkeys([*disabled, "browser"]))
-yaml.dump(managed, destination)
-PYTHON
+    proveo-entrypoint browser hermes-disable "$managed/config.yaml" "${HERMES_HOME:-/opt/data}/config.yaml" || return 1
   else
     printf '\nBROWSER_CDP_URL=%s\nBU_CDP_URL=%s\nBU_CDP_WS=\n' "$url" "$url" >>"$managed/.env"
     printf '%s\n' "$ip" >"$managed/host"

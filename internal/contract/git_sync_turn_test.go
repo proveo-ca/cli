@@ -908,8 +908,8 @@ echo DONE`
 func TestSeedWritesCursorUserStopHook(t *testing.T) {
 	t.Parallel()
 	bash := bashOrSkip(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq unavailable")
 	}
 	home := t.TempDir()
 	hooks := filepath.Join(home, ".cursor", "hooks.json")

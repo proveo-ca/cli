@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,11 +214,12 @@ func ollamaServedContext(name string) (int, bool) {
 
 func openHermesViewportTab(t *testing.T, name, page string) {
 	t.Helper()
-	script := `cd /opt/hermes && HERMES_MANAGED_DIR=/var/lib/proveo/browser/hermes-isolated /opt/hermes/.venv/bin/python -c '` +
-		`from hermes_cli.env_loader import load_hermes_dotenv; load_hermes_dotenv(); ` +
-		`from tools.browser_use_cli import browser_exec; print(browser_exec("new_tab(\"` + page + `\"); print(page_info())"))'`
+	script := `set -a
+. /var/lib/proveo/browser/hermes-isolated/.env
+set +a
+test -n "$BROWSER_CDP_URL" && curl -fsS -X PUT -- "$BROWSER_CDP_URL/json/new?"` + shellQuote([]string{url.QueryEscape(page)})
 	if out, rc := hermesExec(t, name, script, time.Minute); rc != 0 {
-		t.Fatalf("Hermes browser tool exited %d: %s", rc, out)
+		t.Fatalf("Hermes browser endpoint exited %d: %s", rc, out)
 	}
 }
 

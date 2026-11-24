@@ -54,10 +54,7 @@ func Read(home, state, cwd string) (Data, error) {
 	if err != nil {
 		return d, err
 	}
-	var inventory []sbx.Listed
-	if len(instances) != 0 {
-		inventory, _ = sbx.List()
-	}
+	inventory, _ := sbx.List()
 	capacity, diskErr := sbx.DiskCapacity(state)
 	d.Capacity = sbx.HostTelemetry(capacity)
 	if diskErr != nil {
@@ -121,9 +118,28 @@ func Read(home, state, cwd string) (Data, error) {
 		}
 		d.Tasks = append(d.Tasks, task)
 	}
+	d.Tasks = append(d.Tasks, discoveredSandboxes(cwd, instances, inventory)...)
 	slices.SortFunc(d.Tasks, sortTasks)
 	d.Files = workspaceFiles(cwd)
 	return d, nil
+}
+
+func discoveredSandboxes(cwd string, instances []sandbox.Instance, rows []sbx.Listed) []Task {
+	var discovered []Task
+	for _, row := range rows {
+		if row.ID == "" || !row.Running() || len(row.Workspaces) == 0 ||
+			!sameDir(strings.TrimSuffix(row.Workspaces[0], ":ro"), cwd) {
+			continue
+		}
+		if slices.ContainsFunc(instances, func(i sandbox.Instance) bool { return i.VMID == row.ID }) {
+			continue
+		}
+		discovered = append(discovered, Task{
+			ID: "sbx:" + row.ID, Title: row.Name, Sandbox: row.Name, VMID: row.ID,
+			Agent: row.Agent, Phase: "Working", State: schedule.Running, Reason: "Discovered from the local inventory",
+		})
+	}
+	return discovered
 }
 
 func matchingInstance(instances []sandbox.Instance, rows []sbx.Listed, name string, job schedule.Job) int {
@@ -158,6 +174,8 @@ func sameDir(path, cwd string) bool {
 func taskSource(job schedule.Job) string {
 	switch {
 	case strings.Contains(job.Ticket, "linear.app/"):
+		return "Linear"
+	case linearID.MatchString(job.Ticket):
 		return "Linear"
 	case strings.Contains(job.Ticket, "github.com/"):
 		return "GitHub Issues"

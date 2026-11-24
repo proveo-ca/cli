@@ -18,8 +18,9 @@ skinparam packageStyle rectangle
 '
 ' DASHBOARD AND WORKSPACE SELECTION
 ' Bare proveo opens the workspace dashboard when stdin and stdout are
-' terminals. It shows root help on a pipe or with --help. Ctrl+C exits
-' either dashboard tab with status 130 and leaves the running tasks.
+' terminals. It shows root help on a pipe or with --help.
+' Ctrl+C asks for confirmation in the Proveo tab. Exiting returns 130.
+' The child tab exits directly on Ctrl+C. Running tasks continue.
 ' Run with --new --task TEXT for an independent workspace instance.
 ' Run with --instance ID to select a particular instance in that pwd.
 ' The dashboard and task shortcuts are in workspace-instances.puml.

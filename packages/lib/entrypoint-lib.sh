@@ -153,17 +153,8 @@ github_ssh_host_known() {
 }
 
 _proveo_parse_github_ssh_keys() {
-  if command -v jq >/dev/null 2>&1; then
-    jq -r '.ssh_keys[]? // empty' 2>/dev/null || true
-    return 0
-  fi
-  command -v python3 >/dev/null 2>&1 || return 0
-  python3 -c 'import json,sys
-try:
-  for k in json.load(sys.stdin).get("ssh_keys") or []:
-    if k: print(k)
-except Exception:
-  pass' 2>/dev/null || true
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -r '.ssh_keys[]? // empty' 2>/dev/null || true
 }
 
 seed_github_known_hosts() {
@@ -1430,40 +1421,23 @@ _proveo_merge_stop_hook() {
 _proveo_merge_cursor_stop_hook() {
   local path="$1" cmd="$2"
   [[ -n "$path" && -n "$cmd" ]] || return 0
-  command -v python3 >/dev/null 2>&1 || return 1
-  PROVEO_HOOKS_FILE="$path" PROVEO_HOOK_CMD="$cmd" python3 -c '
-import json, os, sys
-path = os.environ["PROVEO_HOOKS_FILE"]
-cmd = os.environ["PROVEO_HOOK_CMD"]
-existed = os.path.exists(path)
-j = {"version": 1, "hooks": {}}
-if existed:
-    try:
-        with open(path, encoding="utf-8") as handle:
-            parsed = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        sys.exit(1)
-    if not isinstance(parsed, dict):
-        sys.exit(1)
-    j = parsed
-hooks = j.get("hooks")
-if not isinstance(hooks, dict):
-    hooks = {}
-    j["hooks"] = hooks
-stop = hooks.get("stop")
-if not isinstance(stop, list):
-    stop = []
-    hooks["stop"] = stop
-if any(isinstance(row, dict) and row.get("command") == cmd for row in stop):
-    sys.exit(0)
-stop.append({"command": cmd, "timeout": 90, "loop_limit": 1})
-if j.get("version") is None:
-    j["version"] = 1
-os.makedirs(os.path.dirname(path), exist_ok=True)
-with open(path, "w", encoding="utf-8") as handle:
-    json.dump(j, handle, indent=2)
-    handle.write("\n")
-'
+  command -v jq >/dev/null 2>&1 || return 1
+  local body='{}' tmp
+  if [[ -e "$path" ]]; then
+    body="$(cat "$path")" || return 1
+    printf '%s' "$body" | jq -e -s 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1 || return 1
+  fi
+  if printf '%s' "$body" | jq -e --arg cmd "$cmd" '
+    (.hooks.stop | if type == "array" then . else [] end) | any(.[] | objects; .command == $cmd)
+  ' >/dev/null 2>&1; then return 0; fi
+  mkdir -p "$(dirname "$path")" || return 1
+  tmp="$(mktemp "${path}.tmp.XXXXXX")" || return 1
+  if printf '%s' "$body" | jq --arg cmd "$cmd" '
+    .version //= 1 | .hooks |= if type == "object" then . else {} end
+    | .hooks.stop |= (if type == "array" then . else [] end) + [{command:$cmd,timeout:90,loop_limit:1}]
+  ' >"$tmp" && mv "$tmp" "$path"; then return 0; fi
+  rm -f "$tmp"
+  return 1
 }
 
 proveo_install_git_sync_hooks() {

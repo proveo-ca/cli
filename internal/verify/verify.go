@@ -133,8 +133,6 @@ func detectPython(root string, lookPath func(string) (string, error)) []Command 
 	var out []Command
 	if _, err := lookPath("pytest"); err == nil {
 		out = append(out, Command{Category: "test", Cmd: "pytest"})
-	} else if err := exec.Command("python3", "-c", "import pytest").Run(); err == nil {
-		out = append(out, Command{Category: "test", Cmd: "pytest"})
 	}
 	if _, err := lookPath("ruff"); err == nil {
 		out = append(out, Command{Category: "lint", Cmd: "ruff check ."})

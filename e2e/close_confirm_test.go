@@ -52,8 +52,9 @@ func TestHeadedCtrlCAsksBeforeRemoving(t *testing.T) {
 
 func headedCtrlCAsksBeforeRemoving(t *testing.T, target, filter, key string) {
 	requireTmux(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
 	}
 	binDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(binDir, "sbx"), []byte(fakeSbx(sbx.MinVersion)), 0o755); err != nil {
@@ -82,6 +83,7 @@ func headedCtrlCAsksBeforeRemoving(t *testing.T, target, filter, key string) {
 		"PROVEO_WIZARD=off",
 		"PROVEO_STDIN_FILTER="+filter,
 		"PROVEO_CLOSE_TEST_LOG="+calls,
+		"FIXTURE_RAW_CLOSE_EXE="+exe,
 		"PROVEO_CLOSE_TEST_WORK="+work,
 		"PROVEO_HOME="+home,
 		"PROVEO_STATE_ROOT="+t.TempDir(),
@@ -191,15 +193,7 @@ case "$1" in
     ;;
   rm) rm -f "$instance" ;;
   run)
-    exec python3 -u -c '
-import sys, tty
-tty.setraw(sys.stdin.fileno())
-print("SBX_HEADED_READY", flush=True)
-while True:
-    b = sys.stdin.buffer.read(1)
-    if not b: break
-    print("KEY:%02x" % b[0], flush=True)
-'
+    exec env FIXTURE_RAW_CLOSE=SBX_HEADED_READY "$FIXTURE_RAW_CLOSE_EXE" -test.run='^TestLiveRawKeysHelper$'
     ;;
 esac
 exit 0

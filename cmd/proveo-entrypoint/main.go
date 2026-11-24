@@ -11,6 +11,7 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/adbmirror"
 	"github.com/proveo-ca/proveo/internal/entrypoint"
+	"github.com/proveo-ca/proveo/internal/opencodehistory"
 	"github.com/proveo-ca/proveo/internal/verify"
 )
 
@@ -28,6 +29,10 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	}
+
+	if os.Args[1] == "opencode-history" && len(os.Args) == 3 {
+		os.Exit(opencodehistory.Run(os.Args[2], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
 	}
 
 	if os.Args[1] == "verify" {

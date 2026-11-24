@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"gopkg.in/yaml.v3"
 
+	"github.com/proveo-ca/proveo/internal/dashboard"
 	"github.com/proveo-ca/proveo/internal/schedule"
 )
 
@@ -23,11 +25,21 @@ func TestNativeDashboardTabsOnTmux(t *testing.T) {
 	writeFile(t, filepath.Join(work, "README.md"), []byte("Dashboard file preview marker\n"))
 	sbx := filepath.Join(tools, "sbx")
 	const stock = `#!/bin/sh
+draw() {
+  set -- $(stty size)
+  cols=$(($2 / 4 + 3))
+  printf '\033[2J\033[H\033[31mStock child pane %s\033[0m\n' "$2"
+  i=1
+  while [ "$i" -lt "$(($1 - 1))" ]; do
+    printf '%*s│Task pane\n' "$cols" ''
+    i=$((i + 1))
+  done
+}
 case "$1" in
 settings) printf '{"value":"32g"}\n' ;;
 df) printf '{}\n' ;;
 daemon) printf '{}\n' ;;
-"") printf '\033[?1049h\033[2J\033[H\033[31mStock child pane\033[0m\n'; stty -echo; exec cat ;;
+"") printf '\033[?1049h'; stty -echo; trap draw WINCH; draw; while :; do sleep 1; done ;;
 esac
 `
 	if err := os.WriteFile(sbx, []byte(stock), 0o755); err != nil {
@@ -55,6 +67,10 @@ exec cat`
 			t.Fatal(err)
 		}
 	}
+	keys("t", "c")
+	if frame := waitDashboardPane(t, sess, "Disk reservation per sandbox"); strings.Contains(frame, "Task details") {
+		t.Fatalf("task details opened in an empty workspace:\n%s", frame)
+	}
 	keys("2")
 	waitDashboardPane(t, sess, "Task graph")
 	keys("3")
@@ -64,21 +80,50 @@ exec cat`
 	keys("Escape")
 	waitDashboardPane(t, sess, "Review queue")
 	keys("C-g", "Tab")
-	waitDashboardPane(t, sess, "Stock child pane")
-	ansi, err := tmux("capture-pane", "-ep", "-t", sess.Name)
-	if err != nil || !strings.Contains(ansi, "\x1b[31mStock child pane") {
-		t.Errorf("styled sbx capture: %q, %v", ansi, err)
+	frame := waitDashboardPane(t, sess, "Stock child pane 120")
+	firstSplit := dashboard.SbxDivider(frame, 120)
+	if firstSplit != 33 {
+		t.Fatalf("child divider at %d columns, want 33\n%s", firstSplit, frame)
+	}
+	styled, err := tmux("capture-pane", "-ep", "-t", sess.Name)
+	if err != nil || !strings.Contains(styled, "\x1b[31mStock child pane") {
+		t.Errorf("styled sbx capture: %q, %v", styled, err)
 	}
 	keys("C-g", "Tab")
-	waitDashboardPane(t, sess, "Review queue")
+	assertDashboardDivider(t, waitDashboardPane(t, sess, "Review queue"), firstSplit)
+	keys("C-c")
+	waitDashboardPane(t, sess, "Cancel ↵")
+	keys("Enter")
+	assertDashboardDivider(t, waitDashboardPane(t, sess, "Review queue"), firstSplit)
 	if _, err := tmux("resize-window", "-t", sess.Name, "-x", "80", "-y", "24"); err != nil {
 		t.Fatal(err)
 	}
 	keys("C-g", "Tab")
-	waitDashboardPane(t, sess, "Stock child pane")
+	frame = waitDashboardPane(t, sess, "Stock child pane 80")
+	secondSplit := dashboard.SbxDivider(frame, 80)
+	if secondSplit != 23 {
+		t.Fatalf("resized child divider at %d columns, want 23\n%s", secondSplit, frame)
+	}
+	keys("C-g", "Tab")
+	assertDashboardDivider(t, waitDashboardPane(t, sess, "Review queue"), secondSplit)
+	keys("C-g", "Tab")
+	waitDashboardPane(t, sess, "Stock child pane 80")
 	keys("C-c")
 	waitDashboardPane(t, sess, "DASHBOARD_EXIT=130")
 	waitDashboardPane(t, sess, "TERMINAL_RESTORED")
+}
+
+func assertDashboardDivider(t *testing.T, frame string, want int) {
+	t.Helper()
+	for line := range strings.SplitSeq(frame, "\n") {
+		if left, right, ok := strings.Cut(line, "│"); ok && strings.Contains(right, "Review queue") {
+			if got := ansi.StringWidth(left); got != want {
+				t.Errorf("Proveo divider at %d columns, want %d", got, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("review queue has no divider:\n%s", frame)
 }
 
 func TestNativeDashboardAttachAndWizardOnTmux(t *testing.T) {
@@ -166,6 +211,23 @@ esac
 		}
 		keys("Enter")
 	}
+	frame := waitDashboardPane(t, sess, "e Fresh")
+	for _, hidden := range []string{"Task details", "Original review prompt", "Attention required", "Queued", "1 2 3"} {
+		if strings.Contains(frame, hidden) {
+			t.Errorf("unexpected %q before opening task details:\n%s", hidden, frame)
+		}
+	}
+	keys("4")
+	if frame := waitDashboardPane(t, sess, "Task details · accordion"); strings.Contains(frame, "Original review prompt") {
+		t.Fatalf("changing placement opened task details:\n%s", frame)
+	}
+	keys("4", "4", "t")
+	waitDashboardPane(t, sess, "Original review prompt")
+	keys("t")
+	if frame := waitDashboardPane(t, sess, "See details"); strings.Contains(frame, "Original review prompt") {
+		t.Fatalf("closing task details left the prompt visible:\n%s", frame)
+	}
+	keys("t")
 	waitDashboardPane(t, sess, "Original review prompt")
 	keys("Enter")
 	waitDashboardPane(t, sess, "Cancel ↵")
@@ -194,13 +256,14 @@ esac
 	if !strings.Contains(got, "-u\nagent\n-w\n"+filepath.Join(instanceDir, "workspace")+"\n"+sandboxName+"\n") {
 		t.Errorf("Fresh guest argv = %q", got)
 	}
+	waitDashboardPane(t, sess, "Review queue")
 	if err := os.Remove(guest); err != nil {
 		t.Fatal(err)
 	}
 	keys("e")
 	if !waitUntil(12*time.Second, func() bool {
 		frame, err := sess.Capture()
-		return err == nil && !strings.Contains(frame, "e Fresh")
+		return err == nil && strings.Contains(frame, "Review queue") && !strings.Contains(frame, "e Fresh")
 	}) {
 		t.Fatal("Fresh remained visible after the guest disappeared")
 	}
@@ -236,5 +299,13 @@ esac
 	}
 	if got := readIn(filepath.Dir(queue[0].Job.PromptFile), "prompt"); got != "Check the three isolated branches." {
 		t.Errorf("persisted wizard prompt = %q", got)
+	}
+	keys("C-c")
+	waitDashboardPane(t, sess, "Exit Proveo?")
+	keys("Right")
+	waitDashboardPane(t, sess, "Exit ↵")
+	keys("Enter")
+	if !waitUntil(5*time.Second, func() bool { return !sess.Alive() }) || !agent.Alive() {
+		t.Fatal("confirming exit should close the dashboard and leave the agent running")
 	}
 }

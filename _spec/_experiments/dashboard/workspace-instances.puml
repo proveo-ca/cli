@@ -16,6 +16,7 @@
 ' covers: internal/schedule/runner.go
 ' covers: internal/results/results.go
 ' covers: cmd/proveo/dashboard.go
+' covers: _spec/_experiments/dashboard/index.html
 ' covers: internal/dashboard/**
 ' covers: internal/choiceui/attach_confirm.go
 ' covers: internal/schedule/dashboard_job.go
@@ -127,9 +128,13 @@
 ' help available via --help and on noninteractive invocation. Show the
 ' effective pwd next to the tabs and keep the switch hint visible. Run
 ' stock sbx in a PTY sized to its content pane. The multiplexer handles
-' Ctrl+G then Tab to switch views. It intercepts Ctrl+C in either tab.
-' View switches keep both frame dimensions and the running child. Keep
-' the same column layout. Scroll within the viewport for overflow. Resize
+' Ctrl+G then Tab switches views. Ctrl+C in Proveo opens the shared
+' confirmation card with Cancel selected. Exit closes the dashboard.
+' Ctrl+C in the sbx view exits directly.
+' View switches keep the outer dimensions and the running child.
+' Match the left-pane column count after observing the child divider.
+' Before a divider is visible, use 30 percent of the available columns.
+' Scroll within each pane. Resize
 ' the child PTY on actual terminal resize.
 ' Bubble Tea v2 owns the model, input and outer alternate screen. Lip Gloss
 ' v2 composes the panes using the existing internal/ui identity roles.
@@ -149,21 +154,27 @@
 ' Keep native output within the pane and route its replies to the child.
 ' Windows needs a ConPTY adapter. The existing ptyproxy Windows path is a
 ' stub. Show the embedded sbx view when a platform has an adapter.
-' Ctrl+C and an external SIGINT take the same parent shutdown path. Close
+' A confirmed exit and an external SIGINT take the same shutdown path. Close
 ' the dashboard-owned sbx client with a bounded wait, restore terminal
 ' state, and exit with status 130. Keep running sandboxes and scheduled jobs.
 ' If the sbx client exits independently, show its status in Proveo. Never
 ' start a fallback shell in the sbx pane.
-' Proveo indexes agent, Git, task and schedule data. Start with local plan
-' paths and explicit ticket URLs. The existing scheduler and result store
+' Proveo joins agent, Git and task data. Discover running sandboxes that
+' report effective pwd as their primary workspace. A discovered row has
+' no Proveo owner, task, or attach action until a separate record links it.
+' Local plans and explicit ticket URLs remain valid task sources.
+' The host dashboard reads Linear GraphQL using LINEAR_API_KEY.
+' A ticket URL or key selects its issue. A key in a branch or task name
+' links only after the API confirms the issue. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
 ' Task details pairs the Git provider and task source in its heading.
 ' Lead task details with CPU utilization, RAM in use, and disk in use for
 ' the selected attempt's sandbox. Show the last observed sample after
 ' exit. Show placeholders for absent samples and distinguish requested
 ' resources from measured usage.
-' Read the selected running sandbox on selection and every 5s while the
-' task pane is visible. Resolve its recorded sbx ID on the owning host.
+' Read the selected running sandbox on selection and every 5s on the
+' Proveo tab. The same probe discovers Fresh while details are closed.
+' Resolve its recorded sbx ID on the owning host.
 ' Bound reads to one in flight and discard replies for an earlier selection.
 ' The sbx inventory reader verifies local VM identity. The live probe uses
 ' ps, /proc/meminfo and df in the recorded guest workdir as user agent.
@@ -236,13 +247,17 @@
 ' View 3 shows outcomes and in-progress runs. Queued tasks have wait
 ' reasons and no promised start time. Align timestamps in a fixed
 ' column across sections. Use muted text for routine timestamps.
-' Default to Review queue with the lower-right split. Show Changes or
-' Files in the left column. Place Task details below the queue on the
-' right. Give the task view and details independent scrolling.
+' Open on Review queue with task details hidden. Show Changes or Files
+' on the left. Press t on a selected task to show its lower-right details.
+' Skip the details pane in keyboard navigation while closed or empty.
+' Close details if a refresh or view change drops the selected task.
+' Show group labels only when they contain tasks. Keep the New instance
+' card available in the empty queue. Keep view shortcuts in Help.
+' Give the task view and details independent scrolling.
 ' Key 4 opens Task detail options for the current view. Choose the
 ' left column, an accordion at the selected task, or a lower-right
-' split. Show the highlighted t beside the task phase with See details
-' or Hide details. Press t to toggle the selected task's details.
+' split without opening a closed panel. Show the highlighted t beside
+' the task phase with See details or Hide details.
 ' Press t on a different task to select it and open its details.
 ' Keep the chosen position across views.
 ' Anchor the accordion after the selected
@@ -261,7 +276,7 @@
 ' trip through the native sbx tab while scheduled work keeps running.
 ' Resize a terminal with a live child. Compare its embedded cursor,
 ' colors and input handling with stock sbx. Verify switch preserves both
-' views and Ctrl+C exits the dashboard with the host terminal restored.
+' views and confirming exit restores the host terminal.
 ' Verify Fresh targets the selected live sandbox when two share a pwd.
 ' Stop a sandbox and verify its Fresh binding disappears.
 ' [Unverified] Portable native checkpoint restore across every harness.

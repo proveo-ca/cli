@@ -68,36 +68,16 @@ export HOME=/tmp %s=%d
 source /tmp/entrypoint-lib.sh
 proveo_host_adb_env
 echo "adb_host=$ADB_HOST adb_port=$ADB_PORT"
-python3 - <<'PY'
-import os, socket, time
-def devices():
-    s = socket.create_connection((os.environ["ADB_HOST"], int(os.environ["ADB_PORT"])), timeout=5)
-    try:
-        q = b"host:devices"
-        s.sendall(b"%%04x%%s" %% (len(q), q))
-        status, n, body = s.recv(4).decode(), int(s.recv(4), 16), b""
-        while len(body) < n:
-            chunk = s.recv(n - len(body))
-            if not chunk:
-                break
-            body += chunk
-        return status, body.decode()
-    finally:
-        s.close()
-deadline, tries, status, body = time.time() + %d, 0, "", ""
-while True:
-    tries += 1
-    try:
-        status, body = devices()
-    except OSError as e:
-        status, body = "error", str(e)
-    if (status == "OKAY" and "\tdevice" in body) or time.time() >= deadline:
-        break
-    time.sleep(2)
-print("tries=%%d" %% tries)
-print("status=" + status)
-print("devices=" + body.replace("\n", ";"))
-PY
+deadline=$((SECONDS + %d))
+tries=0
+while :; do
+  tries=$((tries + 1))
+  if body=$(adb -H "$ADB_HOST" -P "$ADB_PORT" devices 2>&1); then status=OKAY; else status=error; fi
+  [[ "$status" == OKAY && "$body" == *$'\tdevice'* ]] && break
+  (( SECONDS >= deadline )) && break
+  sleep 2
+done
+printf 'tries=%%s\nstatus=%%s\ndevices=%%s\n' "$tries" "$status" "${body//$'\n'/;}"
 `, hostdev.EnvADBPort, port, int(guestDeviceWait/time.Second))
 	ob, err := exec.Command(sbx.Binary, "exec", "-w", "/", name, "--", "bash", "-c", probe).CombinedOutput()
 	out := string(ob)
@@ -117,30 +97,42 @@ export HOME=/tmp %s=%d
 source /tmp/entrypoint-lib.sh
 proveo_host_adb_env
 proveo_adb_mirror_start
-python3 - <<'PY'
-import json, subprocess, sys
-p = subprocess.Popen(["bash", "-c", "source /tmp/entrypoint-lib.sh && proveo_mobile_mcp_exec"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-def call(i, method, params):
-    p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params}) + "\n"); p.stdin.flush()
-    while True:
-        m = json.loads(p.stdout.readline())
-        if m.get("id") == i: return m["result"]
-def tool(i, name, args):
-    r = call(i, "tools/call", {"name": name, "arguments": args})
-    kinds = [c["type"] for c in r.get("content", [])]
-    text = " ".join(c.get("text", "") for c in r.get("content", []) if c["type"] == "text")
-    print("%%s error=%%s kinds=%%s text=%%s" %% (name, r.get("isError", False), ",".join(kinds), text[:160].replace("\n", " ")))
-    return text
-call(1, "initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "proveo", "version": "1"}})
-p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"); p.stdin.flush()
-dev = json.loads(tool(2, "mobile_list_available_devices", {}))["devices"][0]["id"]
-tool(3, "mobile_launch_app", {"device": dev, "packageName": "com.android.settings"})
-tool(4, "mobile_list_elements_on_screen", {"device": dev})
-tool(5, "mobile_click_on_screen_at_coordinates", {"device": dev, "x": 540, "y": 640})
-tool(6, "mobile_take_screenshot", {"device": dev})
-tool(7, "mobile_press_button", {"device": dev, "button": "HOME"})
-p.terminate()
-PY
+node --input-type=module - <<'JS'
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+const child = spawn("bash", ["-c", "source /tmp/entrypoint-lib.sh && proveo_mobile_mcp_exec"], { stdio: ["pipe", "pipe", "ignore"] });
+const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+const send = msg => child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n");
+async function call(id, method, params) {
+  send({ id, method, params });
+  for (;;) {
+    const line = await lines.next();
+    if (line.done) throw Error("no reply to " + method);
+    const msg = JSON.parse(line.value);
+    if (msg.id === id) return msg.result;
+  }
+}
+async function tool(id, name, args) {
+  const result = await call(id, "tools/call", { name, arguments: args });
+  const content = result.content || [];
+  const kinds = content.map(item => item.type).join(",");
+  const text = content.filter(item => item.type === "text").map(item => item.text ?? "").join(" ");
+  console.log(name + " error=" + (result.isError ? "True" : "False") + " kinds=" + kinds + " text=" + text.slice(0, 160).replaceAll("\n", " "));
+  return text;
+}
+try {
+  await call(1, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "proveo", version: "1" } });
+  send({ method: "notifications/initialized" });
+  const device = JSON.parse(await tool(2, "mobile_list_available_devices", {})).devices[0].id;
+  await tool(3, "mobile_launch_app", { device, packageName: "com.android.settings" });
+  await tool(4, "mobile_list_elements_on_screen", { device });
+  await tool(5, "mobile_click_on_screen_at_coordinates", { device, x: 540, y: 640 });
+  await tool(6, "mobile_take_screenshot", { device });
+  await tool(7, "mobile_press_button", { device, button: "HOME" });
+} finally {
+  child.kill();
+}
+JS
 `, hostdev.EnvADBPort, port)
 	ob, err = exec.Command(sbx.Binary, "exec", "-w", "/", name, "--", "bash", "-c", session).CombinedOutput()
 	out = string(ob)

@@ -42,8 +42,6 @@ skinparam noteTextAlignment left
 ' units. Confirm whether child TUI exit stops only the client. Find the sbx
 ' storage filesystem and confirm how disk reservations become observable.
 ' Test the adapters against those observations before consuming their output.
-' The checked-in sbx-dashboard.png shows sbx v0.23.0 and is a composition
-' reference for the dark background, flat dividers and key-first footer.
 ' Compare live stock and embedded sbx on the same pinned version and grid.
 '
 ' D0 MEASURED 2026-11-24 (Linux arm64, tmux 3.7b, Go 1.26.10)
@@ -214,8 +212,9 @@ skinparam noteTextAlignment left
 ' header. Preserve both views' dimensions and state through switches.
 ' Forward child input, paste and mouse, except reserved parent sequences.
 ' Forward an unmatched Ctrl+G prefix after a bounded wait or next key.
-' Ctrl+C on either tab and SIGINT use bounded parent shutdown, return 130,
-' restore the terminal and leave jobs/VMs alone. Reap a dashboard-owned
+' Ctrl+C on Proveo displays the standard exit card with Cancel selected.
+' A confirmed exit, Ctrl+C on sbx and SIGINT use bounded shutdown,
+' return 130, restore the terminal and leave jobs/VMs alive. Reap a dashboard-owned
 ' child client. If it exits, show status in Proveo without a shell fallback.
 ' Preserve headless help and --help. Show the sbx view as unavailable when
 ' the client, daemon or qualified PTY is missing. Verify Windows still
@@ -227,11 +226,15 @@ skinparam noteTextAlignment left
 ' detail placement via Task detail options. Keep the demo chooser outside
 ' the terminal reference.
 ' Preserve column layout at narrow widths. Clip at cell boundaries and let
-' panes scroll independently. Reuse the sbx background (#1B1B20), identity
-' colors and key-first muted action hints. Use red D and strike for deletes.
+' panes scroll independently. Match the left-pane width between tabs.
+' Use #1B1B20, identity colors and key-first muted action hints.
+' Use red D and strike for deletes. Open with details hidden. Show them
+' on request for the selected task and close them if that selection is lost.
+' Omit empty task-group labels from the queue.
 ' Show CPU, RAM and disk usage before task details. Query the selected
-' sandbox on selection and every 5s while visible. Use one bounded request,
-' discard stale replies, show unknown values and retain a dated last sample.
+' sandbox on selection and every 5s on the Proveo tab. Use one bounded
+' request, discard stale replies, show unknown values and retain a dated
+' last sample. Use that probe to discover Fresh while details are closed.
 ' Show the Git + task source, ticket, branch, instance, sandbox, PR,
 ' three-row excerpt, muted last-pushed date/time and original prompt.
 ' t toggles detail. f/g switch Files/Changes. ↵ on a file opens its preview

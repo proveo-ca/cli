@@ -212,6 +212,7 @@
         "internal/schedule/runner.go",
         "internal/results/results.go",
         "cmd/proveo/dashboard.go",
+        "_spec/_experiments/dashboard/index.html",
         "internal/dashboard/**",
         "internal/choiceui/attach_confirm.go",
         "internal/schedule/dashboard_job.go",
@@ -785,7 +786,10 @@
         "internal/choiceui/blocked_run.go",
         "internal/choiceui/dialog_test.go",
         "packages/lib/proveo-opencode-runtime",
-        "packages/lib/test_opencode_runtime.py",
+        "packages/lib/test_opencode_runtime.cjs",
+        "internal/opencodehistory/**",
+        "internal/testx/sqlite.go",
+        "cmd/proveo-entrypoint/main.go",
         "packages/lib/entrypoint-lib.sh",
         "defs/opencode/harness.manifest",
         "defs/opencode/Dockerfile",
@@ -793,7 +797,7 @@
         "internal/contract/opencode_credentials_test.go",
         "e2e/opencode_engine_sbx_test.go",
         "e2e/opencode_test.go",
-        "e2e/testdata/opencode_presentation.py",
+        "e2e/testdata/opencode_presentation.test.mjs",
         "e2e/seed_ready_test.go"
       ],
       "fingerprint": null
@@ -2059,7 +2063,6 @@
         "packages/lib/proveo-await-seed",
         "packages/lib/proveo-seed",
         "packages/lib/entrypoint-lib.sh",
-        "packages/lib/test_opencode_startup.py",
         "internal/contract/opencode_seed_progress_test.go",
         "e2e/opencode_test.go"
       ],
@@ -2069,7 +2072,7 @@
       "spec": "_spec/packages/lib/opencode-seed-progress-wireframe.puml",
       "covers": [
         "packages/lib/proveo-await-seed",
-        "packages/lib/test_opencode_startup.py",
+        "internal/contract/opencode_seed_progress_test.go",
         "e2e/opencode_test.go"
       ],
       "fingerprint": null

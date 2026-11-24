@@ -10,10 +10,6 @@ fi
 
 _json_str() {
   local s="$1"
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$s"
-    return
-  fi
   if command -v jq >/dev/null 2>&1; then
     jq -n --arg s "$s" '$s'
     return
@@ -28,24 +24,6 @@ _json_str() {
 _json_get() {
   local key="$1"
   [[ -n "$payload" ]] || return 0
-  if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$payload" | python3 -c '
-import json,sys
-key=sys.argv[1]
-try:
-    j=json.load(sys.stdin)
-except Exception:
-    raise SystemExit(0)
-v=j.get(key)
-if v is None:
-    raise SystemExit(0)
-if isinstance(v, bool):
-    print("true" if v else "false")
-else:
-    print(v)
-' "$key" 2>/dev/null || true
-    return
-  fi
   if command -v jq >/dev/null 2>&1; then
     printf '%s' "$payload" | jq -r --arg k "$key" 'if .[$k] == null then empty elif (.[$k]|type)=="boolean" then (if .[$k] then "true" else "false" end) else (.[$k]|tostring) end' 2>/dev/null || true
   fi
@@ -199,17 +177,8 @@ fail() {
 
 _json_workspace_root() {
   [[ -n "$payload" ]] || return 0
-  command -v python3 >/dev/null 2>&1 || return 0
-  printf '%s' "$payload" | python3 -c '
-import json, sys
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    raise SystemExit(0)
-roots = data.get("workspace_roots") or []
-if isinstance(roots, list) and roots and isinstance(roots[0], str):
-    print(roots[0])
-' 2>/dev/null || true
+  command -v jq >/dev/null 2>&1 || return 0
+  printf '%s' "$payload" | jq -r '.workspace_roots | if type == "array" and (.[0] | type) == "string" then .[0] else empty end' 2>/dev/null || true
 }
 
 _git_repo() {

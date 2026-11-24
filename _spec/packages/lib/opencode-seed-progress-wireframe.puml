@@ -1,7 +1,7 @@
 @startsalt
 ' purpose: resolved OpenCode-only loading surface with shared run categories and current seed step
 ' covers: packages/lib/proveo-await-seed
-' covers: packages/lib/test_opencode_startup.py
+' covers: internal/contract/opencode_seed_progress_test.go
 ' covers: e2e/opencode_test.go
 ' Logic: _spec/packages/lib/opencode-seed-progress.puml
 ' 2026-10-17, D2 (_spec/defs/opencode/engine-local-history.puml): the seed no longer stages

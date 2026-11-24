@@ -26,4 +26,3 @@ run = "eslint ."
 -- package.json --
 {"scripts":{"dev":"turbo run dev","build":"turbo run build"}}
 -- services/admin/manage.py --
-#!/usr/bin/env python

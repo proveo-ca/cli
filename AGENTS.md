@@ -32,3 +32,5 @@
   - `## What`, `## Why`, `## How`, in that order, each ≤ 256 characters including its heading.
   - Never mention a stack, commit hashes, branch names or file paths.
   - Move logs and known gaps to a ticket, and say where they went.
+
+5. Python is permitted as a toolchain target in E2E fixtures. Implement Proveo runtime code and test drivers without Python scripts or inline Python.

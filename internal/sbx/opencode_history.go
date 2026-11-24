@@ -8,32 +8,24 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+
+	"github.com/proveo-ca/proveo/internal/opencodehistory"
 )
 
 // OpenCodeHistoryGateEnv defers credential startup until history import completes.
 const OpenCodeHistoryGateEnv = "PROVEO_OPENCODE_HISTORY_IMPORT=1"
 
-// OpenCodeHistoryReadyScript marks history ready for credential startup.
-const OpenCodeHistoryReadyScript = `import os
-` + openCodeDatabasePath + `
-root = os.path.dirname(database())
-os.makedirs(root, mode=0o700, exist_ok=True)
-fd = os.open(os.path.join(root, ".proveo-history-ready"), os.O_WRONLY | os.O_CREAT, 0o600)
-os.close(fd)
-`
-
 // OpenCodeDatabaseHeader opens every SQLite database file.
 const OpenCodeDatabaseHeader = "SQLite format 3\x00"
 
 // OpenCodeImportCommit is the last member of an import stream; the import installs nothing without it.
-const OpenCodeImportCommit = "commit"
+const OpenCodeImportCommit = opencodehistory.Commit
 
-// Exit statuses of the engine-side history scripts.
 const (
-	OpenCodeImportExisting   = 3
-	OpenCodeImportCorrupt    = 4
-	OpenCodeImportIncomplete = 5
-	OpenCodeExportNone       = 3
+	OpenCodeImportExisting   = opencodehistory.Exists
+	OpenCodeImportCorrupt    = opencodehistory.Corrupt
+	OpenCodeImportIncomplete = opencodehistory.Incomplete
+	OpenCodeExportNone       = opencodehistory.Absent
 )
 
 // ErrOpenCodeImportChanged reports a host database file that changed while it streamed.
@@ -41,94 +33,6 @@ var ErrOpenCodeImportChanged = errors.New("changed while it was copied")
 
 // openCodeImportSides are the suffixes of the host database files an import carries.
 var openCodeImportSides = []string{"", "-wal", "-journal"}
-
-// openCodeDatabasePath is the python that resolves the database path OpenCode itself opens.
-const openCodeDatabasePath = `def database():
-    if os.environ.get("OPENCODE_DB"):
-        return os.environ["OPENCODE_DB"]
-    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return os.path.join(data, "opencode", "opencode.db")
-`
-
-// OpenCodeImportScript reads a WriteOpenCodeImport tar on stdin into a private temp dir and installs it
-// once as the engine's OpenCode database through SQLite's backup API: exit 0 installed,
-// OpenCodeImportExisting, OpenCodeImportCorrupt, or OpenCodeImportIncomplete without the commit member.
-const OpenCodeImportScript = `import os, shutil, sqlite3, sys, tarfile, tempfile
-` + openCodeDatabasePath + `
-dest = database()
-if os.path.lexists(dest):
-    sys.exit(3)
-names = {"opencode.db", "opencode.db-wal", "opencode.db-journal"}
-def receive(work):
-    try:
-        with tarfile.open(fileobj=sys.stdin.buffer.raw, mode="r|") as tar:
-            for member in tar:
-                if member.name == "` + OpenCodeImportCommit + `":
-                    return True
-                if member.name not in names or not member.isfile():
-                    return False
-                with tar.extractfile(member) as r, open(os.path.join(work, member.name), "xb") as w:
-                    shutil.copyfileobj(r, w)
-    except (tarfile.TarError, EOFError):
-        pass
-    return False
-code = 0
-work = tempfile.mkdtemp(prefix="proveo-import-")
-try:
-    copy = os.path.join(work, "opencode.db")
-    if not receive(work) or not os.path.isfile(copy):
-        code = 5
-    else:
-        try:
-            src = sqlite3.connect(copy)
-            ok = src.execute("PRAGMA quick_check").fetchone()[0] == "ok"
-        except sqlite3.DatabaseError:
-            src, ok = None, False
-        if not ok:
-            code = 4
-        else:
-            os.makedirs(os.path.dirname(dest), mode=0o700, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(prefix=".proveo-import-", dir=os.path.dirname(dest))
-            os.close(fd)
-            try:
-                out = sqlite3.connect(tmp)
-                src.backup(out)
-                out.close()
-                os.chmod(tmp, 0o600)
-                try:
-                    os.link(tmp, dest)
-                except FileExistsError:
-                    code = 3
-            finally:
-                os.unlink(tmp)
-        if src is not None:
-            src.close()
-finally:
-    shutil.rmtree(work, ignore_errors=True)
-sys.exit(code)
-`
-
-// OpenCodeExportScript streams a consistent single-file copy of the engine's OpenCode database
-// to stdout: exit 0 streamed, OpenCodeExportNone when the engine has none.
-const OpenCodeExportScript = `import os, shutil, sqlite3, sys, tempfile
-` + openCodeDatabasePath + `
-source = database()
-if not os.path.isfile(source):
-    sys.exit(3)
-work = tempfile.mkdtemp(prefix="proveo-export-")
-try:
-    copy = os.path.join(work, "opencode.db")
-    src = sqlite3.connect(source, timeout=30)
-    out = sqlite3.connect(copy)
-    src.backup(out)
-    out.execute("PRAGMA journal_mode=DELETE")
-    out.close()
-    src.close()
-    with open(copy, "rb") as f:
-        shutil.copyfileobj(f, sys.stdout.buffer)
-finally:
-    shutil.rmtree(work, ignore_errors=True)
-`
 
 // OpenCodeImportFiles stats src and its -wal/-journal, keyed by suffix; -shm never travels.
 func OpenCodeImportFiles(src string) map[string]os.FileInfo {
@@ -142,7 +46,7 @@ func OpenCodeImportFiles(src string) map[string]os.FileInfo {
 }
 
 // WriteOpenCodeImport streams files, OpenCodeImportFiles(src) taken before, to w as the tar
-// OpenCodeImportScript reads; it appends OpenCodeImportCommit only when none changed while it streamed,
+// the engine importer reads; it appends OpenCodeImportCommit only when none changed while it streamed,
 // else it returns ErrOpenCodeImportChanged.
 func WriteOpenCodeImport(w io.Writer, src string, files map[string]os.FileInfo) error {
 	tw := tar.NewWriter(w)
@@ -192,15 +96,15 @@ func sameOpenCodeFile(a, b os.FileInfo) bool {
 
 // OpenCodeImportArgs runs the import script in engine name with stdin attached.
 func OpenCodeImportArgs(name string) []string {
-	return []string{"exec", "-i", "-w", "/", name, "--", "python3", "-I", "-c", OpenCodeImportScript}
+	return []string{"exec", "-i", "-w", "/", name, "--", "proveo-entrypoint", "opencode-history", "import"}
 }
 
 // OpenCodeExportArgs streams engine name's OpenCode database on stdout.
 func OpenCodeExportArgs(name string) []string {
-	return []string{"exec", "-w", "/", name, "--", "python3", "-I", "-c", OpenCodeExportScript}
+	return []string{"exec", "-w", "/", name, "--", "proveo-entrypoint", "opencode-history", "export"}
 }
 
 // OpenCodeHistoryReadyArgs enables credential startup in the imported engine.
 func OpenCodeHistoryReadyArgs(name string) []string {
-	return []string{"exec", "-w", "/", name, "--", "python3", "-I", "-c", OpenCodeHistoryReadyScript}
+	return []string{"exec", "-w", "/", name, "--", "proveo-entrypoint", "opencode-history", "ready"}
 }

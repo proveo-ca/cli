@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/proveo-ca/proveo/internal/backend/sandbox"
+	"github.com/proveo-ca/proveo/internal/sbx"
 	"github.com/proveo-ca/proveo/internal/schedule"
 )
 
@@ -83,6 +84,27 @@ func TestDashboardLinksInstanceByJobKey(t *testing.T) {
 	job.Instance = "legacy"
 	if index := matchingInstance(instances, nil, "night-two", job); index != 0 {
 		t.Fatalf("match for explicit legacy selector = %d", index)
+	}
+}
+
+func TestDashboardDiscoversRunningWorkspaceWithoutClaimingTheSandbox(t *testing.T) {
+	work, other := t.TempDir(), t.TempDir()
+	work, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []sbx.Listed{
+		{ID: "raw", Name: "codex-prv-284", Status: "running", Workspaces: []string{work + ":ro"}},
+		{ID: "managed", Name: "codex-managed", Status: "running", Workspaces: []string{work}},
+		{ID: "other", Name: "codex-other", Status: "running", Workspaces: []string{other, work}},
+		{ID: "stopped", Status: "stopped", Workspaces: []string{work}},
+	}
+	got := discoveredSandboxes(work, []sandbox.Instance{{VMID: "managed"}}, rows)
+	if len(got) != 1 || got[0].Sandbox != "codex-prv-284" || got[0].Live || got[0].Guest || got[0].Instance != "" {
+		t.Fatalf("discovery = %+v", got)
+	}
+	if id := linearIdentifier(got[0]); id != "PRV-284" {
+		t.Errorf("Linear key = %q", id)
 	}
 }
 

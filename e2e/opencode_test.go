@@ -179,9 +179,10 @@ func TestOpenCodeRuntimeInImage(t *testing.T) {
 		t.Skipf("OpenCode image %s is unavailable", image)
 	}
 	opencodeImageVersion(t, image)
-	cmd := exec.Command("docker", "run", "--rm", "--network", "none", "--entrypoint", "python3",
-		"--mount", "type=bind,source="+repoRootDir(t)+",target=/fixture,readonly", image,
-		"-B", "/fixture/packages/lib/test_opencode_runtime.py", "-v")
+	cmd := exec.Command("docker", "run", "--rm", "--network", "none", "--entrypoint", "node",
+		"--mount", "type=bind,source="+repoRootDir(t)+",target=/fixture,readonly",
+		"-e", "PROVEO_TEST_OPENCODE_RUNTIME=/usr/local/bin/proveo-opencode-runtime", image,
+		"--test", "/fixture/packages/lib/test_opencode_runtime.cjs")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("OpenCode runtime image regression failed: %v\n%s", err, out)
 	}
@@ -201,10 +202,10 @@ func TestOpenCodePresentationAndAutoacceptInImage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", "--pull=never", "--network", "none",
-		"--entrypoint", "python3", "--mount", "type=bind,source="+repoRootDir(t)+",target=/fixture,readonly",
+		"--entrypoint", "node", "--mount", "type=bind,source="+repoRootDir(t)+",target=/fixture,readonly",
 		"-e", "PROVEO_TEST_OPENCODE_NATIVE=/usr/local/share/npm-global/bin/opencode",
 		"-e", "PROVEO_TEST_OPENCODE_VERSION="+version, image,
-		"-B", "/fixture/e2e/testdata/opencode_presentation.py", "-v")
+		"--test", "/fixture/e2e/testdata/opencode_presentation.test.mjs")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("offline native presentation/YOLO verification: %v\n%s", err, out)
 	} else {

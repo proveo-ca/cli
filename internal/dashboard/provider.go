@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -19,15 +20,42 @@ import (
 
 type taskMetadata struct {
 	id, key, excerpt, pr string
+	linear               linearIssue
 	at                   time.Time
 }
 
+type linearIssue struct{ Identifier, Title, Description, URL string }
+
+var linearID = regexp.MustCompile(`^[A-Z][A-Z0-9]*-[0-9]+$`)
+var linearIDInLabel = regexp.MustCompile(`(?i)\b[A-Z][A-Z0-9]*-[0-9]+\b`)
+
+func linearIdentifier(t Task) string {
+	if linearID.MatchString(t.Ticket) {
+		return t.Ticket
+	}
+	if u, err := url.Parse(t.Ticket); err == nil && u.Scheme == "https" && u.Host == "linear.app" {
+		_, tail, _ := strings.Cut(u.Path, "/issue/")
+		id, _, _ := strings.Cut(tail, "/")
+		return id
+	}
+	if t.Ticket != "" {
+		return ""
+	}
+	for _, text := range []string{t.Branch, t.Title} {
+		if id := linearIDInLabel.FindString(text); id != "" {
+			return strings.ToUpper(id)
+		}
+	}
+	return ""
+}
+
 func metadataKey(t Task) string {
-	return t.Ticket + "\x00" + t.Repo + "\x00" + t.Branch
+	return t.ID + "\x00" + t.Ticket + "\x00" + t.Repo + "\x00" + t.Branch
 }
 
 func (m *dashModel) readMetadata(t Task) tea.Cmd {
-	if t.ID == "" || (t.Ticket == "" && t.Branch == "") || m.metadataPending || !m.details || m.sbxTab {
+	linear := linearIdentifier(t)
+	if t.ID == "" || (t.Ticket == "" && t.Branch == "" && linear == "") || m.metadataPending || !m.details || m.sbxTab {
 		return nil
 	}
 	cacheKey := metadataKey(t)
@@ -38,6 +66,10 @@ func (m *dashModel) readMetadata(t Task) tea.Cmd {
 	return func() tea.Msg {
 		meta := taskMetadata{id: t.ID, key: cacheKey, at: time.Now()}
 		meta.excerpt = issueExcerpt(t.Ticket)
+		if linear != "" {
+			meta.linear = readLinearIssue(linear)
+			meta.excerpt = meta.linear.Description
+		}
 		meta.pr = branchPR(t)
 		return meta
 	}
@@ -49,8 +81,6 @@ func issueExcerpt(ticket string) string {
 		return ""
 	}
 	switch u.Host {
-	case "linear.app":
-		return linearExcerpt(u)
 	case "github.com":
 		b, err := providerCommand("", "gh", "issue", "view", u.String(), "--json", "body")
 		var v struct{ Body string }
@@ -61,34 +91,32 @@ func issueExcerpt(ticket string) string {
 	return ""
 }
 
-func linearExcerpt(u *url.URL) string {
+func readLinearIssue(id string) linearIssue {
 	token := os.Getenv("LINEAR_API_KEY")
-	_, tail, ok := strings.Cut(u.Path, "/issue/")
-	if token == "" || !ok {
-		return ""
+	if token == "" || id == "" {
+		return linearIssue{}
 	}
-	id, _, _ := strings.Cut(tail, "/")
-	body, _ := json.Marshal(map[string]any{"query": "query($id: String!) { issue(id: $id) { description } }", "variables": map[string]string{"id": id}})
+	body, _ := json.Marshal(map[string]any{"query": "query($id: String!) { issue(id: $id) { identifier title description url } }", "variables": map[string]string{"id": id}})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.linear.app/graphql", bytes.NewReader(body))
 	if err != nil {
-		return ""
+		return linearIssue{}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return ""
+		return linearIssue{}
 	}
 	defer resp.Body.Close()
 	var v struct {
-		Data struct{ Issue struct{ Description string } }
+		Data struct{ Issue linearIssue }
 	}
 	if resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 128*1024)).Decode(&v) == nil {
-		return v.Data.Issue.Description
+		return v.Data.Issue
 	}
-	return ""
+	return linearIssue{}
 }
 
 func branchPR(t Task) string {

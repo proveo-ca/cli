@@ -30,7 +30,7 @@ if command -v fresh >/dev/null 2>&1; then printf 'fresh=yes\n'; fi
 `
 
 func (m *dashModel) readGuest(t Task) tea.Cmd {
-	if m.guestPending || !t.Guest || t.Workdir == "" || !m.details || m.sbxTab {
+	if m.guestPending || !t.Guest || t.Workdir == "" || m.sbxTab {
 		return nil
 	}
 	m.guestPending = true

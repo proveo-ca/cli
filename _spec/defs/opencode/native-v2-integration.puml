@@ -41,7 +41,7 @@
 ' With no gate neither workaround remains (MEASURED: no ocDisposable, --prepare
 ' or cache-owner in the image test or the presentation testdata); a bare launch
 ' of the thin runtime runs the native client on its own default database.
-' packages/lib/test_opencode_runtime.py holds NativeCommandAutoTests (the --auto
+' packages/lib/test_opencode_runtime.cjs holds NativeCommandAutoTests (the --auto
 ' injection below, plus diagnostic flags counting only before `--`) and
 ' FakeNativeLaunchTests (inflight and diagnostic runs keep argv unchanged in a
 ' throwaway database; exit status and signal forwarding; a normal launch execs
@@ -104,7 +104,7 @@
 '
 ' Native CLI config documentation: https://opencode.ai/v2/docs/cli/config
 ' General editor schema pointer: https://opencode.ai/config.json (v1; advisory).
-' Native schema/behavior evidence: e2e/testdata/opencode_presentation.py,
+' Native schema/behavior evidence: e2e/testdata/opencode_presentation.test.mjs,
 ' e2e/testdata/opencode_presentation.mjs, and their persisted JSON fixture.
 ' Exact OPENCODE_CLI_CONFIG_CONTENT payload quoted from the image and fixture:
 ' {

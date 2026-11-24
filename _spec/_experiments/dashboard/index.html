@@ -267,7 +267,7 @@
 </header>
 
 <main class="terminal-content" tabindex="0" aria-label="Terminal content">
-  <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
+  <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard" data-details="hidden">
     <section class="panel-body" id="attach-preview" aria-labelledby="attached-task" tabindex="-1" hidden>
       <h1 id="attached-task"></h1>
       <p class="subtext" id="attached-command"></p>
@@ -302,7 +302,7 @@
         </header>
         <div class="panel-body" id="work"></div>
       </section>
-      <aside class="panel inspector" id="task-inspector" aria-labelledby="detail-heading">
+      <aside class="panel inspector" id="task-inspector" aria-labelledby="detail-heading" hidden>
         <header class="panel-head"><h2 id="detail-heading">Task details</h2><span class="kicker" id="detail-context"></span></header>
         <section class="sandbox-usage" id="sandbox-usage" aria-labelledby="sandbox-usage-heading">
           <header class="sandbox-usage-head">
@@ -330,7 +330,7 @@
   <button type="button" class="button" id="quit-key"><kbd>Ctrl+C</kbd> quit</button>
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
-    <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="true" hidden><kbd>t</kbd> <span>Hide details</span></button>
+    <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="false" hidden><kbd>t</kbd> <span>See details</span></button>
     <button type="button" class="button" id="enter-key" aria-keyshortcuts="Enter"><kbd>↵</kbd> <span>Attach</span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
     <button type="button" class="button" id="new-instance" aria-haspopup="dialog" aria-keyshortcuts="N"><kbd>n</kbd> new instance</button>
@@ -375,7 +375,7 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Feed all three views from the same task, result, and schedule records. Start in Review queue with Changes on the left and Task details below the queue on the right. The queue and details scroll independently. Press <kbd>t</kbd> to toggle details or <kbd>4</kbd> to choose their position.</p>
+    <p class="subtext">Feed all three views from the same task, result, and schedule records. Start in Review queue with Changes on the left. Select a task and press <kbd>t</kbd> to show its details below the queue on the right. The queue and details scroll independently. Press <kbd>4</kbd> to choose where details appear.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Press <kbd>↵</kbd> to confirm attaching to a running task or to preview a file. Use the Diff button to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
@@ -582,7 +582,7 @@
     ["split", "Lower-right split"],
   ]
   let detailPosition = "split"
-  let detailsOpen = true
+  let detailsOpen = false
   const filesByPath = new Map()
   const rowActions = new WeakMap()
   let hoveredRow = null
@@ -763,9 +763,10 @@
       form, actions)
   }
 
-  function selectTask(task) {
+  function selectTask(task, openDetails = detailsOpen) {
     const changed = ui.task !== task
     ui.task = task
+    detailsOpen = openDetails
     for (const item of $("work").querySelectorAll("[data-task]")) {
       item.setAttribute("aria-pressed", String(item.dataset.task === task.id))
     }
@@ -818,7 +819,7 @@
   }
 
   function taskCard(task) {
-    const card = button("", () => selectTask(task), "task")
+    const card = button("", () => selectTask(task, true), "task")
     card.dataset.task = task.id
     card.setAttribute("aria-pressed", String(task === ui.task))
     card.setAttribute("aria-keyshortcuts", "T")
@@ -879,10 +880,13 @@
     const work = $("work")
     switch (ui.view) {
       case "queue":
-        work.replaceChildren(...queueGroups.map(([title, states]) => {
-          const group = taskGroup(title, tasks.filter(({state}) => states.includes(state)))
-          if (states.includes("queued")) group.append(newInstanceControl)
-          return group
+        work.replaceChildren(...queueGroups.flatMap(([title, states]) => {
+          const items = tasks.filter(({state}) => states.includes(state))
+          const queued = states.includes("queued")
+          if (!items.length) return queued ? [newInstanceControl] : []
+          const group = taskGroup(title, items)
+          if (queued) group.append(newInstanceControl)
+          return [group]
         }))
         break
       case "graph":
@@ -904,16 +908,17 @@
   }
 
   function placeDetails() {
+    const work = $("work")
+    const selected = [...work.querySelectorAll('[data-task][aria-pressed="true"]')]
+    if (!selected.length) detailsOpen = false
     const visible = ui.editing || detailsOpen
     let position = ui.editing ? "side" : detailPosition
-    const work = $("work")
     let row
     if (position === "accordion") {
-      const selected = [...work.querySelectorAll('[data-task][aria-pressed="true"]')]
-        .filter(item => item.getClientRects().length)
-      row = selected.find(item => item === document.activeElement)
-        ?? selected.find(item => item.hasAttribute("aria-expanded"))
-        ?? selected[0]
+      const visibleRows = selected.filter(item => item.getClientRects().length)
+      row = visibleRows.find(item => item === document.activeElement)
+        ?? visibleRows.find(item => item.hasAttribute("aria-expanded"))
+        ?? visibleRows[0]
       if (!row) position = "split"
     }
     for (const previous of work.querySelectorAll("[data-task][aria-expanded]")) {
@@ -926,7 +931,7 @@
     }
     const shortcut = $("details-key")
     const action = visible ? "Hide details" : "See details"
-    shortcut.hidden = ui.editing
+    shortcut.hidden = ui.editing || !selected.length
     shortcut.setAttribute("aria-expanded", String(visible))
     shortcut.lastElementChild.textContent = action
     for (const hint of work.querySelectorAll(".task-detail-hint")) {
@@ -942,17 +947,16 @@
 
   function setDetailsPosition(position) {
     detailPosition = position
-    detailsOpen = true
     placeDetails()
   }
 
   function toggleDetails(task = ui.task) {
+    if (!task) return
     if (task === ui.task) {
       detailsOpen = !detailsOpen
       placeDetails()
     } else {
-      detailsOpen = true
-      selectTask(task)
+      selectTask(task, true)
     }
   }
 
@@ -970,9 +974,9 @@
     }
     for (const [index, [position, label]] of detailPositions.entries()) {
       const choice = addChoice(String(index + 1), label, () => setDetailsPosition(position))
-      choice.setAttribute("aria-pressed", String(detailsOpen && position === detailPosition))
+      choice.setAttribute("aria-pressed", String(position === detailPosition))
     }
-    addChoice("t", detailsOpen ? "Hide details" : "See details", toggleDetails)
+    if (!$("details-key").hidden) addChoice("t", detailsOpen ? "Hide details" : "See details", toggleDetails)
     choices.addEventListener("keydown", event => {
       if (event.ctrlKey || event.metaKey || event.altKey) return
       const choice = [...choices.children].find(item => item.dataset.key === event.key)
@@ -990,7 +994,7 @@
     const task = taskFor(id)
     if (!task) return node("span", "graph-blockers", id + " · missing")
     const [label, icon, kind = task.state] = taskStates[task.state]
-    const item = button("", () => selectTask(task), "button graph-node")
+    const item = button("", () => selectTask(task, true), "button graph-node")
     item.append(status("", icon, kind), " " + id)
     item.dataset.task = id
     item.title = task.title + " · " + label
@@ -1641,7 +1645,7 @@
     const next = current < 0 ? (step > 0 ? 0 : rows.length - 1) : current + step
     const row = rows[next]
     if (row) {
-      if (row !== newInstanceControl) row.click()
+      if (row !== newInstanceControl) selectTask(taskFor(row.dataset.task))
       row.focus()
     }
   }

@@ -28,13 +28,13 @@ type Options struct {
 type dashModel struct {
 	Options
 	data                                                                      Data
-	width, height                                                             int
+	width, height, sbxSplit                                                   int
 	view, focus, selected, file, detailScroll, previewScroll, detailPlacement int
 	showFiles, details, preview, patch, graphExpanded, help                   bool
 	exit, sbxTab, prefix                                                      bool
 	child                                                                     childTerminal
 	status                                                                    string
-	confirm                                                                   *choiceui.AttachConfirm
+	confirm, exitConfirm                                                      *choiceui.Confirmation
 	attachID                                                                  string
 	changes                                                                   []Change
 	previewText                                                               string
@@ -71,7 +71,7 @@ type freshEvent struct {
 }
 
 func Run(ctx context.Context, opts Options) (bool, error) {
-	model := &dashModel{Options: opts, width: 80, height: 24, details: true, status: "Loading workspace", metadata: make(map[string]taskMetadata)}
+	model := &dashModel{Options: opts, width: 80, height: 24, status: "Loading workspace", metadata: make(map[string]taskMetadata)}
 	if opts.StartupError != nil {
 		model.status = opts.StartupError.Error()
 	}
@@ -147,10 +147,18 @@ func taskGroup(state schedule.QueueState) int {
 func (m *dashModel) selectVisible() {
 	order := m.taskOrder()
 	if !slices.Contains(order, m.selected) {
+		m.closeDetails()
 		m.selected = len(m.data.Tasks)
 		if len(order) > 0 {
 			m.selected = order[0]
 		}
+	}
+}
+
+func (m *dashModel) closeDetails() {
+	m.details, m.detailScroll = false, 0
+	if m.focus == 2 && !m.preview {
+		m.focus = 0
 	}
 }
 
@@ -161,6 +169,7 @@ func (m *dashModel) receiveData(d Data) tea.Cmd {
 	if i >= 0 {
 		m.selected = i
 	} else {
+		m.closeDetails()
 		m.selected = max(0, min(m.selected, len(d.Tasks)-1))
 	}
 	m.selectVisible()
@@ -242,6 +251,9 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.child != nil {
+			if m.sbxSplit == 0 {
+				m.readSbxSplit()
+			}
 			return m, repaint()
 		}
 		return m, nil
@@ -252,12 +264,18 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.WindowSizeMsg:
+		if event.Width != m.width || event.Height != m.height {
+			m.sbxSplit = 0
+		}
 		m.width, m.height = max(1, event.Width), max(1, event.Height)
 		if m.child != nil {
 			m.child.Resize(m.width, max(1, m.height-1))
 		}
 		if m.confirm != nil {
 			m.confirm.Update(event)
+		}
+		if m.exitConfirm != nil {
+			m.exitConfirm.Update(event)
 		}
 		if m.wizard != nil {
 			m.wizard.prompt.SetWidth(max(1, m.width-8))
@@ -280,8 +298,23 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.exitConfirm != nil {
+		if done, exit := m.exitConfirm.Update(msg); done {
+			m.exitConfirm = nil
+			if exit {
+				m.exit = true
+				return m, tea.Quit
+			}
+		}
+		return m, nil
+	}
 	k := msg.String()
 	if k == "ctrl+c" {
+		m.prefix = false
+		if !m.sbxTab {
+			m.exitConfirm = choiceui.NewDashboardExitConfirm(m.width, m.height)
+			return m, nil
+		}
 		m.exit = true
 		return m, tea.Quit
 	}
@@ -289,6 +322,9 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.prefix = false
 		if k == "tab" {
 			m.sbxTab = !m.sbxTab
+			if !m.sbxTab && m.child != nil {
+				m.readSbxSplit()
+			}
 			if m.sbxTab && m.child == nil {
 				child, err := startChild(m.width, max(1, m.height-1))
 				if err != nil {
@@ -338,22 +374,37 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.readChanges(m.task()), m.readGuest(m.task()), m.readMetadata(m.task()))
 	case "4":
 		m.detailPlacement = (m.detailPlacement + 1) % 3
-		m.details = true
 		m.status = []string{"Task details · lower-right split", "Task details · accordion", "Task details · left pane"}[m.detailPlacement]
 	case "f", "g":
 		m.showFiles, m.focus, m.file, m.preview = k == "f", 1, 0, false
 	case "t":
-		m.details = !m.details
+		if m.preview || m.task().ID == "" {
+			return m, nil
+		}
+		if m.details {
+			m.closeDetails()
+			return m, nil
+		}
+		m.details = true
+		if m.detailPlacement == 2 && m.focus == 1 {
+			m.focus = 0
+		}
 		return m, tea.Batch(m.readGuest(m.task()), m.readMetadata(m.task()))
 	case "c":
 		m.status = "Disk reservation per sandbox " + m.data.Capacity.Reservation
 		if m.data.CapacityError != "" {
 			m.status += " · " + m.data.CapacityError
 		}
-	case "tab":
-		m.focus = (m.focus + 1) % 3
-	case "shift+tab":
-		m.focus = (m.focus + 2) % 3
+	case "tab", "shift+tab":
+		panes := 2
+		if m.details || m.preview {
+			panes++
+		}
+		step := 1
+		if k == "shift+tab" {
+			step = -1
+		}
+		m.focus = (m.focus + panes + step) % panes
 	case "up", "down", "pgup", "pgdown":
 		return m, m.move(k)
 	case " ", "space":
@@ -362,6 +413,9 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.enter()
 	case "esc":
 		m.preview, m.help = false, false
+		if m.focus == 2 && !m.details {
+			m.focus = 1
+		}
 	case "p":
 		if m.preview {
 			m.patch = !m.patch
@@ -376,6 +430,13 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.help = true
 	}
 	return m, nil
+}
+
+func (m *dashModel) readSbxSplit() {
+	frame, _ := m.child.Frame()
+	if split := SbxDivider(frame, m.width); split > 0 {
+		m.sbxSplit = split
+	}
 }
 
 func (m *dashModel) forwardKey(msg tea.KeyPressMsg) {
