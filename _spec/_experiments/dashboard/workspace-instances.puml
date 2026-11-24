@@ -2,6 +2,10 @@
 !include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
 ' purpose: propose independent sandbox instances and host-owned resume from one working directory
 ' covers: cmd/proveo/main.go
+' covers: go.mod
+' covers: internal/ui/ui.go
+' covers: internal/choiceui/screen.go
+' covers: internal/ptyproxy/ptyproxy.go
 ' covers: internal/run/run.go
 ' covers: internal/sbx/run.go
 ' covers: internal/backend/sandbox/sandbox.go
@@ -107,8 +111,27 @@
 ' help available via --help and on noninteractive invocation. Keep the top
 ' tabs and switch hint visible above the selected terminal content. Run
 ' stock sbx in a PTY sized to its content pane. The multiplexer handles
-' Ctrl+G then Tab to switch views and forwards other keys to the child.
-' Keep sbx running when switching views and propagate content-pane resizes.
+' Ctrl+G then Tab to switch views. It intercepts Ctrl+C in either tab.
+' View switches keep both frame dimensions and the running child. Keep
+' the same column layout. Scroll within the viewport for overflow. Resize
+' the child PTY on actual terminal resize.
+' Bubble Tea v2 owns the model, input and outer alternate screen. Lip Gloss
+' v2 composes the panes using the existing internal/ui identity roles.
+' Bubbles v2 key and help draw the bottom key bar from the active bindings.
+' Follow the sbx footer pattern with a key, then its action.
+' Reuse creack/pty and x/term primitives on Unix. Evaluate Charm x/vt for
+' the child screen buffer, alternate screen, cursor, and terminal replies.
+' x/vt v0.1.0 compiled with Proveo's current Ultraviolet and ANSI pins.
+' A local probe exercised alternate-screen entry, restore and resizing.
+' [Unverified] Native sbx behavior under the embedded emulator.
+' Keep native output within the pane and route its replies to the child.
+' Windows needs a ConPTY adapter. The existing ptyproxy Windows path is a
+' stub. Show the embedded sbx view when a platform has an adapter.
+' Ctrl+C and an external SIGINT take the same parent shutdown path. Close
+' the dashboard-owned sbx client with a bounded wait, restore terminal
+' state, and exit with status 130. Keep running sandboxes and scheduled jobs.
+' If the sbx client exits independently, show its status in Proveo. Never
+' start a fallback shell in the sbx pane.
 ' Proveo indexes agent, Git, task and schedule data. Start with local plan
 ' paths and explicit ticket URLs. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
@@ -132,6 +155,9 @@
 ' remove another. Check credentials and live process files stay excluded.
 ' Exercise schedule budget, review feedback, PR revision changes and a
 ' trip through the native sbx tab while scheduled work keeps running.
+' Resize a terminal with a live child. Compare its embedded cursor,
+' colors and input handling with stock sbx. Verify switch preserves both
+' views and Ctrl+C exits the dashboard with the host terminal restored.
 ' [Unverified] Portable native checkpoint restore across every harness.
 ' Upstream: https://docs.docker.com/ai/sandboxes/usage/#interactive-mode
 '           https://docs.docker.com/ai/sandboxes/usage/#reconnect-and-name-sandboxes

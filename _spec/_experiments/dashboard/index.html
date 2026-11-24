@@ -8,60 +8,77 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #111416;
-    --surface: #171b1e;
-    --raised: #252b2e;
-    --line: #424b50;
-    --text: #e2e9eb;
-    --muted: #a0adb1;
-    --accent: #b5dea0;
-    --accent-bg: #283930;
-    --sky: #a9d8e5;
-    --amber: #f1c18d;
+    --bg: #062831;
+    --surface: #0e3a48;
+    --raised: #062831;
+    --line: #1c5567;
+    --text: #eaf5f3;
+    --muted: #8fb9c2;
+    --brand: #00bac6;
+    --attention: #cbdb2a;
+    --success: #009532;
+    --ink: #181818;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
-    font: clamp(12px, 1vw, 14px)/1.5 var(--mono);
+    --inset: 12px;
+    --window-width: 1160px;
+    --window-height: 810px;
+    --canvas-width: 1100px;
+    font: 14px/1.5 var(--mono);
     color: var(--text);
     background: var(--bg);
   }
   *, *::before, *::after { box-sizing: border-box; }
-  body { margin: 0; min-width: 280px; padding: clamp(0px, 2vw, 22px); }
+  body { margin: 0; padding: var(--inset); }
   h1, h2, h3, p, ol, ul, dl, dd, pre { margin: 0; font: inherit; }
   button, select, code, kbd { font: inherit; }
   button { color: inherit; cursor: pointer; }
   summary { cursor: pointer; }
-  a { color: var(--sky); text-underline-offset: 3px; }
-  :focus-visible { outline: 1px solid var(--sky); outline-offset: -1px; }
+  a { color: var(--brand); text-underline-offset: 3px; }
+  :focus-visible { outline: 1px solid var(--brand); outline-offset: -1px; }
   [hidden] { display: none !important; }
-  .terminal-shell { border: 1px solid var(--line); max-width: 1580px; margin: 0 auto; min-height: calc(100svh - 44px); background: var(--surface); }
-  .terminal-shell[data-tab="sbx"] { max-width: 1160px; min-height: 0; }
+  .terminal-shell {
+    display: flex;
+    flex-direction: column;
+    width: min(100%, var(--window-width));
+    height: min(var(--window-height), calc(100dvh - 2 * var(--inset)));
+    min-height: 110px;
+    margin: 0 auto;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .terminal-content { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+  .terminal-content > [role="tabpanel"] { min-width: var(--canvas-width); min-height: 100%; }
+  #proveo { display: flex; flex-direction: column; }
+  #sbx { background: var(--bg); }
   .subtext, .kicker { color: var(--muted); }
   .kicker { font-size: .92rem; }
   .top { background: var(--raised); border-bottom: 1px solid var(--line); }
-  .bar, .workbar, .footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 5px 10px; }
+  .top, .footer { flex: none; overflow-x: auto; white-space: nowrap; }
+  .bar, .workbar, .footer { display: flex; align-items: center; gap: 12px; padding: 5px 10px; }
   .bar { min-height: 38px; }
   .brand { font-weight: bold; white-space: nowrap; }
-  .mark, .path { color: var(--sky); }
+  .mark, .path { color: var(--brand); }
   .tabs, .layout-picker { display: flex; align-items: center; gap: 4px; }
   .tab, .layout-picker button, .button { border: 0; background: transparent; padding: 2px 6px; color: var(--muted); white-space: nowrap; }
   .tab:hover, .layout-picker button:hover, .button:hover { background: var(--raised); color: var(--text); }
-  .tab[aria-selected="true"], .layout-picker button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
+  .tab[aria-selected="true"], .layout-picker button[aria-pressed="true"] { background: var(--brand); color: var(--ink); }
+  .layout-picker button[aria-pressed="true"] kbd { color: inherit; }
   .tab[aria-selected="true"]::before { content: "["; }
   .tab[aria-selected="true"]::after { content: "]"; }
   .switch-hint { margin-left: auto; color: var(--muted); }
-  .switch-hint[data-armed="true"] { color: var(--accent); }
-  kbd { color: var(--sky); font-weight: bold; }
+  .switch-hint[data-armed="true"] { color: var(--attention); }
+  kbd { color: var(--brand); font-weight: bold; }
   .button { text-align: left; color: var(--text); }
-  .button.primary { color: var(--accent); }
-  .button[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); }
+  .button.primary { color: var(--brand); }
   .workbar { border-bottom: 1px solid var(--line); min-height: 36px; }
   .workbar h1 { font-weight: bold; }
   .path { overflow-wrap: anywhere; }
-  .layout-picker { margin-left: auto; flex-wrap: wrap; }
+  .layout-picker { margin-left: auto; }
   .metrics { border-bottom: 1px solid var(--line); display: flex; gap: 4px 18px; flex-wrap: wrap; padding: 5px 10px; }
   .metric { display: flex; gap: .6ch; align-items: baseline; color: var(--muted); }
   .metric strong { color: var(--text); }
-  .metric:first-child strong { color: var(--accent); }
-  .grid { display: grid; grid-template-columns: minmax(170px, .58fr) minmax(0, 2fr) minmax(280px, 1.04fr); min-height: max(555px, calc(100svh - 190px)); }
+  .metric:first-child strong { color: var(--brand); }
+  .grid { display: grid; flex: 1; grid-template-columns: minmax(170px, .58fr) minmax(0, 2fr) minmax(280px, 1.04fr); min-height: 540px; }
   .panel { min-width: 0; }
   .grid > .panel + .panel { border-left: 1px solid var(--line); }
   .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--raised); }
@@ -71,46 +88,50 @@
   .files .panel-body { padding: 5px 6px; }
   .tree { list-style: none; padding: 0; }
   .tree .tree { padding-left: .8ch; border-left: 1px solid var(--line); margin-left: 1ch; }
-  .tree summary, .file { padding: 3px 5px; overflow-wrap: anywhere; width: 100%; text-align: left; }
-  .tree summary { color: var(--sky); }
+  .tree summary, .file { padding: 3px 5px; width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tree summary { color: var(--brand); }
   .file { background: transparent; border: 0; display: block; }
   .file::before { content: "·"; color: var(--muted); margin-right: 1ch; }
-  .file:hover, .file[aria-current="true"] { background: var(--accent-bg); color: var(--accent); }
+  .file:hover { background: var(--raised); }
+  .file[aria-current="true"] { background: var(--brand); color: var(--ink); }
+  .file[aria-current="true"]::before { color: inherit; }
   .section + .section { margin-top: 11px; }
-  .section .kicker, .column .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--sky); }
+  .section .kicker, .column .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
   .section .kicker::after, .column .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
-  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1ch; text-align: left; padding: 4px 5px 4px 2.6ch; position: relative; border: 0; border-bottom: 1px solid #282f32; background: transparent; }
+  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1ch; text-align: left; padding: 4px 5px 4px 2.6ch; position: relative; border: 0; border-bottom: 1px solid var(--line); background: transparent; }
   .task:last-child { border-bottom-color: transparent; }
   .task:hover { background: var(--raised); }
-  .task[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
+  .task[aria-pressed="true"] { background: var(--brand); color: var(--ink); }
+  .task[aria-pressed="true"] :is(.task-meta, .state) { color: inherit; }
   .task[aria-pressed="true"]::before { content: "›"; position: absolute; left: .8ch; top: 4px; }
   .task-heading, .task-meta { display: block; overflow-wrap: anywhere; }
   .task-heading { font-weight: bold; }
   .task-meta { color: var(--muted); font-size: .88rem; }
   .state { display: inline-flex; align-items: baseline; gap: .6ch; color: var(--muted); font-size: .88rem; }
-  .state.review, .state.saved { color: var(--accent); }
-  .state.active { color: var(--sky); }
-  .state.warn { color: var(--amber); }
+  .state.review, .state.active { color: var(--brand); }
+  .state.saved { color: var(--text); }
+  .state.saved > span { color: var(--success); }
+  .state.warn { color: var(--attention); }
   .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: -7px -10px; }
   .column { min-width: 0; padding: 7px 8px; }
   .column + .column { border-left: 1px solid var(--line); }
   .column .task { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .empty { color: var(--muted); padding: 3px 0; }
   .slot { display: grid; grid-template-columns: 6ch minmax(0, 1fr); align-items: start; gap: 1ch; }
-  .slot time { padding-top: 4px; color: var(--amber); }
-  .inspector h3 { color: var(--accent); font-weight: bold; overflow-wrap: anywhere; }
+  .slot time { padding-top: 4px; color: var(--attention); }
+  .inspector h3 { color: var(--brand); font-weight: bold; overflow-wrap: anywhere; }
   .inspector p + p, .inspector h3 + p { margin-top: 4px; }
   .facts { margin-block: 9px; }
   .fact { display: grid; grid-template-columns: 9ch minmax(0, 1fr); gap: 1ch; align-items: baseline; }
   .fact dt { color: var(--muted); }
   .fact dd { overflow-wrap: anywhere; }
-  .file-link { border: 0; background: transparent; color: var(--sky); text-align: left; padding: 0; overflow-wrap: anywhere; }
-  .file-link:hover { color: var(--accent); }
+  .file-link { border: 0; background: transparent; color: var(--brand); text-align: left; padding: 0; overflow-wrap: anywhere; }
+  .file-link:hover { color: var(--text); }
   .phases { border-top: 1px solid var(--line); padding-top: 7px; }
   .phases ol { color: var(--muted); list-style: none; padding: 0; margin-block: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px; }
   .phase { padding: 2px; display: flex; gap: 4px; align-items: baseline; }
   .phase.complete { color: var(--text); }
-  .phase[aria-current="step"] { color: var(--accent); background: var(--accent-bg); }
+  .phase[aria-current="step"] { color: var(--ink); background: var(--brand); }
   .evidence { margin-block: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
   .actions { display: flex; gap: 4px; flex-wrap: wrap; }
   .file-preview { margin-block: 8px; padding: 6px; background: var(--bg); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -119,46 +140,35 @@
   .editor-lines li > span { padding-right: 2ch; text-align: right; color: var(--muted); user-select: none; }
   .editor-lines code { white-space: pre-wrap; overflow-wrap: anywhere; }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
-  #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker, #dashboard-keys),
-  #proveo:not([data-mode="editor"]) #editor-keys { display: none; }
+  #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker),
+  #terminal-shell:not([data-mode="editor"]) #editor-keys,
+  #terminal-shell[data-mode="editor"] #dashboard-keys,
+  #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #workspace-note),
+  #terminal-shell[data-tab="proveo"] #sbx-source { display: none; }
+  #terminal-shell[data-tab="proveo"]:not([data-mode="editor"]) .implementation-prefix { display: none; }
   .sbx-preview { margin: 0; }
   .sbx-preview img { display: block; width: 100%; height: auto; }
-  .sbx-preview figcaption { text-align: right; padding: 4px 10px; border-top: 1px solid var(--line); background: var(--raised); }
   .footer { background: var(--raised); border-top: 1px solid var(--line); min-height: 36px; }
-  .keybar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; }
-  .footer-note { margin-left: auto; }
-  .toast { color: var(--accent); }
+  .keybar { display: flex; align-items: center; gap: 4px 9px; }
+  .footer .button, .keybar, #sbx-source { flex: none; }
+  .footer-note, .toast { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+  .toast { color: var(--brand); }
   .toast:empty { display: none; }
-  dialog { color: var(--text); background: var(--surface); padding: 0; border: 1px solid var(--sky); width: min(640px, calc(100% - 24px)); }
-  dialog::backdrop { background: #070a0bbb; }
+  .toast:not(:empty) + #workspace-note { display: none; }
+  dialog { color: var(--text); background: var(--surface); padding: 0; border: 1px solid var(--brand); width: min(760px, calc(100% - 24px)); }
+  dialog::backdrop { background: rgb(6 40 49 / 75%); }
   dialog .panel-body { padding: 10px; }
   dialog .panel-body > * + *, dialog li + li { margin-top: 8px; }
   .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .launch-fields label { display: grid; gap: 4px; min-width: 0; color: var(--muted); }
   .launch-fields select { color: var(--text); background: var(--raised); width: 100%; border: 1px solid var(--line); border-radius: 0; padding: 4px; }
-  @media (max-width: 1100px) {
-    .grid { grid-template-columns: minmax(135px, .54fr) minmax(0, 1.65fr) minmax(242px, 1fr); }
-    .board { grid-template-columns: 1fr; }
-    .column + .column { border-top: 1px solid var(--line); border-left: 0; }
-  }
-  @media (max-width: 760px) {
-    .layout-picker { margin-left: 0; }
-    .grid { grid-template-columns: minmax(130px, .45fr) minmax(0, 1fr); min-height: 0; }
-    .inspector { grid-column: 2; border-top: 1px solid var(--line); }
-    .files { grid-row: span 2; }
-    #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(112px, .42fr) minmax(0, 1fr); min-height: 400px; }
-    #proveo[data-mode="editor"] .inspector { border-top: 0; }
-  }
-  @media (max-width: 500px) {
-    .bar, .workbar, .footer { gap: 3px 8px; }
-    .switch-hint { margin-left: 0; }
-    .grid { display: flex; flex-direction: column; }
-    .grid > .panel + .panel { border-left: 0; }
-    .files { order: 3; border-top: 1px solid var(--line); }
-    #proveo[data-mode="editor"] .grid { display: grid; }
-    #proveo[data-mode="editor"] .files { order: 0; grid-row: auto; border-top: 0; border-right: 1px solid var(--line); }
-    .footer-note { margin-left: 0; }
-  }
+  .port-plan h3 { color: var(--brand); font-weight: bold; }
+  .port-plan p, .port-plan dl { margin-block: 5px 12px; }
+  .port-plan dl { display: grid; grid-template-columns: minmax(10ch, 1fr) minmax(0, 2.4fr); gap: 7px 12px; }
+  .port-plan dt { overflow-wrap: anywhere; }
+  .port-plan dd { color: var(--muted); }
+  .exit-state { width: min(100%, var(--window-width)); margin: 0 auto; padding: 8px 10px; }
+  .exit-state p { margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -174,7 +184,7 @@
   </div>
 </header>
 
-<main>
+<main class="terminal-content" tabindex="0" aria-label="Terminal content">
   <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
     <div class="workbar">
       <h1 id="view-title">Morning review</h1>
@@ -207,30 +217,38 @@
         <div class="panel-body" id="detail"></div>
       </aside>
     </div>
-    <footer class="footer">
-      <div class="keybar" id="dashboard-keys">
-        <span class="subtext"><kbd>↑↓</kbd> tasks</span>
-        <button type="button" class="button" id="fresh-key"><kbd>e</kbd> Fresh</button>
-        <button type="button" class="button" id="new-instance"><kbd>n</kbd> New instance</button>
-        <button type="button" class="button" id="proposal-button"><kbd>?</kbd> Proposal</button>
-      </div>
-      <div class="keybar" id="editor-keys">
-        <button type="button" class="button" id="editor-back"><kbd>Esc</kbd> Return to Proveo</button>
-        <span class="subtext">Read-only file preview</span>
-      </div>
-      <span class="toast" id="toast" role="status"></span>
-      <span class="subtext footer-note">Sample workspace · night window 22:00–06:00 local</span>
-    </footer>
   </section>
 
   <section id="sbx" role="tabpanel" aria-labelledby="tab-sbx" hidden>
     <figure class="sbx-preview">
       <img src="sbx-dashboard.png" width="1480" height="882" alt="Docker Sandboxes terminal dashboard showing sandbox status, resource usage, and allowed and blocked network requests.">
-      <figcaption class="subtext"><a href="https://docs.docker.com/ai/sandboxes/get-started/#whats-next">Docker’s sbx dashboard screenshot ↗</a></figcaption>
     </figure>
   </section>
 </main>
+<footer class="footer">
+  <button type="button" class="button" id="quit-key"><kbd>Ctrl+C</kbd> quit</button>
+  <div class="keybar" id="dashboard-keys">
+    <span class="subtext"><kbd>↑↓</kbd> move</span>
+    <button type="button" class="button" id="evidence-key"><kbd>Enter</kbd> evidence</button>
+    <button type="button" class="button" id="fresh-key"><kbd>e</kbd> Fresh</button>
+    <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
+    <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
+  </div>
+  <div class="keybar" id="editor-keys">
+    <button type="button" class="button" id="editor-back"><kbd>Esc</kbd> return to Proveo</button>
+    <span class="subtext">Read-only file preview</span>
+  </div>
+  <button type="button" class="button" id="implementation-key"><kbd class="implementation-prefix">Ctrl+G</kbd> <kbd>i</kbd> implementation</button>
+  <span class="toast" id="toast" role="status"></span>
+  <span class="subtext footer-note" id="workspace-note">Sample workspace · 22:00–06:00 local</span>
+  <a class="subtext footer-note" id="sbx-source" href="https://docs.docker.com/ai/sandboxes/get-started/#whats-next">Docker’s sbx dashboard screenshot ↗</a>
+</footer>
 </div>
+
+<section class="exit-state" id="exit-state" aria-label="Preview exit" hidden>
+  <p role="status">Dashboard exited · status 130</p>
+  <button type="button" class="button" id="restart-key"><kbd>Enter</kbd> restart preview</button>
+</section>
 
 <dialog id="dialog" aria-labelledby="dialog-title">
   <header class="panel-head">
@@ -239,6 +257,31 @@
   </header>
   <div class="panel-body" id="dialog-body"></div>
 </dialog>
+
+<template id="implementation-details">
+  <article class="port-plan">
+    <h3>One model, three views</h3>
+    <p class="subtext">Port the Review queue, Task board, and Schedule as three views of one workspace model. Feed all three from the same task, result, and schedule records. Keep pane geometry across view switches and scroll task rows inside the frame.</p>
+    <h3>Go libraries</h3>
+    <dl>
+      <dt><a href="https://pkg.go.dev/charm.land/bubbletea/v2">Bubble Tea v2</a></dt>
+      <dd>Own the terminal, handle key and resize events, and keep the selected tab and view in one model. Use the version already in Proveo.</dd>
+      <dt><a href="https://pkg.go.dev/charm.land/lipgloss/v2">Lip Gloss v2</a></dt>
+      <dd>Compose the frame and panes with the existing terminal-cell drawing and semantic colors in <code>internal/ui</code>. <a href="https://github.com/proveo-ca/identity">Proveo identity ↗</a></dd>
+      <dt><a href="https://pkg.go.dev/charm.land/bubbles/v2/help">Bubbles v2 key and help</a></dt>
+      <dd>Draw the bottom key bar from the active bindings. Follow the sbx pattern with key first, action second, and commands that match the focused view.</dd>
+      <dt><a href="https://pkg.go.dev/github.com/creack/pty">creack/pty</a> + <a href="https://pkg.go.dev/golang.org/x/term">x/term</a></dt>
+      <dd>Reuse the existing Unix PTY and terminal primitives to run stock sbx at the content-pane size. Bubble Tea owns the outer terminal.</dd>
+      <dt><a href="https://pkg.go.dev/github.com/charmbracelet/x/vt">Charm x/vt</a></dt>
+      <dd>Candidate for the child screen buffer. Emulate sbx’s cursor, colors, alternate screen, and terminal replies inside the pane so the tab strip stays visible.</dd>
+      <dt><a href="https://github.com/sinelaw/fresh">Fresh</a></dt>
+      <dd>Launch the editor with <code>fresh .</code> through Bubble Tea’s terminal handoff. Restore the selected workspace view when the editor exits.</dd>
+    </dl>
+    <h3>Interrupt and exit</h3>
+    <p class="subtext">Proveo intercepts <kbd>Ctrl+C</kbd> before forwarding input to the visible child. It closes the dashboard-owned sbx client, restores the original terminal, and exits with status 130. Scheduled runs and existing sandboxes continue independently.</p>
+    <p class="subtext">If sbx exits on its own, return to the Proveo view and show its status. The sbx pane never launches a shell as a fallback. The HTML preview demonstrates dashboard exit and offers a restart.</p>
+  </article>
+</template>
 
 <script>
   "use strict"
@@ -479,6 +522,7 @@
         filesByPath.set(path, entry)
         const file = button(name, () => selectFile(entry), "file")
         file.dataset.path = path
+        file.title = path
         item.append(file)
       }
       list.append(item)
@@ -499,6 +543,7 @@
     ui.editing = open
     if (open) ui.editorFile = ui.file ?? ui.editorFile ?? filesByPath.get("README.md")
     $("proveo").dataset.mode = open ? "editor" : "dashboard"
+    $("terminal-shell").dataset.mode = $("proveo").dataset.mode
     $("view-title").textContent = open ? "$ fresh ." : views[ui.view][0]
     renderInspector()
     if (open) $("detail-heading").focus()
@@ -605,7 +650,7 @@
     renderWork()
     renderInspector()
     $("detail-heading").focus()
-    notify(task.id + " queued for 22:30 in the prototype.")
+    notify(task.id + " queued · 22:30")
   }
 
   function renderInspector() {
@@ -671,6 +716,19 @@
     $("dialog").showModal()
   }
 
+  function showImplementation() {
+    if ($("dialog").open) $("dialog").close()
+    showDialog("Porting the dashboard to Proveo", $("implementation-details").content.cloneNode(true))
+  }
+
+  function quitDashboard() {
+    if ($("dialog").open) $("dialog").close()
+    setTabPrefix(false)
+    $("terminal-shell").hidden = true
+    $("exit-state").hidden = false
+    $("restart-key").focus()
+  }
+
   function notify(message) {
     clearTimeout(toastTimer)
     $("toast").textContent = message
@@ -696,6 +754,8 @@
   }
 
   const tabs = [...document.querySelectorAll('[role="tab"]')]
+  const viewport = document.querySelector(".terminal-content")
+  const tabScroll = { proveo: [0, 0], sbx: [0, 0] }
   let tabPrefix = false
   let tabPrefixTimer
 
@@ -705,7 +765,7 @@
     const hint = $("switch-hint")
     hint.dataset.armed = String(armed)
     if (armed) {
-      hint.replaceChildren(node("kbd", "", "Tab"), " switch · ", node("kbd", "", "p"), " proveo · ", node("kbd", "", "s"), " sbx")
+      hint.replaceChildren(node("kbd", "", "Tab"), " switch · ", node("kbd", "", "p"), " proveo · ", node("kbd", "", "s"), " sbx · ", node("kbd", "", "i"), " implementation")
       tabPrefixTimer = setTimeout(() => setTabPrefix(false), 2200)
     } else {
       hint.replaceChildren(
@@ -717,13 +777,17 @@
 
   function showTab(chosen, focus = false) {
     if ($("dialog").open) $("dialog").close()
-    $("terminal-shell").dataset.tab = chosen.getAttribute("aria-controls")
+    const previous = $("terminal-shell").dataset.tab
+    const next = chosen.getAttribute("aria-controls")
+    if (previous !== next) tabScroll[previous] = [viewport.scrollLeft, viewport.scrollTop]
+    $("terminal-shell").dataset.tab = next
     for (const tab of tabs) {
       const selected = tab === chosen
       tab.setAttribute("aria-selected", String(selected))
       tab.tabIndex = selected ? 0 : -1
       $(tab.getAttribute("aria-controls")).hidden = !selected
     }
+    if (previous !== next) viewport.scrollTo(...tabScroll[next])
     setTabPrefix(false)
     if (focus) chosen.focus()
   }
@@ -757,18 +821,30 @@
   }
 
   document.addEventListener("keydown", event => {
-    if (event.defaultPrevented) return
+    if (event.defaultPrevented || $("terminal-shell").hidden) return
+    if (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "c") {
+      event.preventDefault()
+      quitDashboard()
+      return
+    }
     if (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "g") {
       event.preventDefault()
       setTabPrefix(!tabPrefix)
       return
     }
     if (tabPrefix) {
+      if (event.key === "i") {
+        event.preventDefault()
+        setTabPrefix(false)
+        showImplementation()
+        return
+      }
       const active = tabs.find(tab => tab.getAttribute("aria-selected") === "true")
       const next = {p: tabs[0], s: tabs[1], Tab: tabs.find(tab => tab !== active)}[event.key]
       if (next) {
         event.preventDefault()
-        showTab(next, true)
+        showTab(next)
+        viewport.focus({preventScroll: true})
         return
       }
       setTabPrefix(false)
@@ -781,10 +857,13 @@
       return
     }
     if (ui.editing) return
-    const control = {"1": "[data-view=queue]", "2": "[data-view=board]", "3": "[data-view=schedule]", e: "#fresh-key", n: "#new-instance", "?": "#proposal-button"}[event.key]
+    const control = {"1": "[data-view=queue]", "2": "[data-view=board]", "3": "[data-view=schedule]", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
     if (control) {
       event.preventDefault()
       document.querySelector(control).click()
+    } else if (event.key === "Enter" && (event.target.closest?.(".task") || !event.target.closest?.("button, a, summary"))) {
+      event.preventDefault()
+      showEvidence(ui.task)
     } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree")) {
       event.preventDefault()
       moveTask(event.key === "ArrowDown" ? 1 : -1)
@@ -805,6 +884,10 @@
   $("fresh-key").addEventListener("click", () => setEditor(true))
   $("editor-back").addEventListener("click", () => setEditor(false))
   $("new-instance").addEventListener("click", showNewInstance)
+  $("evidence-key").addEventListener("click", () => showEvidence(ui.task))
+  $("implementation-key").addEventListener("click", showImplementation)
+  $("quit-key").addEventListener("click", quitDashboard)
+  $("restart-key").addEventListener("click", () => location.reload())
 
   $("detail-heading").tabIndex = -1
   $("filetree").append(tree(fileTree))

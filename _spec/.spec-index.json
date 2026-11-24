@@ -177,6 +177,10 @@
       "spec": "_spec/_experiments/dashboard/workspace-instances.puml",
       "covers": [
         "cmd/proveo/main.go",
+        "go.mod",
+        "internal/ui/ui.go",
+        "internal/choiceui/screen.go",
+        "internal/ptyproxy/ptyproxy.go",
         "internal/run/run.go",
         "internal/sbx/run.go",
         "internal/backend/sandbox/sandbox.go",
