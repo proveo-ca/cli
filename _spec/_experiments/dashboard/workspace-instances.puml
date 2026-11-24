@@ -120,8 +120,8 @@
 ' v2 composes the panes using the existing internal/ui identity roles.
 ' Bubbles v2 key and help draw the bottom key bar from the active bindings.
 ' Follow the sbx footer pattern with a bright key and a muted action.
-' Show Enter Attach in the dashboard footer and Enter Open file for
-' file rows.
+' Show ↵ Attach in the dashboard footer and ↵ Open file for file rows.
+' Use cyan for the shortcut and muted text for the action.
 ' Mark selection with a cyan cursor and a subtle tint. Keep status colors
 ' visible. Put the HTML preview's layout picker, task detail options,
 ' and implementation guide below the terminal frame. Separate task groups
@@ -176,8 +176,15 @@
 ' refs/proveo/<run-id>/<branch>. Keep the last carried revision visible
 ' during a live run, with its age. Report when no snapshot has arrived.
 ' Retain referenced Git objects for as long as their reviews are visible.
-' Enter on a live scheduled task uses proveo attach <job> with the job
-' key, and detaching leaves the agent running. Report when no job is live.
+' Enter on a live scheduled task opens a confirmation using the post-exit
+' dialog style. Offer Cancel as the default and Attach to invoke
+' proveo attach <job>. Report when no job is live.
+' Return to the same dashboard view when the child client detaches.
+' Preserve selection, focus, and scroll. The HTML demo models direct
+' attach and detaches with Ctrl+B then d. The agent keeps running.
+' An existing tmux client uses its prefix then L to switch back after
+' proveo attach switches its session. Nested read-only attach and zellij
+' use the sequences documented in proveo attach --help.
 ' Enter on a file opens the editor pane across the center and right.
 ' Keep the tree visible. Read changed files from the recorded tip and
 ' deleted files from the base. Toggle between the file and its patch.

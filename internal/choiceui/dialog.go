@@ -283,7 +283,7 @@ func (d dialog) keyParts() []hintPart {
 	if plainGlyphs(d.glyphs) {
 		move = "left/right"
 	}
-	parts := []hintPart{{move, "choose", 0}, {"enter", "press", 0}, {"esc", strings.ToLower(d.buttons[d.safe].Label), 0}}
+	parts := []hintPart{{move, "choose", 0}, {enterMark(d.glyphs), "press", 0}, {"esc", strings.ToLower(d.buttons[d.safe].Label), 0}}
 	switch {
 	case d.stops:
 		parts = append(parts, hintPart{"ctrl+c", "stop", 0})

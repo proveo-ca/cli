@@ -129,7 +129,7 @@
   .state.review, .state.active { color: var(--brand); }
   .state.warn { color: var(--attention); }
   .task-side { display: grid; justify-items: end; }
-  .attach-hint { display: none; color: var(--brand); font-size: .88rem; }
+  .attach-hint { display: none; color: var(--muted); font-size: .88rem; }
   .task:is(:hover, :focus-visible) .attach-hint { display: block; }
   .graph-row + .graph-row { margin-top: 10px; }
   .graph-chain { display: flex; gap: .6ch; align-items: center; flex-wrap: wrap; }
@@ -203,10 +203,13 @@
   #proveo[data-mode="dashboard"][data-details="split"] .grid > .inspector { border-left: 1px solid var(--line); }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
   #proveo[data-mode="editor"] :is(.task-panel, .capacity-bar),
-  #terminal-shell:is([hidden], [data-mode="editor"], [data-tab="sbx"]) + .layout-picker,
+  #proveo[data-mode="attached"] :is(.grid, .capacity-bar),
+  #terminal-shell:is([hidden], [data-mode="editor"], [data-mode="attached"], [data-tab="sbx"]) + .layout-picker,
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
-  #terminal-shell[data-mode="editor"] #dashboard-keys,
-  #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #workspace-note),
+  #terminal-shell:not([data-mode="attached"]) #attach-keys,
+  #terminal-shell:is([data-mode="editor"], [data-mode="attached"]) #dashboard-keys,
+  #terminal-shell[data-mode="attached"][data-tab="proveo"] #quit-key,
+  #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #attach-keys, #workspace-note),
   #terminal-shell[data-tab="proveo"] #sbx-source { display: none; }
   .sbx-preview { margin: 0; }
   .sbx-preview img { display: block; width: 100%; height: auto; }
@@ -223,6 +226,14 @@
   dialog::backdrop { background: color-mix(in srgb, var(--bg) 75%, transparent); }
   dialog .panel-body { padding: 10px; }
   dialog .panel-body > * + *, dialog li + li { margin-top: 8px; }
+  dialog:has(.confirm-footer) { width: min(62ch, calc(100% - 24px)); border-color: #8a8a8a; }
+  dialog:has(.confirm-footer) > .panel-head form { display: none; }
+  .confirm-footer { border-top: 1px solid #8a8a8a; margin-inline: -10px; padding: 8px 10px 0; }
+  .confirm-footer .button { background: #0e3a48; }
+  .confirm-footer .button:focus { background: var(--brand); color: var(--ink); font-weight: bold; }
+  .confirm-footer .subtext { margin-top: 6px; }
+  .confirm-enter { visibility: hidden; }
+  .confirm-footer .button:focus .confirm-enter { visibility: visible; }
   dialog:has(.detail-options) { width: min(44ch, calc(100% - 24px)); }
   .detail-options { display: grid; gap: 4px; justify-items: start; }
   .detail-options [aria-pressed="true"] { background: var(--focus); }
@@ -255,6 +266,10 @@
 
 <main class="terminal-content" tabindex="0" aria-label="Terminal content">
   <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
+    <section class="panel-body" id="attach-preview" aria-labelledby="attached-task" tabindex="-1" hidden>
+      <h1 id="attached-task"></h1>
+      <p class="subtext" id="attached-command"></p>
+    </section>
     <h1 class="workbar" id="view-title" hidden></h1>
     <div class="capacity-bar">
       <button type="button" class="button" id="capacity-key"><kbd>c</kbd> Host capacity</button>
@@ -314,16 +329,19 @@
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
     <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="true" hidden><kbd>t</kbd> <span>Hide details</span></button>
-    <button type="button" class="button" id="enter-key"><kbd>Enter</kbd> <span>Attach</span></button>
+    <button type="button" class="button" id="enter-key" aria-keyshortcuts="Enter"><kbd>↵</kbd> <span>Attach</span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
   </div>
   <div class="keybar" id="editor-keys">
     <button type="button" class="button" id="editor-back"><kbd>Esc</kbd> return to Proveo</button>
-    <span class="subtext"><kbd>Enter</kbd> open file</span>
+    <span class="subtext"><kbd>↵</kbd> Open file</span>
     <button type="button" class="button" id="patch-key" hidden>Diff</button>
     <span class="subtext">Read-only file preview</span>
+  </div>
+  <div class="keybar" id="attach-keys">
+    <button type="button" class="button" id="detach-key"><kbd>Ctrl+B</kbd> <kbd>d</kbd> detach</button>
   </div>
   <span class="toast" id="toast" role="status"></span>
   <span class="subtext footer-note" id="workspace-note">Sample workspace</span>
@@ -341,7 +359,7 @@
 
 <section class="exit-state" id="exit-state" aria-label="Preview exit" hidden>
   <p role="status">Dashboard exited · status 130</p>
-  <button type="button" class="button" id="restart-key"><kbd>Enter</kbd> restart preview</button>
+  <button type="button" class="button" id="restart-key"><kbd>↵</kbd> Restart preview</button>
 </section>
 
 <dialog id="dialog" aria-labelledby="dialog-title">
@@ -356,7 +374,7 @@
   <article class="port-plan">
     <h3>One model, three views</h3>
     <p class="subtext">Feed all three views from the same task, result, and schedule records. Place Changes and Task details in the left column by default. Press <kbd>t</kbd> to toggle the task details. Use <kbd>4</kbd> to choose the details position. The lower-right split scrolls the task view and details independently.</p>
-    <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use the Diff button to switch between the file and its diff.</p>
+    <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Press <kbd>↵</kbd> to confirm attaching to a running task or to preview a file. Use the Diff button to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
     <p class="subtext">A task starts when its prerequisites and CPU, RAM, and disk reservations fit. Use <kbd>c</kbd> to change the sample host. Quint models the transition rules and checks invariants outside the Go runtime. <a href="resource_queue.qnt">Quint model ↗</a></p>
@@ -558,6 +576,8 @@
   const $ = (id) => document.getElementById(id)
   const ui = { view: "queue", task: tasks[0], sidebar: "changes", editing: false, editorFile: null, editorSidebar: "files", patch: false }
   const inspector = $("task-inspector")
+  let attachedFrom = null
+  let attachPrefixUntil = 0
   const detailPositions = [
     ["left", "Left column"],
     ["accordion", "Accordion"],
@@ -818,7 +838,8 @@
     const side = node("span", "task-side")
     side.append(status(task.state === "queued" ? queueReason(task) || label : task.queueError || label, icon, kind))
     if (attach) {
-      const hint = node("span", "attach-hint", "↵ Attach")
+      const hint = node("span", "attach-hint")
+      hint.append(node("kbd", "", "↵"), " Attach")
       hint.setAttribute("aria-hidden", "true")
       side.append(hint)
     }
@@ -1157,6 +1178,11 @@
     pane.querySelector(".file")?.click()
   }
 
+  function setTerminalMode(mode) {
+    $("proveo").dataset.mode = mode
+    $("terminal-shell").dataset.mode = mode
+  }
+
   function setEditor(file = null, source = "files") {
     const open = Boolean(file)
     const wasSandbox = sidebarMode() === "sandbox"
@@ -1165,8 +1191,7 @@
     ui.patch = false
     ui.editorFile = file
     ui.editorSidebar = source
-    $("proveo").dataset.mode = open ? "editor" : "dashboard"
-    $("terminal-shell").dataset.mode = $("proveo").dataset.mode
+    setTerminalMode(open ? "editor" : "dashboard")
     $("view-title").hidden = !open
     if (sandbox) $("view-title").textContent = "Fresh · " + taskSandboxName(ui.task)
     else if (open) $("view-title").textContent = file.status ? "Review file" : "File preview"
@@ -1223,12 +1248,64 @@
   }
 
   function showAttach(task) {
-    selectTask(task)
     if (!canAttach(task)) {
       notify(task.id + " · no live run")
       return
     }
-    showCommand("Attach · " + task.id, "Open the running job’s terminal. Detach with Ctrl+B, then d.", "proveo attach " + task.job)
+    const cancel = button("Cancel", () => $("dialog").close())
+    const origin = {
+      focus: document.activeElement,
+      scroll: [viewport.scrollLeft, viewport.scrollTop],
+    }
+    const attach = button("Attach", () => startAttachment(task, origin))
+    const actions = node("div", "actions")
+    for (const action of [cancel, attach]) {
+      const enter = node("span", "confirm-enter", " ↵")
+      enter.setAttribute("aria-hidden", "true")
+      action.append(enter)
+      actions.append(action)
+    }
+    actions.addEventListener("keydown", event => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+      event.preventDefault()
+      const next = document.activeElement === cancel ? attach : cancel
+      next.focus()
+    })
+    const keys = node("p", "subtext")
+    keys.append(node("kbd", "", "←→"), " choose · ", node("kbd", "", "↵"), " press · ", node("kbd", "", "Esc"), " cancel")
+    const footer = node("div", "confirm-footer")
+    footer.append(actions, keys)
+    const detach = node("p", "subtext")
+    detach.append("Detach with ", node("kbd", "", "Ctrl+B"), " then ", node("kbd", "", "d"), ".")
+    showDialog("Attach · " + task.id, node("p", "", task.title), node("p", "subtext", "proveo attach " + task.job), detach, footer)
+    cancel.focus()
+  }
+
+  function startAttachment(task, origin) {
+    $("dialog").close()
+    if (!canAttach(task)) {
+      notify(task.id + " · no live run")
+      return
+    }
+    attachedFrom = origin
+    setTerminalMode("attached")
+    $("attached-task").textContent = "Attached preview · " + task.id
+    $("attached-command").textContent = "proveo attach " + task.job
+    $("attach-preview").hidden = false
+    viewport.scrollTo(0, 0)
+    $("attach-preview").focus({preventScroll: true})
+  }
+
+  function detachAttachment() {
+    if (!attachedFrom) return
+    const {focus, scroll} = attachedFrom
+    attachedFrom = null
+    attachPrefixUntil = 0
+    $("attach-preview").hidden = true
+    setTerminalMode("dashboard")
+    viewport.scrollTo(...scroll)
+    const origin = focus?.isConnected && focus !== document.body ? focus : viewport
+    origin.focus({preventScroll: true})
   }
 
   function agentTarget(name) {
@@ -1303,7 +1380,7 @@
       }
     })
     const actions = node("div", "actions")
-    actions.append(button("Back", () => instanceSetup(draft)), button("Ctrl+Enter · Review launch", review, "button primary"))
+    actions.append(button("Back", () => instanceSetup(draft)), button("Ctrl+↵ · Review launch", review, "button primary"))
     $("dialog-body").replaceChildren(node("p", "kicker", "2 of 3 · Prompt"), field, actions)
     input.focus()
   }
@@ -1395,7 +1472,7 @@
   }
 
   function pollSandboxUsage() {
-    if ($("proveo").hidden || inspector.hidden || ui.editing || ui.task.state !== "active") return
+    if ($("proveo").hidden || attachedFrom || inspector.hidden || ui.editing || ui.task.state !== "active") return
     const series = sandboxUsageSamples[ui.task.instance]
     if (!series) return
     series.index = (series.index + 1) % series.readings.length
@@ -1497,14 +1574,6 @@
     }
   }
 
-  function showCommand(title, explanation, command) {
-    showDialog(title,
-      node("p", "subtext", explanation),
-      node("pre", "file-preview", command),
-      button("Copy command", () => copyCommand(command)),
-    )
-  }
-
   const tabs = [...document.querySelectorAll('[role="tab"]')]
   const viewport = document.querySelector(".terminal-content")
   const tabScroll = { proveo: [0, 0], sbx: [0, 0] }
@@ -1576,6 +1645,7 @@
   document.addEventListener("keydown", event => {
     if (event.defaultPrevented || $("terminal-shell").hidden) return
     if (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "c") {
+      if (attachedFrom && !$("proveo").hidden) return
       event.preventDefault()
       quitDashboard()
       return
@@ -1596,7 +1666,21 @@
       }
       setTabPrefix(false)
     }
-    if ($("proveo").hidden || $("dialog").open || event.ctrlKey || event.metaKey || event.altKey) return
+    if ($("proveo").hidden || $("dialog").open) return
+    if (attachedFrom) {
+      if (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "b") {
+        event.preventDefault()
+        attachPrefixUntil = performance.now() + 2200
+      } else {
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "d" && performance.now() < attachPrefixUntil) {
+          event.preventDefault()
+          detachAttachment()
+        }
+        attachPrefixUntil = 0
+      }
+      return
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return
     if (event.target.closest?.("input, textarea, select, [contenteditable]")) return
     const link = event.target.closest?.("button, a, summary")
     const row = actionRow()
@@ -1654,6 +1738,7 @@
   $("capacity-key").addEventListener("click", showCapacity)
   $("enter-key").addEventListener("click", () => enterAction())
   $("enter-key").addEventListener("blur", () => queueMicrotask(updateEnterHint))
+  $("detach-key").addEventListener("click", detachAttachment)
   $("patch-key").addEventListener("click", togglePatch)
   $("files-key").addEventListener("click", () => setSidebar("files"))
   $("changes-key").addEventListener("click", () => setSidebar("changes"))

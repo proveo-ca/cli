@@ -29,7 +29,7 @@ func SandboxUpgradeCopy(name string, changed []string, live, clone, history bool
 		lines = append(lines, "Its OpenCode history moves to the new sandbox.")
 	}
 	if live {
-		lines = append(lines, "It is running. Yes replaces that live session.")
+		lines = append(lines, "It is running. Replace and Continue stops that live session.")
 	}
 	return lines
 }
@@ -45,8 +45,8 @@ func AskSandboxUpgrade(name string, changed []string, live, clone, history bool)
 
 func sandboxUpgradeDialog(name string, changed []string, live, clone, history bool) dialog {
 	return newDialog(sandboxUpgradeTitle, SandboxUpgradeCopy(name, changed, live, clone, history), 0,
-		dialogButton{Label: "Keep", Key: 'k'},
-		dialogButton{Label: "Replace", Key: 'r', Danger: true},
+		dialogButton{Label: "Keep and Cancel", Key: 'k'},
+		dialogButton{Label: "Replace and Continue", Key: 'r', Danger: true},
 	)
 }
 

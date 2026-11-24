@@ -399,7 +399,7 @@ func TestADialogDrawsOverTheDimmedCard(t *testing.T) {
 	if !strings.Contains(view, "what does your terminal draw here?") || !strings.Contains(view, "Prepare sbx on this") {
 		t.Errorf("the dialog does not sit over the card:\n%s", view)
 	}
-	if !strings.Contains(view, "←→ choose · enter press · esc something else · ctrl+c stop") {
+	if !strings.Contains(view, "←→ choose · ↵ press · esc something else · ctrl+c stop") {
 		t.Errorf("the dialog's key line does not say ctrl+c stops the run:\n%s", view)
 	}
 	d.press(typed("x")...)

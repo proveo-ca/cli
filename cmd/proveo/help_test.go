@@ -136,7 +136,7 @@ func TestAttachHelpNamesTheTaskItTakes(t *testing.T) {
 	var b strings.Builder
 	renderHelp(&b, scheduleAttachCmd())
 	for _, want := range []string{"attach [task]", "key under jobs:", "proveo-sched-<task>",
-		"proveo schedule attach sample-task -r", "With no task", "Ctrl-b d"} {
+		"proveo schedule attach sample-task -r", "With no task", "Ctrl-b d", "Ctrl-b L"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("attach help missing %q:\n%s", want, b.String())
 		}

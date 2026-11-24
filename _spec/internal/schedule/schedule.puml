@@ -338,6 +338,8 @@ skinparam noteTextAlignment left
 ' "[detached …]" itself.
 '   plain terminal       tmux attach [-r] -t proveo-sched-<job>
 '   inside tmux          switch-client -t …  (tmux refuses a nested attach)
+'                        Use the prefix then L to return to the previous
+'                        session. The defaults are Ctrl-b L.
 '   inside tmux + -r     TMUX= tmux attach -r -t …  — a nested client, detach
 '                        with prefix prefix d. `switch-client -r` TOGGLES
 '                        read-only on the operator's own client, which then

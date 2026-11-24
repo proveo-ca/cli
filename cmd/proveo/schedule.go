@@ -413,8 +413,9 @@ running: ` + "`proveo schedule`" + ` shows its last run.
 
 Without -r your keys reach the agent. Detach with the tmux prefix, then d
 (Ctrl-b d); the run keeps going. Inside tmux, attach switches your client
-to the task's session; with -r it nests a client (Ctrl-b Ctrl-b d). In
-zellij, press Ctrl-b twice, then d.`,
+to the task's session. Use the prefix, then uppercase L (Ctrl-b L), to
+return to the previous session. With -r it nests a client (Ctrl-b
+Ctrl-b d). In zellij, press Ctrl-b twice, then d.`,
 		Example: `proveo attach
 proveo attach sample-task
 proveo schedule attach sample-task -r`,
