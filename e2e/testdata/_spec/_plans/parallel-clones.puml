@@ -1,0 +1,7 @@
+@startuml ParallelClones
+title PLANNED — Verify parallel clone isolation
+start
+:Launch tasks from one workspace;
+:Check each checkout keeps its own changes;
+stop
+@enduml

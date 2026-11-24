@@ -36,6 +36,10 @@ skinparam noteTextAlignment left
 ' the selected task's focus after simulated detach. This is the HTML sample.
 ' The real proveo attach command accepted keys and returned with the same
 ' agent pane still alive after Ctrl+B d or Ctrl+B L, respectively.
+' TestDashboardRunsThreeTasksFromOneDirectoryOnTmux submits three prompts
+' from e2e/testdata/_spec/_plans/ into one workdir. It checks
+' overlapping pane lifetimes, prompt routing and separate run outcomes.
+' The fixture workers share the host directory.
 ' [Unverified] Live sbx parity, disk settings and telemetry on the daemon
 ' host. The Linux verification environment has no sbx binary or daemon.
 '
@@ -73,7 +77,7 @@ skinparam noteTextAlignment left
 ' recorded commit. Bundle a base missing from the remote. Leave host edits
 ' in place unless an explicit snapshot includes them. Isolate non-Git paths
 ' with a private copy. Guard writable direct mode against overlapping paths.
-' Gate: add e2e/dashboard_instances_sbx_test.go. Launch two instances of the
+' Gate: add e2e/dashboard_instances_sbx_test.go. Launch three instances of the
 ' same target concurrently from one real pwd. Assert distinct VM IDs, guest
 ' files, branch refs and outputs. Confirm host edits stay unchanged. Attempt
 ' a duplicate owner, simulate stale and unknown inventory in adapter tests,

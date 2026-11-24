@@ -1,0 +1,7 @@
+@startuml InstanceHistory
+title PLANNED — Verify host session history
+start
+:Save the exiting instance's session;
+:Resume using the original native session ID;
+stop
+@enduml

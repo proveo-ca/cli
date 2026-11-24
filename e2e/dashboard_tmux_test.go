@@ -13,6 +13,7 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/schedule"
 	"github.com/proveo-ca/proveo/internal/testx"
+	"gopkg.in/yaml.v3"
 )
 
 func TestDashboardDialogStyleBaselineOnTmux(t *testing.T) {
@@ -118,6 +119,116 @@ exec cat`
 				t.Errorf("proveo attach %s after return: agent pane PID = %q (%v), want %q", job, got, err, agentPID)
 			}
 		})
+	}
+}
+
+func TestDashboardRunsThreeTasksFromOneDirectoryOnTmux(t *testing.T) {
+	requireTmux(t)
+	t.Parallel()
+	binary := buildProveo(t)
+	home, work := t.TempDir(), t.TempDir()
+	plans := filepath.Join("_spec", "_plans")
+	if err := os.CopyFS(filepath.Join(work, plans), os.DirFS(filepath.Join("testdata", plans))); err != nil {
+		t.Fatal(err)
+	}
+
+	const worker = `printf 'TASK_READY\n'
+IFS= read -r prompt || exit 1
+printf '%s\n' "$prompt" > "$1.received" || exit 1
+printf 'TASK_ACCEPTED %s\n' "$1"
+IFS= read -r release && [ "$release" = "finish-$1" ]`
+	names := []string{"disk-admission", "instance-history", "parallel-clones"}
+	cfg := schedule.Config{Jobs: make(map[string]schedule.Job, len(names))}
+	for _, name := range names {
+		cfg.Jobs[name] = schedule.Job{
+			Workdir:    work,
+			PromptFile: filepath.Join(work, plans, name+".puml"),
+			Mode:       "plain",
+			Budget:     "2m",
+			Timezone:   "UTC",
+			Ready:      "TASK_READY",
+			Accepted:   "TASK_ACCEPTED " + name,
+			Command:    []string{"sh", "-c", worker, "sh", name},
+		}
+	}
+	config, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(schedule.Path(home), config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tmux := dashboardTmux(t)
+	launcher := schedule.NewTmux("launcher", tmux)
+	const submit = `proveo=$1
+shift
+for task do "$proveo" schedule run "$task" || exit 1; done
+printf 'TASKS_SUBMITTED\n'
+exec cat`
+	args := []string{"env", "TMUX=", "PROVEO_HOME=" + home, "sh", "-c", submit, "sh", binary}
+	if err := launcher.Start(120, 40, append(args, names...)...); err != nil {
+		t.Fatal(err)
+	}
+	waitDashboardPane(t, launcher, "TASKS_SUBMITTED")
+
+	sessions := make([]*schedule.TmuxSession, 0, len(names))
+	for _, name := range names {
+		sess := schedule.NewTmux(schedule.SessionName(name), tmux)
+		sessions = append(sessions, sess)
+		job := cfg.Jobs[name]
+		waitDashboardPane(t, sess, job.Accepted)
+
+		want, err := os.ReadFile(job.PromptFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		received, err := os.ReadFile(filepath.Join(work, name+".received"))
+		if err != nil {
+			t.Fatalf("task %s did not write in the shared directory: %v", name, err)
+		}
+		got, _, _ := strings.Cut(string(received), " Clock: ")
+		if expected := job.Instruction(string(want)); got != expected {
+			t.Errorf("task %s received %q, want %q", name, got, expected)
+		}
+	}
+	for _, sess := range sessions {
+		if !sess.Alive() {
+			t.Errorf("session %s exited before all three tasks were active", sess.Name)
+		}
+	}
+	for i, sess := range sessions {
+		if err := sess.SendText("finish-" + names[i]); err != nil {
+			t.Fatal(err)
+		}
+		if err := sess.Enter(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results := make(map[string]*schedule.Result, len(names))
+	waitUntil(25*time.Second, func() bool {
+		for _, name := range names {
+			if results[name] == nil {
+				results[name] = schedule.LastResult(home, name)
+			}
+		}
+		for _, name := range names {
+			if results[name] == nil {
+				return false
+			}
+		}
+		return true
+	})
+	for _, name := range names {
+		result := results[name]
+		if result == nil {
+			t.Errorf("task %s did not finish", name)
+			continue
+		}
+		if result.Job != name || result.Outcome != "ended" {
+			t.Errorf("task %s result = %q/%q (%s), want %q/ended", name, result.Job, result.Outcome, result.Detail, name)
+		}
 	}
 }
 
