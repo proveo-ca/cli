@@ -151,7 +151,7 @@
 ' The current sbx inventory reader provides identity and status. Validate a
 ' structured telemetry source on the sbx host before wiring native polling.
 ' The HTML preview polls sample telemetry.
-' Show ticket, agent, branch, instance, sandbox, and PR above the prompt.
+' Show ticket, branch, instance, sandbox, and PR above the prompt.
 ' Clip the task-source description to three rows with an ellipsis. Show
 ' the latest observed branch push as a local date and time in smaller,
 ' muted text. Keep run controls outside the scrolling task details.

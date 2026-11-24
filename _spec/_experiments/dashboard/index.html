@@ -1368,7 +1368,6 @@
     const facts = node("dl", "facts")
     facts.append(
       fact("Ticket", task.id),
-      fact("Agent", task.agent),
       fact("Branch", clippedLabel(task.branch, task.branch.lastIndexOf("/"))),
       fact("Instance", clippedLabel(task.instance, task.instance.lastIndexOf("-"))),
     )
