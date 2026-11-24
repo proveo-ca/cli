@@ -15,6 +15,7 @@
     --text: #eaf5f3;
     --muted: #8fb9c2;
     --brand: #00bac6;
+    --focus: color-mix(in srgb, var(--brand) 9%, var(--surface));
     --attention: #cbdb2a;
     --success: #009532;
     --ink: #181818;
@@ -61,8 +62,8 @@
   .tabs, .layout-picker { display: flex; align-items: center; gap: 4px; }
   .tab, .layout-picker button, .button { border: 0; background: transparent; padding: 2px 6px; color: var(--muted); white-space: nowrap; }
   .tab:hover, .layout-picker button:hover, .button:hover { background: var(--raised); color: var(--text); }
-  .tab[aria-selected="true"], .layout-picker button[aria-pressed="true"] { background: var(--brand); color: var(--ink); }
-  .layout-picker button[aria-pressed="true"] kbd { color: inherit; }
+  .tab[aria-selected="true"] { background: var(--brand); color: var(--ink); }
+  .layout-picker button[aria-pressed="true"] { background: var(--focus); color: var(--text); box-shadow: inset 0 -1px var(--brand); }
   .tab[aria-selected="true"]::before { content: "["; }
   .tab[aria-selected="true"]::after { content: "]"; }
   .switch-hint { margin-left: auto; color: var(--muted); }
@@ -87,34 +88,35 @@
   .grid > .panel + .panel { border-left: 1px solid var(--line); }
   .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--raised); }
   .panel-head h2 { min-width: 0; font-weight: bold; overflow-wrap: anywhere; }
-  .panel-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  #work-toolbar:not(:has(button, #work-legend:not(:empty))) { display: none; }
+  #task-controls { margin-left: auto; }
   .panel-body { padding: 7px 10px; }
   .files .panel-body { padding: 5px 6px; }
   .tree { list-style: none; padding: 0; }
   .tree .tree { padding-left: .8ch; border-left: 1px solid var(--line); margin-left: 1ch; }
   .tree summary, .file { padding: 3px 5px; width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tree summary { color: var(--brand); }
-  .file { background: transparent; border: 0; display: block; }
-  .file::before { content: "·"; color: var(--muted); margin-right: 1ch; }
+  .file { background: transparent; border: 0; display: flex; align-items: baseline; }
+  .file::before { content: "·"; color: var(--muted); flex: none; margin-right: 1ch; }
   .change-file::before { content: none; }
-  .change-status { display: inline-block; width: 2ch; color: var(--brand); }
+  .change-status { flex: 0 0 2ch; color: var(--brand); }
   .change-status[data-status="A"] { color: var(--success); }
   .change-status[data-status="D"] { color: var(--attention); }
-  .file[aria-current="true"] .change-status { color: inherit; }
   .change-source { padding: 3px 5px 6px; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
   .file:hover { background: var(--raised); }
-  .file[aria-current="true"] { background: var(--brand); color: var(--ink); }
-  .file[aria-current="true"]::before { color: inherit; }
+  .file[aria-current="true"] { background: var(--focus); box-shadow: inset 1px 0 var(--brand); }
+  .clipped-label { display: flex; min-width: 0; max-width: 100%; white-space: nowrap; }
+  .clipped-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .clipped-suffix { flex: none; max-width: 90%; overflow: hidden; }
   .section + .section { margin-top: 11px; }
   .section .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
   .section .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
-  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1ch; text-align: left; padding: 4px 5px 4px 2.6ch; position: relative; border: 0; border-bottom: 1px solid var(--line); background: transparent; }
-  .task:last-child { border-bottom-color: transparent; }
+  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1ch; text-align: left; padding: 2px 5px 2px 2.6ch; line-height: 1.35; position: relative; border: 0; background: transparent; }
   .task:hover { background: var(--raised); }
-  .task[aria-pressed="true"] { background: var(--brand); color: var(--ink); }
-  .task[aria-pressed="true"] :is(.task-meta, .state) { color: inherit; }
-  .task[aria-pressed="true"]::before { content: "›"; position: absolute; left: .8ch; top: 4px; }
-  .task-heading, .task-meta { display: block; overflow-wrap: anywhere; }
+  :is(.task, .graph-node)[aria-pressed="true"] { background: var(--focus); }
+  :is(.task, .graph-node)[aria-pressed="true"]::before { content: "›"; position: absolute; color: var(--brand); }
+  .task[aria-pressed="true"]::before { left: .8ch; top: 2px; }
+  .task-heading, .task-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .task-heading { font-weight: bold; }
   .task-meta { color: var(--muted); font-size: .88rem; }
   .state { display: inline-flex; align-items: baseline; gap: .6ch; color: var(--muted); font-size: .88rem; }
@@ -123,17 +125,17 @@
   .task-side { display: grid; justify-items: end; }
   .attach-hint { display: none; color: var(--brand); font-size: .88rem; }
   .task:is(:hover, :focus-visible) .attach-hint { display: block; }
-  .task[aria-pressed="true"] .attach-hint { color: inherit; }
   .graph-row + .graph-row { margin-top: 10px; }
   .graph-chain { display: flex; gap: .6ch; align-items: center; flex-wrap: wrap; }
-  .graph-node { border: 1px solid var(--line); }
-  .graph-node[aria-pressed="true"] { color: var(--ink); background: var(--brand); }
+  .graph-node { position: relative; padding-inline-start: 1.8ch; }
+  .graph-node[aria-pressed="true"]::before { left: .5ch; }
   .graph-fold { color: var(--brand); }
   .graph-fold[aria-expanded="true"] { background: var(--raised); }
   .graph-blockers { margin-top: 3px; color: var(--attention); }
   .empty { color: var(--muted); padding: 3px 0; }
-  .slot { display: grid; grid-template-columns: 6ch minmax(0, 1fr); align-items: start; gap: 1ch; }
-  .slot time { padding-top: 4px; color: var(--attention); }
+  .slot { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: start; gap: 1ch; }
+  .slot time { padding-top: 2px; color: var(--muted); }
+  .slot .task { grid-column: 2; }
   .inspector h3 { color: var(--brand); font-weight: bold; overflow-wrap: anywhere; }
   .inspector p + p, .inspector h3 + p { margin-top: 4px; }
   .sandbox-usage { padding: 7px 10px; border-bottom: 1px solid var(--line); }
@@ -144,7 +146,7 @@
   .fact { display: grid; grid-template-columns: 9ch minmax(0, 1fr); gap: 1ch; align-items: baseline; }
   .fact dt { color: var(--muted); }
   .fact dd { overflow-wrap: anywhere; }
-  .file-link { border: 0; background: transparent; color: var(--brand); text-align: left; padding: 0; overflow-wrap: anywhere; }
+  .file-link { border: 0; background: transparent; color: var(--brand); text-align: left; padding: 0; max-width: 100%; }
   .file-link:hover { color: var(--text); }
   .task-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
   .last-push { font-size: .88rem; }
@@ -152,7 +154,8 @@
   .file-preview { margin-block: 8px; padding: 6px; background: var(--bg); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
   .initial-prompt { margin-block: 8px; }
   .initial-prompt summary { color: var(--brand); }
-  .initial-prompt pre { max-block-size: 9em; overflow: auto; }
+  .prompt-overflow { float: right; }
+  .initial-prompt pre { max-block-size: 6lh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   .editor-lines { list-style: none; margin-top: 7px; padding: 5px 0; color: var(--text); }
   .editor-lines li { display: grid; grid-template-columns: 5ch minmax(0, 1fr); }
   .editor-lines li > span { padding-right: 2ch; text-align: right; color: var(--muted); user-select: none; }
@@ -170,6 +173,8 @@
   .sbx-preview { margin: 0; }
   .sbx-preview img { display: block; width: 100%; height: auto; }
   .footer { background: var(--raised); border-top: 1px solid var(--line); min-height: 36px; }
+  .footer .button { color: var(--muted); }
+  .footer .button:hover { color: var(--text); }
   .keybar { display: flex; align-items: center; gap: 4px 9px; }
   .footer .button, .keybar, #sbx-source { flex: none; }
   .footer-note, .toast { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
@@ -210,7 +215,7 @@
 <main class="terminal-content" tabindex="0" aria-label="Terminal content">
   <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
     <div class="workbar">
-      <h1 id="view-title">Morning review</h1>
+      <h1 id="view-title" hidden></h1>
       <p class="path" id="workspace-path">~/projects/proveo</p>
       <div class="layout-picker" role="group" aria-label="Proveo layout proposals">
         <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
@@ -237,13 +242,10 @@
           </div>
         </div>
       </aside>
-      <section class="panel task-panel" aria-labelledby="work-heading">
-        <header class="panel-head">
-          <h2 id="work-heading">Review queue</h2>
-          <div class="panel-tools">
-            <div class="actions" id="task-controls"></div>
-            <span class="kicker" id="work-clock">Mon · 08:42 local</span>
-          </div>
+      <section class="panel task-panel" id="task-panel" aria-label="Review queue">
+        <header class="panel-head" id="work-toolbar">
+          <span class="kicker" id="work-legend"></span>
+          <div class="actions" id="task-controls"></div>
         </header>
         <div class="panel-body" id="work"></div>
       </section>
@@ -275,7 +277,7 @@
   <button type="button" class="button" id="quit-key"><kbd>Ctrl+C</kbd> quit</button>
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
-    <button type="button" class="button" id="enter-key"><kbd>Enter</kbd> <span>Attach</span></button>
+    <button type="button" class="button" id="enter-key" hidden><kbd>Enter</kbd> <span></span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
@@ -342,9 +344,9 @@
 
   const phases = ["Spec", "Verification", "Spec revision", "Live verification", "Upgrade", "PR", "Review", "Merge"]
   const views = {
-    queue: ["Review queue", "Queue", "Resource admission"],
-    graph: ["Task graph", "Dependencies", "prerequisite → dependent"],
-    schedule: ["Schedule", "Run history", "Local time"],
+    queue: ["Review queue", ""],
+    graph: ["Task graph", "prerequisite → dependent"],
+    schedule: ["Schedule", "Local time"],
   }
   const taskStates = {
     review: ["Ready for review", "◇"],
@@ -513,6 +515,7 @@
   const filesByPath = new Map()
   const rowActions = new WeakMap()
   let hoveredRow = null
+  let footerRow = null
   let toastTimer
 
   function node(tag, className, content) {
@@ -520,6 +523,15 @@
     if (className) element.className = className
     if (content) element.textContent = content
     return element
+  }
+
+  function clippedLabel(text, suffixAt) {
+    const label = node("span", "clipped-label")
+    label.title = text
+    const split = suffixAt > 0 ? suffixAt : text.length
+    label.append(node("span", "clipped-prefix", text.slice(0, split)))
+    if (split < text.length) label.append(node("span", "clipped-suffix", text.slice(split)))
+    return label
   }
 
   function button(text, action, className = "button clear") {
@@ -692,11 +704,22 @@
 
   function actionRow() {
     if (hoveredRow?.getClientRects().length) return hoveredRow
-    return document.activeElement?.closest("[data-enter-action]")
+    const active = document.activeElement
+    const focused = active === $("enter-key") ? footerRow : active?.closest("[data-enter-action]")
+    return focused?.getClientRects().length ? focused : null
+  }
+
+  function canAttach(task) {
+    return task.state === "active" && Boolean(task.job)
   }
 
   function updateEnterHint() {
-    $("enter-key").lastElementChild.textContent = actionRow()?.dataset.enterAction ?? "Attach"
+    const row = actionRow()
+    const fallback = !ui.editing && canAttach(ui.task) ? "Attach" : ""
+    const hint = row?.dataset.enterAction ?? fallback
+    footerRow = hint ? row : null
+    $("enter-key").hidden = !hint
+    $("enter-key").lastElementChild.textContent = hint
   }
 
   function bindEnter(row, label, activate) {
@@ -714,6 +737,9 @@
       hoveredRow = null
       updateEnterHint()
     })
+    row.addEventListener("blur", event => {
+      if (event.relatedTarget !== $("enter-key")) queueMicrotask(updateEnterHint)
+    })
   }
 
   function enterAction(row = actionRow()) {
@@ -726,7 +752,8 @@
     const card = button("", () => selectTask(task), "task")
     card.dataset.task = task.id
     card.setAttribute("aria-pressed", String(task === ui.task))
-    bindEnter(card, "Attach", () => showAttach(task))
+    const attach = canAttach(task)
+    bindEnter(card, attach ? "Attach" : "", () => showAttach(task))
     const name = node("span")
     name.append(
       node("span", "task-heading", task.title),
@@ -735,7 +762,7 @@
     const [label, icon, kind = task.state] = taskStates[task.state]
     const side = node("span", "task-side")
     side.append(status(task.state === "queued" ? queueReason(task) || label : task.queueError || label, icon, kind))
-    if (task.job && task.state === "active") {
+    if (attach) {
       const hint = node("span", "attach-hint", "↵ Attach")
       hint.setAttribute("aria-hidden", "true")
       side.append(hint)
@@ -756,7 +783,8 @@
       const card = taskCard(task)
       if (withTime) {
         const slot = node("div", "slot")
-        slot.append(node("time", "", task.time), card)
+        if (task.time && task.state !== "queued") slot.append(node("time", "", task.time))
+        slot.append(card)
         list.append(slot)
       } else {
         list.append(card)
@@ -767,9 +795,9 @@
   }
 
   function renderWork() {
-    const [title, heading, clock] = views[ui.view]
-    if (!ui.editing) $("view-title").textContent = title
-    $("work-heading").textContent = heading
+    const [title, legend] = views[ui.view]
+    $("task-panel").setAttribute("aria-label", title)
+    $("work-legend").textContent = legend
     for (const control of document.querySelectorAll("[data-view]")) {
       control.setAttribute("aria-pressed", String(control.dataset.view === ui.view))
     }
@@ -787,24 +815,26 @@
         const history = tasks.filter(task => task.time && queueGroups[0][1].includes(task.state))
         work.replaceChildren(
           taskGroup("Recent outcomes", history.sort((a, b) => b.time.localeCompare(a.time)), "section", true),
-          taskGroup("In progress", tasks.filter(({state}) => workingStates.includes(state))),
-          taskGroup("Waiting for dispatch", tasks.filter(({state}) => state === "queued")),
+          taskGroup("In progress", tasks.filter(({state}) => workingStates.includes(state)), "section", true),
+          taskGroup("Waiting for dispatch", tasks.filter(({state}) => state === "queued"), "section", true),
         )
         break
       }
     }
-    $("work-clock").textContent = clock
+    updateEnterHint()
   }
 
   function graphNode(id) {
     const task = taskFor(id)
     if (!task) return node("span", "graph-blockers", id + " · missing")
-    const item = button(taskStates[task.state][1] + " " + id, () => selectTask(task), "button graph-node")
+    const [label, icon, kind = task.state] = taskStates[task.state]
+    const item = button("", () => selectTask(task), "button graph-node")
+    item.append(status("", icon, kind), " " + id)
     item.dataset.task = id
-    item.title = task.title + " · " + taskStates[task.state][0]
+    item.title = task.title + " · " + label
     item.setAttribute("aria-label", id + " " + item.title)
     item.setAttribute("aria-pressed", String(task === ui.task))
-    bindEnter(item, "Attach", () => showAttach(task))
+    bindEnter(item, canAttach(task) ? "Attach" : "", () => showAttach(task))
     return item
   }
 
@@ -838,6 +868,7 @@
       const fold = button(hidden.length + " tasks", () => {
         details.hidden = !details.hidden
         fold.setAttribute("aria-expanded", String(!details.hidden))
+        updateEnterHint()
       }, "button graph-fold")
       fold.setAttribute("aria-expanded", "false")
       append(graphNode(path[0]))
@@ -899,12 +930,13 @@
         const entry = changes ? value : {name, path, value}
         if (source === "files") filesByPath.set(path, entry)
         const open = () => setEditor(entry, source)
-        const file = button(changes ? "" : name, open, changes ? "file change-file" : "file")
+        const file = button("", open, changes ? "file change-file" : "file")
         if (changes) {
           const mark = node("span", "change-status", entry.status)
           mark.dataset.status = entry.status
-          file.append(mark, document.createTextNode(name))
+          file.append(mark)
         }
+        file.append(clippedLabel(name, name.lastIndexOf(".")))
         file.dataset.path = path
         file.title = path
         bindEnter(file, "Open file", open)
@@ -960,6 +992,7 @@
     $("sandbox-tree").hidden = !sandbox
     $("sidebar-swap").hidden = sandbox
     $("sidebar-swap").replaceChildren(node("kbd", "", changes ? "f" : "d"), changes ? " Files" : " Changes")
+    updateEnterHint()
   }
 
   function setSidebar(mode) {
@@ -992,10 +1025,9 @@
     ui.editorSidebar = source
     $("proveo").dataset.mode = open ? "editor" : "dashboard"
     $("terminal-shell").dataset.mode = $("proveo").dataset.mode
-    let title = views[ui.view][0]
-    if (sandbox) title = "Fresh · " + taskSandboxName(ui.task)
-    else if (open) title = file.status ? "Review file" : "File preview"
-    $("view-title").textContent = title
+    $("view-title").hidden = !open
+    if (sandbox) $("view-title").textContent = "Fresh · " + taskSandboxName(ui.task)
+    else if (open) $("view-title").textContent = file.status ? "Review file" : "File preview"
     $("workspace-path").hidden = sandbox
     $("workspace-note").hidden = sandbox
     renderSidebar()
@@ -1050,7 +1082,7 @@
 
   function showAttach(task) {
     selectTask(task)
-    if (!task.job || task.state !== "active") {
+    if (!canAttach(task)) {
       notify(task.id + " · no live run")
       return
     }
@@ -1153,9 +1185,29 @@
   function promptDetails(prompt) {
     const details = node("details", "initial-prompt")
     details.open = true
-    details.append(node("summary", "", "Initial prompt"))
-    details.append(prompt ? node("pre", "file-preview", prompt) : node("p", "subtext", "No initial prompt recorded."))
+    const summary = node("summary", "", "Initial prompt")
+    details.append(summary)
+    if (prompt) {
+      const cue = node("span", "kicker prompt-overflow", "↕ scroll")
+      cue.hidden = true
+      summary.append(cue)
+      const frame = node("div", "file-preview")
+      frame.append(node("pre", "", prompt))
+      details.append(frame)
+      requestAnimationFrame(() => updatePromptOverflow(details))
+    } else {
+      details.append(node("p", "subtext", "No initial prompt recorded."))
+    }
     return details
+  }
+
+  function updatePromptOverflow(container) {
+    const cue = container.querySelector(".prompt-overflow")
+    if (!cue) return
+    const preview = cue.closest(".initial-prompt").querySelector("pre")
+    const scrollable = preview.clientHeight < preview.scrollHeight
+    cue.hidden = !scrollable
+    preview.tabIndex = scrollable ? 0 : -1
   }
 
   function queueRework(task) {
@@ -1210,6 +1262,7 @@
 
   function renderInspector() {
     renderSandboxUsage()
+    updateEnterHint()
     $("fresh-key").hidden = !selectedSandboxFiles()
     const detail = $("detail")
     const file = ui.editing ? ui.editorFile : null
@@ -1236,19 +1289,21 @@
     facts.append(
       fact("Ticket", task.id),
       fact("Agent", task.agent),
-      fact("Branch", task.branch),
-      fact("Instance", task.instance),
+      fact("Branch", clippedLabel(task.branch, task.branch.lastIndexOf("/"))),
+      fact("Instance", clippedLabel(task.instance, task.instance.lastIndexOf("-"))),
     )
     const sandbox = taskSandboxName(task)
-    if (sandbox) facts.append(fact("Sandbox", sandbox))
+    if (sandbox) facts.append(fact("Sandbox", clippedLabel(sandbox, sandbox.lastIndexOf("-"))))
     if (task.pr) facts.append(fact("PR", task.pr))
     const demand = taskDemand[task.id]
     if (demand) facts.append(fact("Requested", demand.cpu + " CPU · " + demand.ram + " GiB RAM · " + demand.disk + " GiB disk"))
     if (task.plan) {
-      facts.append(fact("Plan", button(task.plan, () => {
+      const plan = button("", () => {
         setEditor(filesByPath.get(task.plan))
         $("detail-heading").focus()
-      }, "file-link")))
+      }, "file-link")
+      plan.append(clippedLabel(task.plan, task.plan.lastIndexOf("/")))
+      facts.append(fact("Plan", plan))
     }
     const lastPush = node("p", "subtext last-push", "Last pushed: ")
     if (task.lastPushed) {
@@ -1432,7 +1487,7 @@
     if (control) {
       event.preventDefault()
       document.querySelector(control).click()
-    } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree")) {
+    } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree, .initial-prompt pre")) {
       event.preventDefault()
       moveTask(event.key === "ArrowDown" ? 1 : -1)
     }
@@ -1454,6 +1509,7 @@
   $("new-instance").addEventListener("click", showNewInstance)
   $("capacity-key").addEventListener("click", showCapacity)
   $("enter-key").addEventListener("click", () => enterAction())
+  $("enter-key").addEventListener("blur", () => queueMicrotask(updateEnterHint))
   $("patch-key").addEventListener("click", togglePatch)
   $("sidebar-swap").addEventListener("click", () => setSidebar(sidebarMode() === "changes" ? "files" : "changes"))
   $("implementation-key").addEventListener("click", showImplementation)
@@ -1468,6 +1524,11 @@
   renderCapacity()
   renderWork()
   renderInspector()
+  const promptResize = new ResizeObserver(entries => {
+    for (const {target} of entries) updatePromptOverflow(target)
+  })
+  promptResize.observe($("detail"))
+  promptResize.observe($("dialog-body"))
   const sandboxUsageTimer = setInterval(pollSandboxUsage, sandboxPollMs)
 </script>
 </body>
