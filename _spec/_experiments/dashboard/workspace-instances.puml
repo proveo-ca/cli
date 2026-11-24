@@ -180,6 +180,8 @@
 ' Enter on a file opens the editor pane across the center and right.
 ' Keep the tree visible. Read changed files from the recorded tip and
 ' deleted files from the base. Toggle between the file and its patch.
+' Mark deleted files in Changes with Proveo's red D and a struck-through
+' filename.
 ' Preserve filename extensions and identifier suffixes when clipping.
 ' Keep the full values available and show the opened file's full path.
 ' Use f for Files in the effective host pwd and g for carried Changes.

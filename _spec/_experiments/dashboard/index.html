@@ -18,6 +18,7 @@
     --focus: color-mix(in srgb, var(--brand) 9%, var(--surface));
     --attention: #cbdb2a;
     --success: #009532;
+    --error: #cb2000;
     --ink: #181818;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
     --inset: 12px;
@@ -103,7 +104,8 @@
   .change-file::before { content: none; }
   .change-status { flex: 0 0 2ch; color: var(--brand); }
   .change-status[data-status="A"] { color: var(--success); }
-  .change-status[data-status="D"] { color: var(--attention); }
+  .change-status[data-status="D"] { color: var(--error); }
+  .change-file:has(.change-status[data-status="D"]) .clipped-label > span { text-decoration: line-through; }
   .change-source { padding: 3px 5px 6px; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
   .file:hover { background: var(--raised); }
   .file[aria-current="true"] { background: var(--focus); box-shadow: inset 1px 0 var(--brand); }
@@ -511,6 +513,7 @@
   const changesByTask = {
     "PRV-284": [
       ["A", "internal/backend/sandbox/checkpoint.go", "", "package sandbox\n\n// Publish a checkpoint before removing the sandbox."],
+      ["D", "internal/backend/sandbox/session_by_pwd.go", "package sandbox\n\nfunc sessionKey(pwd string) string {\n\treturn pwd\n}", ""],
       ["M", "internal/run/run.go", "attempt := newAttempt(workspace)", "attempt := newAttempt(instance.ID)\nresult := checkpoint(ctx, attempt)"],
       ["M", "_spec/_experiments/dashboard/workspace-instances.puml", "' Store resume state at exit.", "' Store each instance's verified checkpoint at exit.\n' Reuse the last good checkpoint when export fails."],
     ],
