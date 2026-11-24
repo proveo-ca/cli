@@ -110,8 +110,8 @@
   .clipped-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .clipped-suffix { flex: none; max-width: 90%; overflow: hidden; }
   .section + .section { margin-top: 11px; }
-  .section .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
-  .section .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
+  .section > .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
+  .section > .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
   .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1ch; text-align: left; padding: 2px 5px 2px 2.6ch; line-height: 1.35; position: relative; border: 0; background: transparent; }
   .task:hover { background: var(--raised); }
   :is(.task, .graph-node)[aria-pressed="true"] { background: var(--focus); }
@@ -171,11 +171,31 @@
   }
   #proveo[data-layout="combined"][data-mode="dashboard"] .files { grid-area: files; }
   #proveo[data-layout="combined"][data-mode="dashboard"] .task-panel { grid-area: tasks; }
-  #proveo[data-layout="combined"][data-mode="dashboard"] .inspector {
+  #proveo[data-layout="combined"][data-mode="dashboard"] .grid > .inspector {
     grid-area: details;
     border-left: 0;
     border-top: 1px solid var(--line);
   }
+  #proveo[data-layout="combined"]:is([data-details="accordion"], [data-details="hidden"]) .grid {
+    grid-template-rows: 1fr;
+    grid-template-areas: "files tasks";
+  }
+  #proveo[data-details="accordion"] .inspector {
+    margin: 0 0 6px 2.6ch;
+    border-left: 1px solid var(--line);
+  }
+  #proveo[data-details="accordion"] #detail > h3 { display: none; }
+  #proveo[data-details="split"] { height: 100%; }
+  #proveo[data-layout="combined"][data-details="split"] .grid {
+    min-height: 0;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "files tasks" "files details";
+  }
+  #proveo[data-details="split"] :is(.files, .task-panel, .inspector) {
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+  #proveo[data-layout="combined"][data-details="split"] .grid > .inspector { border-left: 1px solid var(--line); }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
   #proveo[data-mode="editor"] :is(.task-panel, .layout-picker, .capacity-bar),
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
@@ -263,7 +283,7 @@
         </header>
         <div class="panel-body" id="work"></div>
       </section>
-      <aside class="panel inspector" aria-labelledby="detail-heading">
+      <aside class="panel inspector" id="task-inspector" aria-labelledby="detail-heading">
         <header class="panel-head"><h2 id="detail-heading">Task details</h2><span class="kicker" id="detail-context"></span></header>
         <section class="sandbox-usage" id="sandbox-usage" aria-labelledby="sandbox-usage-heading">
           <header class="sandbox-usage-head">
@@ -293,6 +313,8 @@
     <span class="subtext"><kbd>↑↓</kbd> move</span>
     <button type="button" class="button" id="enter-key" hidden><kbd>Enter</kbd> <span></span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
+    <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="true" hidden><kbd>t</kbd> details</button>
+    <button type="button" class="button" id="details-position" title="Change details position" hidden><kbd>v</kbd> position</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
   </div>
@@ -325,7 +347,7 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Feed all four layouts from the same task, result, and schedule records. Combined panes stacks Changes above Task details on the left and gives the review queue the remaining columns. Keep the terminal frame fixed across layout switches and scroll vertically to reach the full details.</p>
+    <p class="subtext">Feed all four layouts from the same task, result, and schedule records. In Combined panes, <kbd>t</kbd> toggles task details and <kbd>v</kbd> moves them between the left column, an accordion under the selected task, and a split below the queue. The split scrolls the queue and details independently inside the fixed terminal frame.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
@@ -526,6 +548,10 @@
 
   const $ = (id) => document.getElementById(id)
   const ui = { view: "queue", task: tasks[0], sidebar: "changes", editing: false, editorFile: null, editorSidebar: "files", patch: false }
+  const inspector = $("task-inspector")
+  const detailPositions = ["left", "accordion", "split"]
+  let detailPosition = "left"
+  let detailsOpen = true
   const filesByPath = new Map()
   const rowActions = new WeakMap()
   let hoveredRow = null
@@ -708,12 +734,14 @@
   }
 
   function selectTask(task) {
+    const changed = ui.task !== task
     ui.task = task
     for (const item of $("work").querySelectorAll("[data-task]")) {
       item.setAttribute("aria-pressed", String(item.dataset.task === task.id))
     }
     renderChanges()
     renderInspector()
+    if (changed) inspector.scrollTop = 0
   }
 
   function actionRow() {
@@ -837,7 +865,42 @@
         break
       }
     }
+    placeDetails()
     updateEnterHint()
+  }
+
+  function placeDetails() {
+    const combined = ui.view === "combined" && !ui.editing
+    const visible = !combined || detailsOpen
+    let position = combined ? detailPosition : "side"
+    const work = $("work")
+    const row = position === "accordion" ? work.querySelector('.task[aria-pressed="true"]') : null
+    if (position === "accordion" && !row) position = "split"
+    for (const previous of work.querySelectorAll(".task[aria-expanded]")) {
+      previous.removeAttribute("aria-expanded")
+      previous.removeAttribute("aria-controls")
+    }
+    if (row) {
+      row.setAttribute("aria-expanded", String(visible))
+      row.setAttribute("aria-controls", inspector.id)
+    }
+    const toggle = $("details-key")
+    toggle.hidden = !combined
+    toggle.setAttribute("aria-expanded", String(visible))
+    $("details-position").hidden = !combined
+    if (!visible && inspector.contains(document.activeElement)) toggle.focus({preventScroll: true})
+    inspector.hidden = !visible
+    const anchor = visible && row ? row : $("task-panel")
+    if (anchor.nextElementSibling !== inspector) anchor.after(inspector)
+    $("proveo").dataset.details = visible ? position : "hidden"
+    inspector.tabIndex = visible && position === "split" ? 0 : -1
+  }
+
+  function advanceDetailsPosition() {
+    const next = detailPositions.indexOf(detailPosition) + 1
+    detailPosition = detailPositions[next % detailPositions.length]
+    detailsOpen = true
+    placeDetails()
   }
 
   function graphNode(id) {
@@ -1269,7 +1332,7 @@
   }
 
   function pollSandboxUsage() {
-    if ($("proveo").hidden || ui.editing || ui.task.state !== "active") return
+    if ($("proveo").hidden || inspector.hidden || ui.editing || ui.task.state !== "active") return
     const series = sandboxUsageSamples[ui.task.instance]
     if (!series) return
     series.index = (series.index + 1) % series.readings.length
@@ -1277,6 +1340,7 @@
   }
 
   function renderInspector() {
+    placeDetails()
     renderSandboxUsage()
     updateEnterHint()
     $("fresh-key").hidden = !selectedSandboxFiles()
@@ -1499,11 +1563,13 @@
       if (event.key === "v") togglePatch()
       return
     }
-    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", "4": "[data-view=combined]", c: "#capacity-key", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
+    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", "4": "[data-view=combined]", c: "#capacity-key", e: "#fresh-key", t: "#details-key", v: "#details-position", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
     if (control) {
+      const button = document.querySelector(control)
+      if (button.hidden) return
       event.preventDefault()
-      document.querySelector(control).click()
-    } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree, .initial-prompt pre")) {
+      button.click()
+    } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree, .initial-prompt pre, [data-details=split] .inspector")) {
       event.preventDefault()
       moveTask(event.key === "ArrowDown" ? 1 : -1)
     }
@@ -1521,6 +1587,11 @@
     showDialog("Workspace instance proposal", points, link("Read the lifecycle spec ↗", "workspace-instances.puml"))
   })
   $("fresh-key").addEventListener("click", openSandboxFresh)
+  $("details-key").addEventListener("click", () => {
+    detailsOpen = !detailsOpen
+    placeDetails()
+  })
+  $("details-position").addEventListener("click", advanceDetailsPosition)
   $("editor-back").addEventListener("click", () => setEditor())
   $("new-instance").addEventListener("click", showNewInstance)
   $("capacity-key").addEventListener("click", showCapacity)
