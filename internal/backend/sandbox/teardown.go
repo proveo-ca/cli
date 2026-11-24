@@ -427,7 +427,14 @@ func (t *teardown) normalEnd(ctx context.Context) {
 	if t.forced {
 		ui.Logf("sbx rm --force %s — deleting the session", cfg.Name)
 	}
-	err := t.do(ctx, stepRemove, func() error { return removeSandbox(ctx, cfg.Name) })
+	err := t.do(ctx, stepRemove, func() error {
+		if t.in.Instance != nil {
+			if err := t.in.Instance.checkVM(); err != nil {
+				return err
+			}
+		}
+		return removeSandbox(ctx, cfg.Name)
+	})
 	switch {
 	case err == nil && stranded != nil:
 		Item{Warn: true, Text: cfg.Name + " — removed", Detail: []string{"what did not come home went with it"}}.print()

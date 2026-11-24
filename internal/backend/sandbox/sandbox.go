@@ -214,7 +214,7 @@ func TeardownClone(in Input, cfg sbx.RunConfig, out *Block) error {
 	if in.RepoRoot == "" {
 		return nil
 	}
-	if in.Clone && in.CloneKnown {
+	if in.Clone && in.CloneKnown && !in.Instance.Isolated() {
 		wd := agentWorkdir(in, cfg.Mounts)
 		shownDo(stepCloneEnv, func() {
 			writeBackCloneEnv(in, func() ([]byte, error) {
@@ -293,6 +293,9 @@ func PreserveClone(in Input, cfg sbx.RunConfig, out *Block) error {
 		return stranded
 	}
 	reportCloneRefs(in, cfg, committed, out)
+	if in.Instance.Isolated() {
+		return stranded
+	}
 	shownDo(stepCloneSpec, func() {
 		liftClonedSpec(in, wd, cloneSpanViaSbx(in.ctx(), cfg.Name, wd), func(sha string) {
 			if args := sbx.CloneRebaseArgs(cfg.Name, wd, sha); args != nil {
@@ -690,15 +693,22 @@ func branchFacts(names []string, prefix, root, committed string, leads map[strin
 // error when the output stays only in the sandbox.
 func liftClonedOutput(in Input, cfg sbx.RunConfig, lift func(ctx context.Context, args []string, into string) (int, string, error), out *Block) error {
 	rel, ok := nestedRel(in.RepoRoot, in.OutputDir)
-	wd := agentWorkdir(in, cfg.Mounts)
+	wd, into, dest := agentWorkdir(in, cfg.Mounts), in.RepoRoot, in.OutputDir
+	if in.Instance.Isolated() && ok {
+		wd, into = in.InstanceCloneRoot, in.Instance.exportDir(in.Sid)
+		dest = filepath.Join(into, filepath.FromSlash(rel))
+		if err := os.MkdirAll(into, 0o700); err != nil {
+			return err
+		}
+	}
 	if !ok || wd == "" {
 		return nil
 	}
-	code, said, err := lift(in.ctx(), sbx.CloneLiftArgs(cfg.Name, wd, rel), in.RepoRoot)
+	code, said, err := lift(in.ctx(), sbx.CloneLiftArgs(cfg.Name, wd, rel), into)
 	switch {
 	case err == nil:
-		out.Fact(ui.Fact{Role: ui.RoleStore, Key: "output", Value: ui.Tilde(in.OutputDir)})
-		ui.Logf("clone: deliverables lifted from the clone's %s/ into %s", rel, in.OutputDir)
+		out.Fact(ui.Fact{Role: ui.RoleStore, Key: "output", Value: ui.Tilde(dest)})
+		ui.Logf("clone: deliverables lifted from the clone's %s/ into %s", rel, dest)
 	case code == sbx.CloneLiftNothing:
 		out.Fact(ui.Fact{Role: ui.RoleStore, Key: "output", Value: "nothing under " + rel + "/"})
 	default:
@@ -912,6 +922,12 @@ const CloneMainVar = "PROVEO_CLONE_MAIN"
 // agentWorkdir is where the agent works: the linked worktree's own path in a
 // worktree clone, else the primary workspace.
 func agentWorkdir(in Input, mounts []sbx.Mount) string {
+	if in.Instance.Isolated() {
+		if in.InstanceCloneRoot != "" {
+			return filepath.Join(in.InstanceCloneRoot, filepath.FromSlash(in.ScopeRel))
+		}
+		return in.InstanceWork
+	}
 	if worktreeClone(in) {
 		return workspace.RealPath(in.RepoRoot)
 	}
@@ -1113,6 +1129,10 @@ func FirstHost(mounts []sbx.Mount) string {
 
 // Input is the resolved input to the sbx backend.
 type Input struct {
+	Instance                                        *Instance
+	InstanceWork, InstanceCloneRoot, InstanceBundle string
+	bindInstance                                    func() error
+
 	Stop                   context.Context // ends teardown's subprocesses when cancelled; nil never does
 	Target, Image, AuthVar string
 	MCPGateway             bool // the operator allowed sbx's MCP gateway hooks (PROVEO_SBX_MCP or the mcp row)
@@ -1408,6 +1428,9 @@ func Spec(in Input) (sbx.RunConfig, Workload, [][2]string) {
 	if in.Clone && in.CloneEnv != "" {
 		mounts = append(mounts, sbx.Mount{Host: filepath.Dir(in.CloneEnv)})
 	}
+	if in.Instance.Isolated() {
+		mounts = in.instanceMounts(mounts)
+	}
 
 	harness := Harness(in)
 	agent := sbx.AgentName(harness)
@@ -1451,6 +1474,9 @@ func Spec(in Input) (sbx.RunConfig, Workload, [][2]string) {
 		Env:     DeclineMCPGateway(in.MCPGateway, durableAgentHome(in.Target, Home(launchEnv(in, cmp.Or(builtin, agent), env, mounts), homeSourceMounts))),
 		HostEnv: src.BuildEnv(),
 		Command: command,
+	}
+	if in.Instance != nil {
+		cfg.Name = in.Instance.Name
 	}
 	report.Unbound = unboundLinks(in.Links, cfg.Mounts)
 	if opencodeTarget(in.Target) {
@@ -1645,6 +1671,13 @@ func Run(in Input) (runResultErr error) {
 	}()
 	cfg, w, secrets := Spec(in)
 	named := in.Browser && in.BrowserProfile != ""
+	if in.Instance != nil && in.Instance.Legacy && !in.Clone {
+		release, err := directWorkspaceLease(in, cfg)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 	if named {
 		release, err := profileLease(cfg.Name)
 		if err != nil {
@@ -1679,7 +1712,21 @@ func Run(in Input) (runResultErr error) {
 	}
 	var exists bool
 	var profileRow *sbx.Listed
-	if named {
+	var instanceRow *sbx.Listed
+	if in.Instance != nil {
+		var err error
+		instanceRow, err = inventoryInstance(cfg.Name)
+		if err != nil {
+			return err
+		}
+		if err := in.Instance.verify(instanceRow); err != nil {
+			return err
+		}
+		if err := idleInstance(instanceRow); err != nil {
+			return err
+		}
+		exists = instanceRow != nil
+	} else if named {
 		var err error
 		profileRow, err = namedProfileSandbox(cfg.Name, readReceipt(cfg.Name))
 		if err != nil {
@@ -1692,7 +1739,7 @@ func Run(in Input) (runResultErr error) {
 	running := sbx.Running
 	var listedClaude *sbx.Listed
 	if exists && Harness(in) == "claudecode" {
-		listedClaude = profileRow
+		listedClaude = cmp.Or(instanceRow, profileRow)
 		if listedClaude == nil {
 			listedClaude = listedSandbox(cfg.Name)
 		}
@@ -1704,6 +1751,16 @@ func Run(in Input) (runResultErr error) {
 		running = func(string) bool { return listedClaude.Running() }
 	}
 	changed := staleChanges(cfg.Name, receipt, exists)
+	if exists && in.Instance != nil {
+		if was := readReceipt(cfg.Name); was != nil {
+			if receipt.CPUs != was.CPUs || receipt.Memory != was.Memory {
+				changed = append(changed, "vm limits")
+			}
+			if was.Publish != nil && !slices.Equal(receipt.Publish, was.Publish) {
+				changed = append(changed, "published ports")
+			}
+		}
+	}
 	if named && len(changed) > 0 {
 		return fmt.Errorf("sandbox %s holds browser profile %q and its settings changed (%s). Run with its original settings, choose another profile, or use %s to delete it",
 			cfg.Name, in.BrowserProfile, strings.Join(changed, ", "), profileDeletion(cfg.Name))
@@ -1736,7 +1793,13 @@ func Run(in Input) (runResultErr error) {
 	}
 	launchCfg := reuseOrCreate(cfg, exists)
 	if launchCfg.KitDir != "" {
-		if err := writeReceipt(cfg.Name, receipt); err != nil && named {
+		if in.Instance != nil {
+			in.Instance.VMID, in.Instance.Attempt = "", in.Sid
+			if err := in.Instance.save(); err != nil {
+				return fmt.Errorf("record pending instance create: %w", err)
+			}
+			in.bindInstance = func() error { return in.Instance.bind(in.Sid, receipt) }
+		} else if err := writeReceipt(cfg.Name, receipt); err != nil && named {
 			return fmt.Errorf("record browser profile ownership: %w", err)
 		}
 	}
@@ -1780,6 +1843,7 @@ func Run(in Input) (runResultErr error) {
 		var history ui.Fact
 		var err error
 		if launchCfg, created, history, err = openEngine(in, cfg, secretFacts); err != nil {
+			keepHomeAccess = in.Instance != nil
 			secretsSaid = true
 			return err
 		}
@@ -1794,11 +1858,17 @@ func Run(in Input) (runResultErr error) {
 	case launchCfg.KitDir != "":
 		reportCreate(in, launchCfg, envValues, secretFacts, w.Report.Image)
 		if err := start.HandAs(stepCreate, "sbx create", func() error { return createSandbox(launchCfg) }); err != nil {
-			keepHomeAccess = named && sbx.Exists(cfg.Name)
+			keepHomeAccess = in.Instance != nil || (named && sbx.Exists(cfg.Name))
 			if left, ok := leftByCreate(cfg.Name); ok {
 				left.print()
 			}
 			return err
+		}
+		if in.bindInstance != nil {
+			keepHomeAccess = true
+			if err := in.bindInstance(); err != nil {
+				return fmt.Errorf("record sandbox ID for %s: %w", cfg.Name, err)
+			}
 		}
 		launchCfg = sbx.Reattach(launchCfg)
 	case created:
@@ -1820,6 +1890,12 @@ func Run(in Input) (runResultErr error) {
 				}
 			}
 		}()
+	}
+	if in.Instance != nil {
+		keepHomeAccess = true
+		if err := in.Instance.checkVM(); err != nil {
+			return err
+		}
 	}
 	viewport, err := startBrowserViewport(in.ctx(), in, cfg)
 	if err != nil {
@@ -1914,6 +1990,11 @@ func Run(in Input) (runResultErr error) {
 	end, said := agentEnd(in.Target, result, forceRemove.Load(), sbx.SaidError(status, tail.Lines()), tail.Lines())
 	if said {
 		end.print()
+	}
+	if in.Instance != nil {
+		if err := in.Instance.checkVM(); err != nil {
+			return errors.Join(runErr, fmt.Errorf("sandbox ownership before teardown: %w", err))
+		}
 	}
 	td := &teardown{
 		in: in, cfg: cfg, secrets: secrets,
@@ -2327,6 +2408,9 @@ func proxyOnlyVar(name string) bool {
 // SPEC: _spec/internal/sbx/startup-dispatch.puml
 func startupCommands(in Input, ownAgent bool) []sbx.KitCommand {
 	var cmds []sbx.KitCommand
+	if in.Instance.Isolated() && in.Clone {
+		cmds = append(cmds, in.instanceCheckout())
+	}
 	if worktreeClone(in) {
 		cmds = append(cmds, sbx.WorktreeDirCommand(agentWorkdir(in, nil)))
 	}
@@ -2538,7 +2622,9 @@ func launchEnv(in Input, agent string, env []string, mounts []sbx.Mount) []strin
 	if v := shares(in, binds); v != "" {
 		out = append(out, SharesVar+"="+v)
 	}
-	if worktreeClone(in) {
+	if in.InstanceCloneRoot != "" {
+		out = append(out, gitConfigEnv(in.InstanceCloneRoot, in.GitTransport)...)
+	} else if worktreeClone(in) {
 		out = append(out, gitConfigEnv(in.CloneSource.Main, in.GitTransport)...)
 	} else {
 		out = append(out, gitConfigEnv(in.RepoRoot, in.GitTransport)...)

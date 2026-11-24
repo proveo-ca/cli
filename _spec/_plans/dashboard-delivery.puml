@@ -44,6 +44,7 @@ skinparam noteTextAlignment left
 ' host. The Linux verification environment has no sbx binary or daemon.
 '
 ' D1  INSTANCE IDENTITY, PRIVATE WORK, SAFE MIGRATION
+' Runtime implemented. The live three-VM acceptance gate is pending.
 ' Touch cmd/proveo run, lifecycle verbs and clean, internal/run,
 ' internal/sbx inventory, internal/backend/sandbox receipts and teardown,
 ' internal/proveohome, schedule selectors, and the defs workspace contract.
@@ -77,7 +78,7 @@ skinparam noteTextAlignment left
 ' recorded commit. Bundle a base missing from the remote. Leave host edits
 ' in place unless an explicit snapshot includes them. Isolate non-Git paths
 ' with a private copy. Guard writable direct mode against overlapping paths.
-' Gate: add e2e/dashboard_instances_sbx_test.go. Launch three instances of the
+' Gate: e2e/dashboard_instances_sbx_test.go launches three instances of the
 ' same target concurrently from one real pwd. Assert distinct VM IDs, guest
 ' files, branch refs and outputs. Confirm host edits stay unchanged. Attempt
 ' a duplicate owner, simulate stale and unknown inventory in adapter tests,

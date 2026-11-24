@@ -82,7 +82,9 @@ func headedCtrlCAsksBeforeRemoving(t *testing.T, target, filter, key string) {
 		"PROVEO_WIZARD=off",
 		"PROVEO_STDIN_FILTER="+filter,
 		"PROVEO_CLOSE_TEST_LOG="+calls,
+		"PROVEO_CLOSE_TEST_WORK="+work,
 		"PROVEO_HOME="+home,
+		"PROVEO_STATE_ROOT="+t.TempDir(),
 		"PROVEO_MOUNT_GH_CONFIG=0",
 		"PATH="+os.Getenv("PATH"),
 		proveoBin, "run", target,
@@ -155,6 +157,7 @@ func fakeSbx(version string) string {
 
 const fakeSbxScript = `#!/bin/sh
 [ -z "${PROVEO_CLOSE_TEST_LOG:-}" ] || printf '%s\n' "$*" >> "$PROVEO_CLOSE_TEST_LOG"
+instance="${PROVEO_CLOSE_TEST_LOG}.vm"
 case "$1" in
   version)
     if [ "$2" = "--json" ]; then
@@ -163,6 +166,30 @@ case "$1" in
       printf '%s\n' 'sbx version: vVERSION deadbeef'
     fi
     ;;
+  create)
+    shift
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --name) shift; name=$1 ;;
+        */sbx/kit/proveo-*) agent=${1##*/} ;;
+      esac
+      shift
+    done
+    printf '%s %s\n' "$name" "$agent" > "$instance"
+    ;;
+  ls)
+    if [ -r "$instance" ]; then
+      read -r name agent < "$instance"
+      if [ "$2" = "--json" ]; then
+        printf '[{"name":"%s","agent":"%s","id":"vm-test","status":"stopped","workspaces":["%s"]}]\n' "$name" "$agent" "$PROVEO_CLOSE_TEST_WORK"
+      else
+        printf 'SANDBOX AGENT STATUS\n%s %s stopped\n' "$name" "$agent"
+      fi
+    elif [ "$2" = "--json" ]; then
+      printf '[]\n'
+    fi
+    ;;
+  rm) rm -f "$instance" ;;
   run)
     exec python3 -u -c '
 import sys, tty

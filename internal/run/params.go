@@ -34,6 +34,8 @@ type Params struct {
 	MiseTrustSet                                                                 bool
 	GitTransport                                                                 string
 	PrintOnly                                                                    bool
+	NewInstance                                                                  bool
+	Instance, Task                                                               string
 	Extra                                                                        []string
 	Clone, CloneSet                                                              bool
 	Ports                                                                        []devports.Candidate

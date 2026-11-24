@@ -15,8 +15,49 @@
 ' covers: internal/backend/sandbox/verbs.go
 ' covers: cmd/proveo/clean.go
 ' covers: cmd/proveo/verbs.go
+' covers: cmd/proveo/main.go, internal/run/instances.go
+' covers: internal/backend/sandbox/instances.go, internal/backend/sandbox/instance_workspace.go
+' covers: internal/backend/sandbox/instance_direct.go, internal/backend/sandbox/instances_test.go
+' covers: e2e/dashboard_instances_sbx_test.go
 ' See kit-lifecycle.puml for receipts and retirement and clone-workspace.puml for Git carry.
-' See _spec/_plans/session-continuity.puml for the proposed retention change.
+' See _spec/_plans/dashboard-delivery.puml for the remaining delivery gates.
+'
+' INSTANCE SELECTION AND OWNERSHIP
+' The canonical effective pwd is the workspace key after --input and
+' --scope. The Git root supplies the clone independently. Use --new
+' [--task TEXT] for another instance, and --instance ID to select it.
+' The scheduler accepts new/task or instance on a target job. A single
+' candidate stays implicit. A TTY picker or explicit ID resolves multiple
+' candidates. Legacy ordinary launches keep their familiar name. An
+' explicitly created instance uses agent-task-suffix (32 ASCII characters).
+' Logical IDs, sbx names, VM IDs and per-run attempt IDs have distinct
+' lifetimes. Instance records live under StateDir()/instances/<sandbox>.
+' Borrowing a legacy record requires a matching receipt, agent and
+' workspace in live inventory. Ambiguous legacy sandboxes are refused.
+' The existing receipt and state locations survive migration. The first
+' run records its legacy alias without moving the original history.
+' A host lease covers selection through teardown and explicit removal.
+' Inventory must bind an idle VM to the recorded daemon ID before reuse.
+' Record a pending create before issuing it. An unbound VM from an
+' interrupted create stays for operator recovery. A matching receipt
+' can repair an interrupted registry update. Cleanup pins backing runs
+' while a VM may still hold them.
+'
+' PRIVATE CHECKOUTS
+' New Git instances use separate sbx clones and branches rooted at the
+' recorded base. Sandboxes can read a cached bundle for the exact base
+' if the source clone lacks that commit.
+' The guest uses sparse checkout for a repo scope. All writes stay in
+' the instance clone. Carry uses per-attempt Git refs and output paths.
+' Managed reports are extracted to the instance state directory. Legacy
+' direct mode leases overlapping writable mounts across target names.
+' A new non-Git instance takes a private directory copy. New instances
+' get dedicated writable harness home and state. Brokered logins still
+' come from sbx. Named browser profiles retain their own selectors.
+' The existing per-harness resume behavior applies within the selected
+' home and engine. The native checkpoint index is a later delivery gate.
+'
+' HISTORICAL BASELINE
 '
 ' DESIGN INTENT
 ' One ordinary name per target and workspace gives a retry a place to find
@@ -109,18 +150,19 @@
 ' Verification: CLI --print with one repository and two linked worktrees;
 ' launch_receipt_test.go, worktree_clone_test.go, browser_test.go,
 ' teardown_end_test.go, verbs_test.go and clean_run_state_test.go.
-' [Unverified] Live sbx scheduling and race reproduction on this checkout.
+' [Unverified] Live three-VM isolation on this checkout.
 
 title sbx instance lifecycle and workspace ownership
 
 actor Operator as OP
 participant "proveo run" as RUN
+database "host instance registry" as INDEX
 participant "launch receipt" as RECEIPT
 participant "sbx" as SBX
 
 OP -> RUN : launch from the chosen directory
-RUN -> RUN : resolve workspace and sandbox name
-RUN -> SBX : look up name and status
+RUN -> INDEX : resolve canonical pwd and acquire an owner lease
+RUN -> SBX : verify the listed VM ID and idle status
 RUN -> RECEIPT : compare create settings for a kept VM
 break launch refused by policy or operator
   RUN --> OP : report the refusal
@@ -129,8 +171,10 @@ alt fresh name or approved retirement
   opt retiring a previous VM
     RUN -> SBX : carry work and state, then remove
   end
-  RUN -> RECEIPT : record intended create settings
+  RUN -> INDEX : record the pending create attempt
   RUN -> SBX : create with the rendered kit
+  RUN -> RECEIPT : bind the returned VM ID to its launch settings
+  RUN -> INDEX : persist the bound VM ID
 else reuse allowed
   RUN -> RUN : keep the stored VM settings
 end
@@ -138,10 +182,11 @@ RUN -> SBX : run by name with the agent command
 SBX --> RUN : agent exits or launch is stopped
 RUN -> SBX : carry clone work, output and state
 alt ordinary clean end
-  RUN -> SBX : remove VM by name
+  RUN -> SBX : verify the ID and remove the elected VM
 else named browser profile
   RUN -> SBX : stop the VM and retain profile data
 else retained VM or recovery needed
   RUN --> OP : report why the VM stays
 end
+RUN -> INDEX : release the owner lease
 @enduml

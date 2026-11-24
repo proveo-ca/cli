@@ -38,6 +38,7 @@ import (
 type Deps struct {
 	ManifestFor      func(target string) (manifest.Manifest, error)
 	PickProject      func(ask ScopeAsk) (scope string, ok bool)
+	PickInstance     func(labels []string) (int, error)
 	PromptEnv        func(target string, missing []manifest.EnvVar) map[string]string
 	GitHubTokenEnv   func() (envVar string, items []sandbox.Item) // stages the host's GitHub token; items say what degraded
 	ProvisionConfirm func(question string) bool
@@ -104,8 +105,6 @@ func Do(p Params, d Deps) (err error) {
 	if err := choosePages(&rs, &p, d); err != nil {
 		return err
 	}
-	reportRun(&rs, p.PrintOnly)
-	runReported = true
 	cdpEnv, cdpFact, cdpItems, err := startHostCDP(&p)
 	if err != nil {
 		return err
@@ -115,6 +114,18 @@ func Do(p Params, d Deps) (err error) {
 	if err := preflightImage(&rs, &p, d); err != nil {
 		return err
 	}
+	releaseInstance, err := prepareInstance(&rs, &p, d)
+	if err != nil {
+		return err
+	}
+	if releaseInstance != nil {
+		defer releaseInstance()
+	}
+	if err := configureInstanceOutput(&rs, &p); err != nil {
+		return err
+	}
+	reportRun(&rs, p.PrintOnly)
+	runReported = true
 	if err := ensureDesktop(&rs, &p, d); err != nil {
 		return err
 	}
@@ -144,7 +155,8 @@ var sandboxReady = sandbox.Ready
 // reportRun prints the run block: where the transcript is, and the scope the run took.
 func reportRun(rs *Spec, printOnly bool) {
 	ui.Section(ui.SectionRun)
-	ui.Facts(logFact(rs.Log.Path(), printOnly), ui.Fact{Role: ui.RoleStore, Key: "scope", Value: rs.Workspace.ScopeLabel})
+	ui.Facts(append([]ui.Fact{logFact(rs.Log.Path(), printOnly), {Role: ui.RoleStore, Key: "scope", Value: rs.Workspace.ScopeLabel}},
+		instanceFacts(rs.Backend.Instance)...)...)
 }
 
 // endEarly prints what a failed run had not printed yet: the log row under "run", then the
@@ -354,12 +366,6 @@ func detectWorkspace(rs *Spec, p *Params) error {
 	if p.Output == "" {
 		p.Output = filepath.Join(rs.Workspace.RepoRoot, "reports")
 	}
-	if !p.PrintOnly && p.Output != "" {
-		if err := os.MkdirAll(p.Output, 0o755); err != nil {
-			return fmt.Errorf("output dir %s: %w", p.Output, err)
-		}
-	}
-
 	return nil
 }
 
@@ -608,7 +614,8 @@ func startAddon(name string, ensure func(report func(string, ...any)) error) err
 // resolveCredentials finds the login the run uses, prompts for a required variable no
 // credential covers, and prints the credentials block.
 func resolveCredentials(rs *Spec, p *Params, d Deps) {
-	rs.Creds.FileLogin, rs.Creds.LoginNeedsRefresh = credentials.PersistedLogin(p.Target, proveohome.Root(os.Getenv))
+	home := instanceHome(rs, proveohome.Root(os.Getenv), p.PrintOnly)
+	rs.Creds.FileLogin, rs.Creds.LoginNeedsRefresh = credentials.PersistedLogin(p.Target, home)
 	rs.Creds.StoreHeld = sbxStoredAuth(rs.Man)
 	rs.Creds.LoggedIn = rs.Creds.FileLogin || len(rs.Creds.StoreHeld) > 0
 	var facts []ui.Fact
@@ -618,7 +625,7 @@ func resolveCredentials(rs *Spec, p *Params, d Deps) {
 	}
 	rs.Creds.Detected = credentials.FilterProviders(provider.Detect(rs.Creds.Lookup), rs.Man.Capabilities)
 	withheld := credentials.WithheldProviders(rs.Man, p.Target, p.AuthVar,
-		proveohome.Root(os.Getenv), rs.Creds.Lookup, rs.Creds.Detected)
+		home, rs.Creds.Lookup, rs.Creds.Detected)
 	if len(withheld) > 0 {
 		facts = append(facts, ui.Fact{Role: ui.RoleHost, Key: "withheld", Value: strings.Join(withheld, ", "),
 			Detail: []string{fmt.Sprintf("auth %q keeps them out of sbx's secret store and the agent's environment", p.AuthVar)}})
@@ -675,7 +682,7 @@ func loginFacts(rs *Spec, p *Params, d Deps) (facts []ui.Fact, items []sandbox.I
 		ui.Logf("the login in the proveo home needs a refresh; the agent carries on only if the renewal reaches the provider from where it runs")
 	}
 	if rs.Creds.FileLogin && strings.TrimSpace(p.AuthVar) == "" {
-		if av := credentials.EffectiveAuthVar(rs.Man, p.Target, p.AuthVar, proveohome.Root(os.Getenv), rs.Creds.Lookup); av != "" && strings.TrimSpace(rs.Creds.Lookup(av)) != "" {
+		if av := credentials.EffectiveAuthVar(rs.Man, p.Target, p.AuthVar, instanceHome(rs, proveohome.Root(os.Getenv), p.PrintOnly), rs.Creds.Lookup); av != "" && strings.TrimSpace(rs.Creds.Lookup(av)) != "" {
 			facts = append(facts, ui.Fact{Role: ui.RoleHost, Key: "env token", Value: av + " set, not injected"})
 			ui.Logf("%s is set but not injected — the login in the proveo home is the credential, and an env token would override it", av)
 		}
@@ -695,7 +702,13 @@ func planMounts(rs *Spec, p *Params) error {
 
 	rs.Workspace.Mounts, rs.Workspace.Links = rs.Workspace.WS.Plan()
 
-	rs.Creds.HomePlan, err = proveohome.Prepare(rs.Man.Home, os.Getenv)
+	homeEnv := func(k string) string {
+		if k == "PROVEO_HOME" {
+			return instanceHome(rs, proveohome.Root(os.Getenv), p.PrintOnly)
+		}
+		return os.Getenv(k)
+	}
+	rs.Creds.HomePlan, err = proveohome.Prepare(rs.Man.Home, homeEnv)
 	if err != nil {
 		return err
 	}
@@ -922,6 +935,11 @@ func launchSandbox(rs *Spec, p *Params, d Deps, cdpEnv []string) error {
 	if rs.Backend.Clone && workspace.LinkedWorktree(rs.Workspace.WS.InputDir) {
 		rs.Backend.CloneSource, _ = workspace.CloneSource(rs.Workspace.WS.InputDir)
 	}
+	var instanceCloneRoot string
+	if rs.Backend.Instance.Isolated() && rs.Backend.Clone {
+		instanceCloneRoot = realPathOf(cmp.Or(rs.Backend.CloneSource.Main, rs.Workspace.WS.RepoRoot))
+		rs.Backend.CloneSource = workspace.WorktreeSource{}
+	}
 	if rs.Backend.Clone {
 		rs.Backend.CloneEnv = stageCloneEnv(rs, p)
 	}
@@ -987,7 +1005,9 @@ func launchSandbox(rs *Spec, p *Params, d Deps, cdpEnv []string) error {
 	rs.Interface = append(rs.Interface, unpublished...)
 	in := sandbox.Input{
 		AgentEnv: agentEnv,
-		Target:   p.Target, Image: p.Image, AuthVar: p.AuthVar,
+		Instance: rs.Backend.Instance, InstanceWork: rs.Backend.InstanceWork, InstanceBundle: rs.Backend.InstanceBundle,
+		InstanceCloneRoot: instanceCloneRoot,
+		Target:            p.Target, Image: p.Image, AuthVar: p.AuthVar,
 		AgentVersion: rs.Backend.AgentVersion,
 		Clone:        rs.Backend.Clone, CloneOff: rs.Backend.CloneOff, Extra: p.Extra,
 		RepoRoot: rs.Workspace.WS.RepoRoot, OutputDir: p.Output,

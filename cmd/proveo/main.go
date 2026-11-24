@@ -194,6 +194,8 @@ type runFlags struct {
 	credentials, localModel, model, input, output, scope, dataDir, imageOverride, resumeID, browserProfile string
 	printOnly, contSession, listSessions, cloneMode, yes                                                   bool
 	addons                                                                                                 []string
+	newInstance                                                                                            bool
+	instance, task                                                                                         string
 }
 
 func (f *runFlags) bind(cmd *cobra.Command) {
@@ -217,6 +219,13 @@ func (f *runFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.browserProfile, "browser-profile", "", "use this named isolated browser profile in the sandbox")
 	cmd.Flags().StringArrayVar(&f.addons, "addon", nil, "interface add-on to enable without the choice form (repeatable): browser, chrome, desktop, android")
 	cmd.Flags().BoolVar(&f.yes, "yes", false, "accept the remembered and flagged choices without drawing the choice form (unattended runs)")
+	cmd.Flags().BoolVar(&f.newInstance, "new", false, "create an independent instance in this workspace")
+	cmd.Flags().StringVar(&f.instance, "instance", "", "select a Proveo instance by ID")
+	cmd.Flags().StringVar(&f.task, "task", "", "task label for a new instance")
+	cmd.MarkFlagsMutuallyExclusive("new", "instance")
+	cmd.MarkFlagsMutuallyExclusive("new", "resume")
+	cmd.MarkFlagsMutuallyExclusive("new", "continue")
+	cmd.MarkFlagsMutuallyExclusive("new", "ls")
 }
 
 // prompts is a terminal with no unattended flag, so a picker may open.
@@ -245,6 +254,9 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 	if !run.ValidCredentials(f.credentials) {
 		return fmt.Errorf("invalid --credentials %q (%s)", f.credentials, strings.Join(run.CredentialModes(), "|"))
 	}
+	if f.task != "" && !f.newInstance {
+		return fmt.Errorf("--task requires --new")
+	}
 	resumeArgs, err := proveohome.ResumeArgs(target, f.resumeID, f.contSession, f.listSessions)
 	if err != nil {
 		return err
@@ -258,6 +270,7 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 		CredsSet:       credsSet, LocalModel: f.localModel, Model: f.model,
 		Input: f.input, Output: f.output, Scope: f.scope, DataDir: f.dataDir,
 		PrintOnly: f.printOnly, Extra: extra,
+		NewInstance: f.newInstance, Instance: f.instance, Task: f.task,
 		Clone: f.cloneMode, CloneSet: cmd.Flags().Changed("clone"),
 		Addons: f.addons, AddonsSet: cmd.Flags().Changed("addon"), Yes: f.yes,
 	}, runDeps())
@@ -455,8 +468,9 @@ func sortedKeys(m map[string]string) []string {
 
 func runDeps() run.Deps {
 	return run.Deps{
-		ManifestFor: manifestForTarget,
-		PickProject: func(ask run.ScopeAsk) (string, bool) { return pickProject(ask, os.Stdin, os.Stderr) },
+		ManifestFor:  manifestForTarget,
+		PickProject:  func(ask run.ScopeAsk) (string, bool) { return pickProject(ask, os.Stdin, os.Stderr) },
+		PickInstance: func(labels []string) (int, error) { return pickIndex("instance> ", labels) },
 		PromptEnv: func(target string, missing []manifest.EnvVar) map[string]string {
 			return promptEnv(target, missing, os.Stdin, os.Stderr, termSecret)
 		},

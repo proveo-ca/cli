@@ -1,0 +1,121 @@
+// SPEC: _spec/internal/sbx/instance-lifecycle.puml, _spec/internal/sbx/clone-workspace.puml
+package sandbox
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/proveo-ca/proveo/internal/sbx"
+)
+
+func (i *Instance) PrepareWorkspace(runDir string, print bool) (work, bundle string, err error) {
+	if i.Repo != "" {
+		bundle, err = i.prepareBundle(runDir, print)
+		return i.Workspace, bundle, err
+	}
+	dest := i.worktree()
+	if print {
+		dest = filepath.Join(runDir, "workspace")
+	}
+	if fi, err := os.Stat(dest); err == nil && fi.IsDir() {
+		return dest, "", nil
+	}
+	if within(canonicalInstancePath(filepath.Dir(dest)), i.Workspace) {
+		return "", "", errors.New("instance state must be outside the source directory for a private copy")
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return "", "", err
+	}
+	stage, err := os.MkdirTemp(filepath.Dir(dest), ".workspace-")
+	if err != nil {
+		return "", "", err
+	}
+	defer os.RemoveAll(stage)
+	if err := os.CopyFS(stage, os.DirFS(i.Workspace)); err != nil {
+		return "", "", fmt.Errorf("copy private workspace: %w", err)
+	}
+	return dest, "", os.Rename(stage, dest)
+}
+
+func (i *Instance) prepareBundle(runDir string, print bool) (string, error) {
+	dir := i.bundleDir()
+	args := []string{"HEAD"}
+	if print {
+		cached := filepath.Join(dir, "base.bundle")
+		if fi, err := os.Stat(cached); err == nil && fi.Mode().IsRegular() {
+			return cached, nil
+		}
+		dir = filepath.Join(runDir, "git")
+	} else {
+		ref := "refs/proveo-instance-base/" + i.ID
+		if out, err := exec.Command("git", "-C", i.Repo, "update-ref", ref, i.Base).CombinedOutput(); err != nil {
+			return "", fmt.Errorf("pin Git base %s: %w: %s", i.Base, err, strings.TrimSpace(string(out)))
+		}
+		args = []string{ref}
+	}
+	path := filepath.Join(dir, "base.bundle")
+	if fi, err := os.Stat(path); err == nil && fi.Mode().IsRegular() {
+		return path, nil
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	stage, err := os.MkdirTemp(dir, ".bundle-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(stage)
+	tmp := filepath.Join(stage, "base.bundle")
+	cmd := exec.Command("git", append([]string{"-C", i.Repo, "bundle", "create", tmp}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("bundle Git base %s: %w: %s", i.Base, err, strings.TrimSpace(string(out)))
+	}
+	return path, os.Rename(tmp, path)
+}
+
+func (in Input) instanceCheckout() sbx.KitCommand {
+	return sbx.KitCommand{Description: "prepare the instance branch", Command: []string{"sh", "-ec", instanceCheckoutScript,
+		"prepare-instance", in.InstanceCloneRoot, in.Instance.Base, in.Instance.Branch(), in.InstanceBundle, in.ScopeRel}}
+}
+
+func (in Input) instanceMounts(mounts []sbx.Mount) []sbx.Mount {
+	src, dest := in.Instance.Workspace, in.InstanceWork
+	if in.InstanceCloneRoot != "" {
+		src, dest = in.Instance.Repo, in.InstanceCloneRoot
+	}
+	out := []sbx.Mount{{Host: dest}}
+	for _, m := range mounts {
+		if within(canonicalInstancePath(m.Host), src) {
+			continue
+		}
+		if within(canonicalInstancePath(m.Host), canonicalInstancePath(in.HomeRoot)) ||
+			within(canonicalInstancePath(m.Host), canonicalInstancePath(in.RunDir)) ||
+			m.Host == in.OutputDir {
+			out = append(out, m)
+		} else {
+			m.ReadOnly = true
+			out = append(out, m)
+		}
+	}
+	if in.InstanceBundle != "" {
+		out = append(out, sbx.Mount{Host: filepath.Dir(in.InstanceBundle), ReadOnly: true})
+	}
+	return out
+}
+
+const instanceCheckoutScript = `
+repo=$1 base=$2 branch=$3 bundle=$4 scope=$5
+if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+  if ! git -C "$repo" cat-file -e "$base^{commit}" 2>/dev/null; then
+    head=$(git bundle list-heads "$bundle")
+    git -C "$repo" fetch "$bundle" "${head#* }"
+  fi
+  git -C "$repo" branch "$branch" "$base"
+fi
+git -C "$repo" switch "$branch"
+if [ -n "$scope" ]; then git -C "$repo" sparse-checkout set --cone -- "$scope"; fi
+`

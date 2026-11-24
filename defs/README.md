@@ -6,6 +6,8 @@ This directory contains Docker image definitions used by Proveo. A definition ma
 
 Every definition uses the effective working directory (`pwd`) as the default context for project-scoped behavior. Respect the workspace Proveo resolves from the invocation directory or an explicit `--input` or `--scope`. Entrypoints and wrappers preserve that directory when handing off to the agent or tool. In a linked-worktree clone, use the worktree Proveo prepares inside the guest.
 
+Use `proveo run <target> --new --task <label>` for an independent instance from that directory. Use `--instance <id>` to select it again.
+
 Declare explicit paths for build and installation steps, harness home, durable state, and managed tools. Treat image `WORKDIR` values as image defaults. Keep workspace identity and sandbox lifecycle in the shared runner. See the [sandbox instance lifecycle](../_spec/internal/sbx/instance-lifecycle.puml).
 
 ## Coding Harness Contract

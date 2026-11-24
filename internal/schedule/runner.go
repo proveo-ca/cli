@@ -66,6 +66,15 @@ func (j Job) RunArgv(proveo string) []string {
 		return append([]string(nil), j.Command...)
 	}
 	argv := []string{proveo, "run", j.Target, "--yes"}
+	if j.Instance != "" {
+		argv = append(argv, "--instance", j.Instance)
+	}
+	if j.New {
+		argv = append(argv, "--new")
+		if j.Task != "" {
+			argv = append(argv, "--task", j.Task)
+		}
+	}
 	if j.Model != "" {
 		flag := "--local-model"
 		if isRemoteModel(j.Model) {

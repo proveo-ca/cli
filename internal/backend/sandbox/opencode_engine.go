@@ -65,7 +65,20 @@ var createOpenCodeEngine = func(cfg sbx.RunConfig) error {
 // ensureOpenCodeEngine reattaches to engine cfg.Name; a new engine is created and imports one
 // host database first. created reports a new engine; history is its sbx-block fact.
 func ensureOpenCodeEngine(in Input, cfg sbx.RunConfig) (launch sbx.RunConfig, created bool, history ui.Fact, err error) {
-	if sbx.Exists(cfg.Name) {
+	exists := false
+	if in.Instance != nil {
+		row, err := inventoryInstance(cfg.Name)
+		if err != nil {
+			return cfg, false, ui.Fact{}, err
+		}
+		if err := in.Instance.verify(row); err != nil {
+			return cfg, false, ui.Fact{}, err
+		}
+		exists = row != nil
+	} else {
+		exists = sbx.Exists(cfg.Name)
+	}
+	if exists {
 		return sbx.Reattach(cfg), false, ui.Fact{}, nil
 	}
 	if !slices.Contains(cfg.Env, sbx.OpenCodeHistoryGateEnv) {
@@ -73,6 +86,11 @@ func ensureOpenCodeEngine(in Input, cfg sbx.RunConfig) (launch sbx.RunConfig, cr
 	}
 	if err := createOpenCodeEngine(cfg); err != nil {
 		return cfg, false, ui.Fact{}, fmt.Errorf("%w %s: %w", errEngineCreate, cfg.Name, err)
+	}
+	if in.bindInstance != nil {
+		if err := in.bindInstance(); err != nil {
+			return cfg, false, ui.Fact{}, err
+		}
 	}
 	src := openCodeImportSource(in.HomeRoot, cfg.Name)
 	var size int64
@@ -91,6 +109,11 @@ func ensureOpenCodeEngine(in Input, cfg sbx.RunConfig) (launch sbx.RunConfig, cr
 		}
 	}
 	if err != nil {
+		if in.Instance != nil {
+			if guard := in.Instance.checkVM(); guard != nil {
+				return cfg, false, ui.Fact{}, errors.Join(err, guard)
+			}
+		}
 		_, _ = SbxRun(sbx.RemoveArgs(cfg.Name)...)
 		_ = os.Remove(receiptPath(cfg.Name))
 		return cfg, false, ui.Fact{}, fmt.Errorf("OpenCode history preparation for %s failed: %w — the new engine was removed; source history stays; the next run retries", cfg.Name, err)

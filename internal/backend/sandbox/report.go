@@ -77,14 +77,21 @@ func ReportWorkspace(in Input, r Report, path func(string) string, lead ...ui.Fa
 	}
 	if in.Clone && in.CloneEnvHost != "" {
 		detail := []string{"edits merge back at teardown"}
+		if in.Instance.Isolated() {
+			detail = []string{"edits stay with the instance"}
+		}
 		if len(in.CloneEnvDropped) > 0 {
 			detail = append(detail, "leaves out "+strings.Join(in.CloneEnvDropped, ", ")+", which sbx's proxy attaches")
 		}
 		facts = append(facts, ui.Fact{Role: ui.RoleStore, Key: ".env", Value: path(in.CloneEnvHost) + " (copy, rw)", Detail: detail})
 	}
 	if r.OutputInClone != "" {
+		detail := "lifted back at teardown"
+		if in.Instance.Isolated() {
+			detail = "exported to " + path(in.Instance.exportDir(in.Sid))
+		}
 		facts = append(facts, ui.Fact{Role: ui.RoleStore, Key: "output", Value: r.OutputInClone + "/ (in the clone)",
-			Detail: []string{"lifted back at teardown"}})
+			Detail: []string{detail}})
 	}
 	items := append([]Item(nil), in.WorkspaceItems...)
 	var logged []string

@@ -25,6 +25,9 @@ const (
 // Job is one scheduled agent run.
 type Job struct {
 	Target     string   `yaml:"target"`
+	Instance   string   `yaml:"instance,omitempty"`
+	New        bool     `yaml:"new,omitempty"`
+	Task       string   `yaml:"task,omitempty"`
 	Model      string   `yaml:"model,omitempty"`
 	Addons     []string `yaml:"addons,omitempty"`
 	Args       []string `yaml:"args,omitempty"` // extra `proveo run` flags
@@ -71,6 +74,10 @@ func (j Job) validate() error {
 	}
 	if j.PromptFile == "" {
 		return fmt.Errorf("prompt_file is required")
+	}
+	if (j.New && j.Instance != "") || (j.Task != "" && !j.New) ||
+		(len(j.Command) > 0 && (j.New || j.Instance != "")) {
+		return fmt.Errorf("instance and new are exclusive, task requires new, and instance selection requires a target")
 	}
 	switch j.Mode {
 	case "", "goal", "loop", "plain":

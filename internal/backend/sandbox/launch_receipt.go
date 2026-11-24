@@ -37,6 +37,10 @@ type launchReceipt struct {
 	BrowserProfile   string `json:"browserProfile,omitempty"`
 	BrowserSandboxID string `json:"browserSandboxId,omitempty"`
 	BrowserRun       string `json:"browserRun,omitempty"`
+	InstanceID       string `json:"instanceId,omitempty"`
+	VMID             string `json:"vmId,omitempty"`
+	Run              string `json:"run,omitempty"`
+	Source           string `json:"source,omitempty"`
 }
 
 // noReceipt is the change a sandbox with no receipt reports.
@@ -68,6 +72,7 @@ func receiptOf(cfg sbx.RunConfig, image string, kitYAML []byte, sid, imageID str
 		Clone: cfg.Clone, Env: map[string]string{},
 		CPUs: cfg.CPUs, Memory: cfg.Memory,
 		KitDir: cfg.KitDir, Publish: append([]string{}, cfg.Publish...),
+		Run: sid, Source: FirstHost(cfg.Mounts),
 	}
 	for _, m := range cfg.Mounts {
 		r.Mounts = append(r.Mounts, fmt.Sprintf("%s:%s:%v", norm(m.Host), m.Container, m.ReadOnly))
@@ -241,6 +246,11 @@ func sandboxClone(in Input, name string) (bool, error) {
 // the sandbox while either stays only in it. It reports each step as that step starts.
 // SPEC: _spec/internal/sbx/state-sync.puml
 func retireSandbox(in Input, cfg sbx.RunConfig, report func(string, ...any)) error {
+	if in.Instance != nil {
+		if err := in.Instance.checkVM(); err != nil {
+			return err
+		}
+	}
 	report("carrying its work home from %s", cfg.Name)
 	in.Sid += "-retired"
 	in.CloneKnown = false
@@ -286,6 +296,9 @@ func retireSandbox(in Input, cfg sbx.RunConfig, report func(string, ...any)) err
 
 // removeRetired removes a retired sandbox and its records, bounded by guestExecDeadline.
 func removeRetired(cfg sbx.RunConfig, report func(string, ...any)) error {
+	if err := checkReceiptVM(cfg.Name); err != nil {
+		return err
+	}
 	report("sbx rm --force %s — deleting it and its session", cfg.Name)
 	if out, err := guestRun(sbx.RemoveArgs(cfg.Name)...); err != nil && !sbx.NotFound(out) {
 		return fmt.Errorf("remove stale %s: %w: %s — check `sbx ls`, then `sbx rm --force %s` once sbx answers", cfg.Name, err, strings.TrimSpace(out), cfg.Name)
