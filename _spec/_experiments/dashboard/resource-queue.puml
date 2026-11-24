@@ -33,6 +33,11 @@
 ' from that second subtraction. Track disk per filesystem in Go.
 ' Missing, stale, or unreconciled inputs pause new admissions while
 ' existing jobs continue. A resource change triggers a new evaluation.
+' Show segmented host capacity bars above the task views. Use one segment
+' per 2 CPU cores, 8 GiB of RAM, or 64 GiB of disk. Show occupied capacity
+' over the total, with totals in muted text. Fill partial segments in
+' proportion. Count usage and reservations against the displayed pool.
+' Keep totals visible and show unknown occupancy when a sample is absent.
 '
 ' ADMISSION AND LIVENESS
 ' Serialize compare-and-reserve across Proveo queues on the same host.

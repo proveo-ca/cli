@@ -75,6 +75,13 @@
   .path { overflow-wrap: anywhere; }
   .layout-picker { margin-left: auto; }
   .capacity-bar { display: flex; gap: 8px; align-items: center; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+  .capacity-meters, .capacity-meter, .capacity-segments { display: flex; align-items: center; }
+  .capacity-meters { gap: 2ch; }
+  .capacity-meter { gap: .7ch; white-space: nowrap; }
+  .capacity-segments { gap: 2px; }
+  .capacity-segment { display: flex; block-size: .65em; background: var(--line); }
+  .capacity-fill { background: var(--brand); }
+  #capacity-summary { margin-left: auto; white-space: nowrap; }
   .grid { display: grid; flex: 1; grid-template-columns: minmax(170px, .58fr) minmax(0, 2fr) minmax(280px, 1.04fr); min-height: 540px; }
   .panel { min-width: 0; }
   .grid > .panel + .panel { border-left: 1px solid var(--line); }
@@ -129,6 +136,10 @@
   .slot time { padding-top: 4px; color: var(--attention); }
   .inspector h3 { color: var(--brand); font-weight: bold; overflow-wrap: anywhere; }
   .inspector p + p, .inspector h3 + p { margin-top: 4px; }
+  .sandbox-usage { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  .sandbox-usage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .sandbox-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+  .sandbox-metrics dt { font-size: .88rem; color: var(--muted); }
   .facts { margin-block: 9px; }
   .fact { display: grid; grid-template-columns: 9ch minmax(0, 1fr); gap: 1ch; align-items: baseline; }
   .fact dt { color: var(--muted); }
@@ -209,7 +220,8 @@
     </div>
     <div class="capacity-bar">
       <button type="button" class="button" id="capacity-key"><kbd>c</kbd> Host capacity</button>
-      <span class="subtext" id="capacity-summary"></span>
+      <div class="capacity-meters" id="capacity-meters"></div>
+      <span class="kicker" id="capacity-summary"></span>
     </div>
     <div class="grid">
       <aside class="panel files" aria-labelledby="files-heading">
@@ -236,6 +248,17 @@
       </section>
       <aside class="panel inspector" aria-labelledby="detail-heading">
         <header class="panel-head"><h2 id="detail-heading">Task details</h2><span class="kicker" id="detail-context"></span></header>
+        <section class="sandbox-usage" id="sandbox-usage" aria-labelledby="sandbox-usage-heading">
+          <header class="sandbox-usage-head">
+            <h3 id="sandbox-usage-heading">Sandbox usage</h3>
+            <span class="kicker" id="sandbox-usage-status"></span>
+          </header>
+          <dl class="sandbox-metrics">
+            <div><dt>CPU</dt><dd id="sandbox-cpu"></dd></div>
+            <div><dt>RAM</dt><dd id="sandbox-ram"></dd></div>
+            <div><dt>Disk</dt><dd id="sandbox-disk"></dd></div>
+          </dl>
+        </section>
         <div class="panel-body" id="detail"></div>
       </aside>
     </div>
@@ -416,6 +439,17 @@
   }
   const dimensions = ["cpu", "ram", "disk"]
   const resourceLabels = {cpu: "CPU", ram: "RAM", disk: "Disk"}
+  const capacityStep = {cpu: 2, ram: 8, disk: 64}
+  const sandboxUsageSamples = {
+    "codex-83f91a": {index: 0, readings: [{cpu: 7, ram: 2.1, disk: 4.2}]},
+    "claude-2bf0a1": {index: 0, readings: [{cpu: 12, ram: 2.8, disk: 5.1}]},
+    "opencode-f91c25": {index: 0, readings: [
+      {cpu: 24, ram: 3.6, disk: 6.1},
+      {cpu: 38, ram: 3.8, disk: 6.2},
+      {cpu: 19, ram: 3.7, disk: 6.2},
+    ]},
+  }
+  const sandboxPollMs = 5_000
   const pool = {cpu: 8, ram: 16, disk: 64}
   const taskDemand = {
     "PRV-291": {cpu: 2, ram: 6, disk: 12},
@@ -504,9 +538,31 @@
 
   function renderCapacity() {
     const free = available()
-    $("capacity-summary").textContent = free
-      ? "Sample available · CPU " + free.cpu + " cores · RAM " + free.ram + " GiB · Disk " + free.disk + " GiB"
-      : "Sample unavailable · admissions paused"
+    const meters = dimensions.map(key => {
+      const total = pool[key]
+      const occupied = free ? total - free[key] : null
+      const step = capacityStep[key]
+      const segments = node("span", "capacity-segments")
+      segments.setAttribute("aria-hidden", "true")
+      for (let start = 0; start < total; start += step) {
+        const size = Math.min(step, total - start)
+        const used = Math.max(0, Math.min(size, (occupied ?? 0) - start))
+        const segment = node("span", "capacity-segment")
+        segment.style.inlineSize = (size / step) + "ch"
+        const fill = node("span", "capacity-fill")
+        fill.style.inlineSize = (used / size * 100) + "%"
+        segment.append(fill)
+        segments.append(segment)
+      }
+      const unit = key === "cpu" ? " cores" : " GiB"
+      const amount = node("span", "", String(occupied ?? "—"))
+      amount.append(node("span", "subtext", " / " + total + unit))
+      const meter = node("div", "capacity-meter")
+      meter.append(node("span", "", resourceLabels[key]), segments, amount)
+      return meter
+    })
+    $("capacity-meters").replaceChildren(...meters)
+    $("capacity-summary").textContent = free ? "Sample · used or reserved" : "Sample unavailable · admissions paused"
   }
 
   function taskFor(id) {
@@ -1096,7 +1152,31 @@
     else controls.replaceChildren()
   }
 
+  function renderSandboxUsage() {
+    $("sandbox-usage").hidden = ui.editing
+    if (ui.editing) return
+
+    const {instance, state} = ui.task
+    const series = sandboxUsageSamples[instance]
+    const reading = series?.readings[series.index]
+    let caption = state === "reserved" ? "Sandbox starting" : "No sample"
+    if (reading) caption = state === "active" ? "Sample · " + sandboxPollMs / 1000 + "s" : "Last sample"
+    $("sandbox-usage-status").textContent = caption
+    for (const key of dimensions) {
+      $(`sandbox-${key}`).textContent = reading ? reading[key] + (key === "cpu" ? "%" : " GiB") : "—"
+    }
+  }
+
+  function pollSandboxUsage() {
+    if ($("proveo").hidden || ui.editing || ui.task.state !== "active") return
+    const series = sandboxUsageSamples[ui.task.instance]
+    if (!series) return
+    series.index = (series.index + 1) % series.readings.length
+    renderSandboxUsage()
+  }
+
   function renderInspector() {
+    renderSandboxUsage()
     const detail = $("detail")
     const file = ui.editing ? ui.editorFile : null
     for (const item of $("filetree").querySelectorAll(".file")) {
@@ -1128,7 +1208,7 @@
     }
     if (task.pr) facts.append(fact("PR", task.pr))
     const demand = taskDemand[task.id]
-    if (demand) facts.append(fact("Resources", demand.cpu + " CPU · " + demand.ram + " GiB RAM · " + demand.disk + " GiB disk"))
+    if (demand) facts.append(fact("Requested", demand.cpu + " CPU · " + demand.ram + " GiB RAM · " + demand.disk + " GiB disk"))
     if (task.plan) {
       facts.append(fact("Plan", button(task.plan, () => {
         selectFile(filesByPath.get(task.plan))
@@ -1162,6 +1242,7 @@
 
   function quitDashboard() {
     if ($("dialog").open) $("dialog").close()
+    clearInterval(sandboxUsageTimer)
     setTabPrefix(false)
     $("terminal-shell").hidden = true
     $("exit-state").hidden = false
@@ -1352,6 +1433,7 @@
   renderCapacity()
   renderWork()
   renderInspector()
+  const sandboxUsageTimer = setInterval(pollSandboxUsage, sandboxPollMs)
 </script>
 </body>
 </html>

@@ -137,6 +137,16 @@
 ' paths and explicit ticket URLs. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
 ' Task details pairs the Git provider and task source in its heading.
+' Lead task details with CPU utilization, RAM in use, and disk in use for
+' the selected attempt's sandbox. Show the last observed sample after
+' exit. Show placeholders for absent samples and distinguish requested
+' resources from measured usage.
+' Read the selected running sandbox on selection and every 5s while the
+' task pane is visible. Resolve its recorded sbx ID on the owning host.
+' Bound reads to one in flight and discard replies for an earlier selection.
+' The current sbx inventory reader provides identity and status. Validate a
+' structured telemetry source on the sbx host before wiring native polling.
+' The HTML preview polls sample telemetry.
 ' Show ticket, agent, branch, instance, sandbox, and PR above the prompt.
 ' Clip the task-source description to three rows with an ellipsis. Show
 ' the latest observed branch push as a local date and time in smaller,
