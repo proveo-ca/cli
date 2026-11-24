@@ -109,8 +109,8 @@
 '
 ' DASHBOARD AND HANDOFF
 ' Bare proveo on an interactive terminal opens Proveo and sbx tabs. Keep
-' help available via --help and on noninteractive invocation. Keep the top
-' tabs and switch hint visible above the selected terminal content. Run
+' help available via --help and on noninteractive invocation. Show the
+' effective pwd next to the tabs and keep the switch hint visible. Run
 ' stock sbx in a PTY sized to its content pane. The multiplexer handles
 ' Ctrl+G then Tab to switch views. It intercepts Ctrl+C in either tab.
 ' View switches keep both frame dimensions and the running child. Keep
@@ -122,7 +122,8 @@
 ' Follow the sbx footer pattern with a bright key and a muted action.
 ' Advertise Enter as Attach for live jobs and as Open file for file rows.
 ' Mark selection with a cyan cursor and a subtle tint. Keep status colors
-' visible. Use the view picker for the layout name. Separate task groups
+' visible. Put the HTML preview's layout picker and task detail options
+' below the terminal frame. Separate task groups
 ' and panes with rules. Keep task rows compact and graph nodes unboxed.
 ' Reuse creack/pty and x/term primitives on Unix. Evaluate Charm x/vt for
 ' the child screen buffer, alternate screen, cursor, and terminal replies.

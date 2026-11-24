@@ -24,6 +24,7 @@
     --window-width: 1160px;
     --window-height: 810px;
     --canvas-width: 1100px;
+    --preview-controls-space: 36px;
     font: 14px/1.5 var(--mono);
     color: var(--text);
     background: var(--bg);
@@ -41,7 +42,7 @@
     display: flex;
     flex-direction: column;
     width: min(100%, var(--window-width));
-    height: min(var(--window-height), calc(100dvh - 2 * var(--inset)));
+    height: min(var(--window-height), calc(100dvh - 2 * var(--inset) - var(--preview-controls-space)));
     min-height: 110px;
     margin: 0 auto;
     border: 1px solid var(--line);
@@ -57,8 +58,7 @@
   .top, .footer { flex: none; overflow-x: auto; white-space: nowrap; }
   .bar, .workbar, .footer { display: flex; align-items: center; gap: 12px; padding: 5px 10px; }
   .bar { min-height: 38px; }
-  .brand { font-weight: bold; white-space: nowrap; }
-  .mark, .path { color: var(--brand); }
+  .path { color: var(--brand); white-space: nowrap; }
   .tabs, .layout-picker { display: flex; align-items: center; gap: 4px; }
   .tab, .layout-picker button, .button { border: 0; background: transparent; padding: 2px 6px; color: var(--muted); white-space: nowrap; }
   .tab:hover, .layout-picker button:hover, .button:hover { background: var(--raised); color: var(--text); }
@@ -71,10 +71,8 @@
   kbd { color: var(--brand); font-weight: bold; }
   .button { text-align: left; color: var(--text); }
   .button.primary { color: var(--brand); }
-  .workbar { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--line); min-height: 36px; }
-  .workbar h1 { font-weight: bold; }
-  .path { overflow-wrap: anywhere; }
-  .layout-picker { margin-left: auto; }
+  .workbar { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--line); min-height: 36px; font-weight: bold; }
+  .layout-picker { width: min(100%, var(--window-width)); margin: 8px auto 0; overflow-x: auto; }
   .capacity-bar { display: flex; gap: 8px; align-items: center; padding: 4px 10px; border-bottom: 1px solid var(--line); }
   .capacity-meters, .capacity-meter, .capacity-segments { display: flex; align-items: center; }
   .capacity-meters { gap: 2ch; }
@@ -202,7 +200,8 @@
   }
   #proveo[data-mode="dashboard"][data-details="split"] .grid > .inspector { border-left: 1px solid var(--line); }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
-  #proveo[data-mode="editor"] :is(.task-panel, .layout-picker, .capacity-bar),
+  #proveo[data-mode="editor"] :is(.task-panel, .capacity-bar),
+  #terminal-shell:is([hidden], [data-mode="editor"], [data-tab="sbx"]) + .layout-picker,
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
   #terminal-shell[data-mode="editor"] #dashboard-keys,
   #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #workspace-note),
@@ -244,7 +243,7 @@
 <div class="terminal-shell" id="terminal-shell" data-tab="proveo">
 <header class="top">
   <div class="bar">
-    <span class="brand"><span class="mark" aria-hidden="true">$</span> proveo</span>
+    <span class="path" id="workspace-path">~/projects/proveo</span>
     <nav class="tabs" role="tablist" aria-label="Dashboard">
       <button type="button" class="tab" id="tab-proveo" role="tab" aria-controls="proveo" aria-selected="true">proveo</button>
       <button type="button" class="tab" id="tab-sbx" role="tab" aria-controls="sbx" aria-selected="false" tabindex="-1">sbx</button>
@@ -255,16 +254,7 @@
 
 <main class="terminal-content" tabindex="0" aria-label="Terminal content">
   <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
-    <div class="workbar">
-      <h1 id="view-title" hidden></h1>
-      <p class="path" id="workspace-path">~/projects/proveo</p>
-      <div class="layout-picker" role="group" aria-label="Proveo views and options">
-        <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
-        <button type="button" data-view="graph" aria-pressed="false"><kbd>2</kbd> Task graph</button>
-        <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
-        <button type="button" id="details-options" aria-haspopup="dialog"><kbd>4</kbd> Task detail options</button>
-      </div>
-    </div>
+    <h1 class="workbar" id="view-title" hidden></h1>
     <div class="capacity-bar">
       <button type="button" class="button" id="capacity-key"><kbd>c</kbd> Host capacity</button>
       <div class="capacity-meters" id="capacity-meters"></div>
@@ -341,6 +331,13 @@
   <a class="subtext footer-note" id="sbx-source" href="https://docs.docker.com/ai/sandboxes/get-started/#whats-next">Docker’s sbx dashboard screenshot ↗</a>
 </footer>
 </div>
+
+<nav class="layout-picker" id="preview-controls" aria-label="Dashboard preview controls">
+  <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
+  <button type="button" data-view="graph" aria-pressed="false"><kbd>2</kbd> Task graph</button>
+  <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
+  <button type="button" id="details-options" aria-haspopup="dialog"><kbd>4</kbd> Task detail options</button>
+</nav>
 
 <section class="exit-state" id="exit-state" aria-label="Preview exit" hidden>
   <p role="status">Dashboard exited · status 130</p>
@@ -1181,7 +1178,6 @@
     $("view-title").hidden = !open
     if (sandbox) $("view-title").textContent = "Fresh · " + taskSandboxName(ui.task)
     else if (open) $("view-title").textContent = file.status ? "Review file" : "File preview"
-    $("workspace-path").hidden = sandbox
     $("workspace-note").hidden = sandbox
     renderSidebar()
     renderInspector()
