@@ -168,6 +168,8 @@
 ' The left pane defaults to Changes for the selected task. Record its
 ' Git base and the exact feature-branch tip carried for the selected
 ' attempt. Group paths from git diff --name-status -z -M <base> <tip>.
+' Use a slightly smaller type size in the HTML file tree to preserve
+' more of each path within its column.
 ' Existing clone teardown snapshots dirty work and applies its carry to
 ' refs/proveo/<run-id>/<branch>. Keep the last carried revision visible
 ' during a live run, with its age. Report when no snapshot has arrived.
@@ -203,6 +205,10 @@
 ' View 3 shows outcomes and in-progress runs. Queued tasks have wait
 ' reasons and no promised start time. Align timestamps in a fixed
 ' column across sections. Use muted text for routine timestamps.
+' View 4 stacks Changes or Files above Task details in the left column.
+' The review queue spans both rows in the right column. Scroll within
+' the terminal frame to reach lower details. Opening a file uses the
+' shared two-pane preview and returning restores the combined layout.
 '
 ' ACCEPTANCE FOR A FUTURE IMPLEMENTATION
 ' Launch two instances from the same pwd and target. Verify disjoint Git

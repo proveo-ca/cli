@@ -92,6 +92,7 @@
   #task-controls { margin-left: auto; }
   .panel-body { padding: 7px 10px; }
   .files .panel-body { padding: 5px 6px; }
+  #filetree { font-size: .92rem; }
   .tree { list-style: none; padding: 0; }
   .tree .tree { padding-left: .8ch; border-left: 1px solid var(--line); margin-left: 1ch; }
   .tree summary, .file { padding: 3px 5px; width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -163,6 +164,18 @@
   .patch-line { display: block; }
   .patch-added { color: var(--brand); }
   .patch-removed { color: var(--attention); }
+  #proveo[data-layout="combined"][data-mode="dashboard"] .grid {
+    grid-template-columns: minmax(320px, 1.15fr) minmax(0, 2fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "files tasks" "details tasks";
+  }
+  #proveo[data-layout="combined"][data-mode="dashboard"] .files { grid-area: files; }
+  #proveo[data-layout="combined"][data-mode="dashboard"] .task-panel { grid-area: tasks; }
+  #proveo[data-layout="combined"][data-mode="dashboard"] .inspector {
+    grid-area: details;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
   #proveo[data-mode="editor"] :is(.task-panel, .layout-picker, .capacity-bar),
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
@@ -221,6 +234,7 @@
         <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
         <button type="button" data-view="graph" aria-pressed="false"><kbd>2</kbd> Task graph</button>
         <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
+        <button type="button" data-view="combined" aria-pressed="false"><kbd>4</kbd> Combined panes</button>
       </div>
     </div>
     <div class="capacity-bar">
@@ -311,7 +325,7 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Port the Review queue, Task graph, and Schedule as three views of one workspace model. Feed all three from the same task, result, and schedule records. Keep pane geometry across view switches and scroll task rows inside the frame.</p>
+    <p class="subtext">Feed all four layouts from the same task, result, and schedule records. Combined panes stacks Changes above Task details on the left and gives the review queue the remaining columns. Keep the terminal frame fixed across layout switches and scroll vertically to reach the full details.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
@@ -795,7 +809,9 @@
   }
 
   function renderWork() {
-    const [title, legend] = views[ui.view]
+    const view = ui.view === "combined" ? "queue" : ui.view
+    const [title, legend] = views[view]
+    $("proveo").dataset.layout = ui.view
     $("task-panel").setAttribute("aria-label", title)
     $("work-legend").textContent = legend
     for (const control of document.querySelectorAll("[data-view]")) {
@@ -803,7 +819,7 @@
     }
 
     const work = $("work")
-    switch (ui.view) {
+    switch (view) {
       case "queue":
         work.replaceChildren(...queueGroups.map(([title, states]) =>
           taskGroup(title, tasks.filter(({state}) => states.includes(state)))))
@@ -1483,7 +1499,7 @@
       if (event.key === "v") togglePatch()
       return
     }
-    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", c: "#capacity-key", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
+    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", "4": "[data-view=combined]", c: "#capacity-key", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
     if (control) {
       event.preventDefault()
       document.querySelector(control).click()
