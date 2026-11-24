@@ -38,6 +38,7 @@
 ' over the total, with totals in muted text. Fill partial segments in
 ' proportion. Count usage and reservations against the displayed pool.
 ' Keep totals visible and show unknown occupancy when a sample is absent.
+' The HTML sample uses a 512 GiB disk with 180 GiB of initial headroom.
 '
 ' ADMISSION AND LIVENESS
 ' Serialize compare-and-reserve across Proveo queues on the same host.
