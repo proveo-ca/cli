@@ -135,8 +135,20 @@
 ' Proveo indexes agent, Git, task and schedule data. Start with local plan
 ' paths and explicit ticket URLs. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
-' Files come from the effective pwd. Offer read-only previews first and a
-' handoff to Fresh or the configured editor for explicit local edits.
+' The left pane defaults to Changes for the selected task. Record its
+' Git base and the exact feature-branch tip carried for the selected
+' attempt. Group paths from git diff --name-status -z -M <base> <tip>.
+' Existing clone teardown snapshots dirty work and applies its carry to
+' refs/proveo/<run-id>/<branch>. Keep the last carried revision visible
+' during a live run, with its age. Report when no snapshot has arrived.
+' Retain referenced Git objects for as long as their reviews are visible.
+' Enter on a live scheduled task uses proveo attach <job> with the job
+' key, and detaching leaves the agent running. Report when no job is live.
+' Enter on a file opens the editor pane across the center and right.
+' Keep the tree visible. Read changed files from the recorded tip and
+' deleted files from the base. Toggle between the file and its patch.
+' Switch to Files for the effective pwd. Offer a handoff to Fresh or
+' the configured editor for explicit local edits.
 ' Use Fresh's file explorer and editor with the current workspace path.
 ' Fresh's worktree-based Orchestrator stays outside this design.
 ' Overnight agents run queued tasks with time, concurrency and retry caps.

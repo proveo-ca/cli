@@ -92,6 +92,12 @@
   .tree summary { color: var(--brand); }
   .file { background: transparent; border: 0; display: block; }
   .file::before { content: "·"; color: var(--muted); margin-right: 1ch; }
+  .change-file::before { content: none; }
+  .change-status { display: inline-block; width: 2ch; color: var(--brand); }
+  .change-status[data-status="A"] { color: var(--success); }
+  .change-status[data-status="D"] { color: var(--attention); }
+  .file[aria-current="true"] .change-status { color: inherit; }
+  .change-source { padding: 3px 5px 6px; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
   .file:hover { background: var(--raised); }
   .file[aria-current="true"] { background: var(--brand); color: var(--ink); }
   .file[aria-current="true"]::before { color: inherit; }
@@ -112,6 +118,11 @@
   .state.saved { color: var(--text); }
   .state.saved > span { color: var(--success); }
   .state.warn { color: var(--attention); }
+  .task-side { display: grid; justify-items: end; }
+  .attach-hint { display: none; color: var(--brand); font-size: .88rem; }
+  .task:is(:hover, :focus-visible) .attach-hint { display: block; }
+  .task[aria-pressed="true"] .attach-hint { color: inherit; }
+  .column .task-side { justify-items: start; }
   .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: -7px -10px; }
   .column { min-width: 0; padding: 7px 8px; }
   .column + .column { border-left: 1px solid var(--line); }
@@ -139,6 +150,9 @@
   .editor-lines li { display: grid; grid-template-columns: 5ch minmax(0, 1fr); }
   .editor-lines li > span { padding-right: 2ch; text-align: right; color: var(--muted); user-select: none; }
   .editor-lines code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .patch-line { display: block; }
+  .patch-added { color: var(--brand); }
+  .patch-removed { color: var(--attention); }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
   #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker),
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
@@ -198,9 +212,15 @@
     <div class="metrics" id="metrics" aria-label="Workspace summary"></div>
     <div class="grid">
       <aside class="panel files" aria-labelledby="files-heading">
-        <header class="panel-head"><h2 id="files-heading">Files</h2><span class="kicker">pwd</span></header>
+        <header class="panel-head">
+          <h2 id="files-heading">Changes</h2>
+          <button type="button" class="button" id="sidebar-swap"><kbd>f</kbd> Files</button>
+        </header>
         <div class="panel-body">
-          <div id="filetree"></div>
+          <div id="filetree">
+            <div id="changes-tree"></div>
+            <div id="workspace-tree" hidden></div>
+          </div>
         </div>
       </aside>
       <section class="panel task-panel" aria-labelledby="work-heading">
@@ -229,13 +249,15 @@
   <button type="button" class="button" id="quit-key"><kbd>Ctrl+C</kbd> quit</button>
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
-    <button type="button" class="button" id="evidence-key"><kbd>Enter</kbd> evidence</button>
+    <button type="button" class="button" id="enter-key"><kbd>Enter</kbd> <span>Attach</span></button>
     <button type="button" class="button" id="fresh-key"><kbd>e</kbd> Fresh</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
   </div>
   <div class="keybar" id="editor-keys">
     <button type="button" class="button" id="editor-back"><kbd>Esc</kbd> return to Proveo</button>
+    <span class="subtext"><kbd>Enter</kbd> open file</span>
+    <button type="button" class="button" id="patch-key" hidden><kbd>v</kbd> <span>Diff</span></button>
     <span class="subtext">Read-only file preview</span>
   </div>
   <button type="button" class="button" id="implementation-key"><kbd class="implementation-prefix">Ctrl+G</kbd> <kbd>i</kbd> implementation</button>
@@ -262,6 +284,7 @@
   <article class="port-plan">
     <h3>One model, three views</h3>
     <p class="subtext">Port the Review queue, Task board, and Schedule as three views of one workspace model. Feed all three from the same task, result, and schedule records. Keep pane geometry across view switches and scroll task rows inside the frame.</p>
+    <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
     <h3>Go libraries</h3>
     <dl>
       <dt><a href="https://pkg.go.dev/charm.land/bubbletea/v2">Bubble Tea v2</a></dt>
@@ -319,7 +342,7 @@
     {
       id: "PRV-291", slug: "clones", title: "Verify parallel clone isolation", agent: "OpenCode", source: "Linear",
       phase: 3, state: "active", time: "08:10", instance: "opencode-f91c25", revision: "d37fb13",
-      branch: "proveo/prv-291/clone-isolation", session: "Native session in VM", saved: false,
+      branch: "proveo/prv-291/clone-isolation", job: "parallel-clone-isolation", session: "Native session in VM", saved: false,
       summary: "Compare file edits from two agents launched in the same directory. Each clone has its own branch.",
       evidence: ["Unit suite · distinct instance names passed", "Live verification · two agents still running"],
     },
@@ -353,6 +376,27 @@
       evidence: ["Unit suite · passed", "Live verification · passed", "PR · merged against the verified revision"],
     },
   ]
+  const sampleBase = "6bf4c2a"
+  const changesByTask = {
+    "PRV-284": [
+      ["A", "internal/backend/sandbox/checkpoint.go", "", "package sandbox\n\n// Publish a checkpoint before removing the sandbox."],
+      ["M", "internal/run/run.go", "attempt := newAttempt(workspace)", "attempt := newAttempt(instance.ID)\nresult := checkpoint(ctx, attempt)"],
+      ["M", "_spec/_experiments/dashboard/workspace-instances.puml", "' Store resume state at exit.", "' Store each instance's verified checkpoint at exit.\n' Reuse the last good checkpoint when export fails."],
+    ],
+    "PLAN-17": [
+      ["M", "internal/schedule/runner.go", "stop := started.Add(budget)", "stop := started.Add(budget)\ncheckpointBy := stop.Add(-checkpointReserve)"],
+      ["R", "e2e/schedule_checkpoint_test.go", "// Verify the job stops.", "// Verify the last checkpoint survives a budget stop.", "e2e/schedule_stop_test.go"],
+    ],
+    "PRV-291": [
+      ["M", "internal/backend/sandbox/worktree_clone_test.go", "first := runAgent(workspace)", "first := runAgent(workspace, newInstance())\nsecond := runAgent(workspace, newInstance())\nassertSeparateClones(first, second)"],
+    ],
+    "PRV-304": [
+      ["M", "internal/results/results.go", "type Evidence struct {\n  Status string\n}", "type Evidence struct {\n  Status string\n  Revision string\n}"],
+    ],
+    "PRV-278": [
+      ["D", "internal/results/shared_output.go", "package results\n\nconst output = \"reports\"", ""],
+    ],
+  }
   const fileTree = [
     ["_spec", [
       ["_experiments", [
@@ -374,8 +418,10 @@
   ]
 
   const $ = (id) => document.getElementById(id)
-  const ui = { view: "queue", task: tasks[0], file: null, editing: false, editorFile: null }
+  const ui = { view: "queue", task: tasks[0], sidebar: "changes", editing: false, editorFile: null, editorSidebar: "files", patch: false }
   const filesByPath = new Map()
+  const rowActions = new WeakMap()
+  let hoveredRow = null
   let toastTimer
 
   function node(tag, className, content) {
@@ -424,24 +470,64 @@
 
   function selectTask(task) {
     ui.task = task
-    ui.file = null
     for (const item of $("work").querySelectorAll(".task")) {
       item.setAttribute("aria-pressed", String(item.dataset.task === task.id))
     }
+    renderChanges()
     renderInspector()
+  }
+
+  function actionRow() {
+    if (hoveredRow?.getClientRects().length) return hoveredRow
+    return document.activeElement?.closest("[data-enter-action]")
+  }
+
+  function updateEnterHint() {
+    $("enter-key").lastElementChild.textContent = actionRow()?.dataset.enterAction ?? "Attach"
+  }
+
+  function bindEnter(row, label, activate) {
+    row.dataset.enterAction = label
+    rowActions.set(row, activate)
+    row.addEventListener("pointerenter", () => {
+      hoveredRow = row
+      updateEnterHint()
+    })
+    row.addEventListener("pointerleave", () => {
+      if (hoveredRow === row) hoveredRow = null
+      updateEnterHint()
+    })
+    row.addEventListener("focus", () => {
+      hoveredRow = null
+      updateEnterHint()
+    })
+  }
+
+  function enterAction(row = actionRow()) {
+    const activate = rowActions.get(row)
+    if (activate) activate()
+    else if (!ui.editing) showAttach(ui.task)
   }
 
   function taskCard(task) {
     const card = button("", () => selectTask(task), "task")
     card.dataset.task = task.id
-    card.setAttribute("aria-pressed", String(!ui.file && task === ui.task))
+    card.setAttribute("aria-pressed", String(task === ui.task))
+    bindEnter(card, "Attach", () => showAttach(task))
     const name = node("span")
     name.append(
       node("span", "task-heading", task.title),
       node("span", "task-meta", [task.id, task.agent, phases[task.phase]].join(" · ")),
     )
     const [label, icon, kind = task.state] = taskStates[task.state]
-    card.append(name, status(label, icon, kind))
+    const side = node("span", "task-side")
+    side.append(status(label, icon, kind))
+    if (task.job && task.state === "active") {
+      const hint = node("span", "attach-hint", "↵ Attach")
+      hint.setAttribute("aria-hidden", "true")
+      side.append(hint)
+    }
+    card.append(name, side)
     return card
   }
 
@@ -507,22 +593,28 @@
     $("work-clock").textContent = clock
   }
 
-  function tree(entries, parent = "") {
+  function tree(entries, parent = "", changes = false) {
     const list = node("ul", "tree")
     for (const [name, value] of entries) {
       const path = parent ? parent + "/" + name : name
       const item = node("li")
       if (Array.isArray(value)) {
         const group = node("details")
-        group.open = path.startsWith("_spec")
-        group.append(node("summary", "", name), tree(value, path))
+        group.open = changes || path.startsWith("_spec")
+        group.append(node("summary", "", name), tree(value, path, changes))
         item.append(group)
       } else {
-        const entry = {name, path, value}
-        filesByPath.set(path, entry)
-        const file = button(name, () => selectFile(entry), "file")
+        const entry = changes ? value : {name, path, value}
+        if (!changes) filesByPath.set(path, entry)
+        const file = button(changes ? "" : name, () => selectFile(entry), changes ? "file change-file" : "file")
+        if (changes) {
+          const mark = node("span", "change-status", entry.status)
+          mark.dataset.status = entry.status
+          file.append(mark, document.createTextNode(name))
+        }
         file.dataset.path = path
         file.title = path
+        bindEnter(file, "Open file", () => selectFile(entry))
         item.append(file)
       }
       list.append(item)
@@ -530,21 +622,71 @@
     return list
   }
 
-  function selectFile(file) {
-    if (ui.editing) ui.editorFile = file
-    else {
-      ui.file = file
-      for (const task of $("work").querySelectorAll(".task")) task.setAttribute("aria-pressed", "false")
+  function changeEntries(changes, tip) {
+    const root = new Map()
+    for (const [status, path, before, after, oldPath] of changes) {
+      const parts = path.split("/")
+      const name = parts.pop()
+      let directory = root
+      for (const part of parts) {
+        if (!directory.has(part)) directory.set(part, new Map())
+        directory = directory.get(part)
+      }
+      directory.set(name, {name, path, status, before, after, oldPath, tip, value: status === "D" ? before : after})
     }
-    renderInspector()
+    const entries = directory => [...directory].map(([name, entry]) => [name, entry instanceof Map ? entries(entry) : entry])
+    return entries(root)
   }
 
-  function setEditor(open) {
+  function renderChanges() {
+    const {id, revision} = ui.task
+    const changes = changesByTask[id] ?? []
+    const pane = $("changes-tree")
+    if (changes.length === 0) {
+      pane.replaceChildren(node("p", "change-source", "No branch snapshot yet."))
+      return
+    }
+    const count = changes.length + (changes.length === 1 ? " file" : " files")
+    pane.replaceChildren(
+      node("p", "change-source", "Carried · " + count + "\n" + sampleBase + "…" + revision),
+      tree(changeEntries(changes, revision), "", true),
+    )
+  }
+
+  function sidebarMode() {
+    return ui.editing ? ui.editorSidebar : ui.sidebar
+  }
+
+  function renderSidebar() {
+    const changes = sidebarMode() === "changes"
+    $("files-heading").textContent = changes ? "Changes" : "Files"
+    $("workspace-tree").hidden = changes
+    $("changes-tree").hidden = !changes
+    $("sidebar-swap").replaceChildren(node("kbd", "", changes ? "f" : "d"), changes ? " Files" : " Changes")
+  }
+
+  function setSidebar(mode) {
+    if (ui.editing) ui.editorSidebar = mode
+    else ui.sidebar = mode
+    renderSidebar()
+    if (ui.editing) renderInspector()
+  }
+
+  function selectFile(file) {
+    setEditor(true, file)
+  }
+
+  function setEditor(open, file = null) {
     ui.editing = open
-    if (open) ui.editorFile = ui.file ?? ui.editorFile ?? filesByPath.get("README.md")
+    ui.patch = false
+    if (open) {
+      ui.editorFile = file ?? filesByPath.get("README.md")
+      ui.editorSidebar = file?.status ? "changes" : "files"
+    }
     $("proveo").dataset.mode = open ? "editor" : "dashboard"
     $("terminal-shell").dataset.mode = $("proveo").dataset.mode
-    $("view-title").textContent = open ? "$ fresh ." : views[ui.view][0]
+    $("view-title").textContent = open ? (file?.status ? "Review file" : "$ fresh .") : views[ui.view][0]
+    renderSidebar()
     renderInspector()
     if (open) $("detail-heading").focus()
     else $("fresh-key").focus()
@@ -560,6 +702,30 @@
       lines.append(line)
     })
     return lines
+  }
+
+  function patchView(file) {
+    const before = file.status === "A" ? [] : file.before.split("\n")
+    const after = file.status === "D" ? [] : file.after.split("\n")
+    const lines = [
+      "--- " + (file.status === "A" ? "/dev/null" : "a/" + (file.oldPath ?? file.path)),
+      "+++ " + (file.status === "D" ? "/dev/null" : "b/" + file.path),
+      "@@ -" + (before.length ? "1," + before.length : "0,0") + " +" + (after.length ? "1," + after.length : "0,0") + " @@",
+      ...before.map(line => "-" + line),
+      ...after.map(line => "+" + line),
+    ]
+    const patch = node("pre", "file-preview")
+    lines.forEach((line, index) => {
+      const tone = index <= 2 ? "" : line.startsWith("+") ? " patch-added" : " patch-removed"
+      patch.append(node("span", "patch-line" + tone, line))
+    })
+    return patch
+  }
+
+  function togglePatch() {
+    if (!ui.editing || !ui.editorFile.status) return
+    ui.patch = !ui.patch
+    renderInspector()
   }
 
   function fact(label, text) {
@@ -598,6 +764,15 @@
   function showResume(task) {
     const command = "proveo run " + agentTarget(task.agent) + " --instance " + task.instance
     showCommand("Resume " + task.instance, "This proposed command selects the instance and restores its last saved native session.", command)
+  }
+
+  function showAttach(task) {
+    selectTask(task)
+    if (!task.job || task.state !== "active") {
+      notify(task.id + " · no live run")
+      return
+    }
+    showCommand("Attach · " + task.id, "Open the running job’s terminal. Detach with Ctrl+B, then d.", "proveo attach " + task.job)
   }
 
   function agentTarget(name) {
@@ -655,26 +830,17 @@
 
   function renderInspector() {
     const detail = $("detail")
-    const file = ui.editing ? ui.editorFile : ui.file
+    const file = ui.editing ? ui.editorFile : null
     for (const item of $("filetree").querySelectorAll(".file")) {
-      if (file?.path === item.dataset.path) item.setAttribute("aria-current", "true")
+      if (file?.path === item.dataset.path && !item.closest("[hidden]")) item.setAttribute("aria-current", "true")
       else item.removeAttribute("aria-current")
     }
+    $("patch-key").hidden = !file?.status
+    $("patch-key").lastElementChild.textContent = ui.patch ? "File" : "Diff"
     if (ui.editing) {
       $("detail-heading").textContent = file.path
-      $("detail-context").textContent = "Fresh preview"
-      detail.replaceChildren(editorLines(file))
-      return
-    }
-    if (file) {
-      $("detail-heading").textContent = "File preview"
-      $("detail-context").textContent = "Sample file"
-      detail.replaceChildren(
-        node("h3", "", file.name),
-        node("p", "subtext", file.path),
-        node("pre", "file-preview", file.value),
-        button("Back to task", () => selectTask(ui.task)),
-      )
+      $("detail-context").textContent = !file.status ? "Fresh preview" : ui.patch ? "Git diff" : file.status === "D" ? "Base " + sampleBase : "Tip " + file.tip
+      detail.replaceChildren(ui.patch ? patchView(file) : editorLines(file))
       return
     }
 
@@ -810,6 +976,7 @@
   }
 
   function moveTask(step) {
+    hoveredRow = null
     const rows = [...$("work").querySelectorAll(".task")]
     const current = rows.findIndex(row => row.getAttribute("aria-pressed") === "true")
     const next = current < 0 ? (step > 0 ? 0 : rows.length - 1) : current + step
@@ -851,19 +1018,31 @@
     }
     if ($("proveo").hidden || $("dialog").open || event.ctrlKey || event.metaKey || event.altKey) return
     if (event.target.closest?.("input, textarea, select, [contenteditable]")) return
+    const link = event.target.closest?.("button, a, summary")
+    const row = link?.dataset.enterAction ? link : actionRow()
+    if (event.key === "Enter" && (row || (!link && !ui.editing))) {
+      event.preventDefault()
+      enterAction(row)
+      return
+    }
+    if (event.key === "d" || event.key === "f") {
+      event.preventDefault()
+      setSidebar(event.key === "d" ? "changes" : "files")
+      return
+    }
     if (event.key === "Escape" && ui.editing) {
       event.preventDefault()
       setEditor(false)
       return
     }
-    if (ui.editing) return
+    if (ui.editing) {
+      if (event.key === "v") togglePatch()
+      return
+    }
     const control = {"1": "[data-view=queue]", "2": "[data-view=board]", "3": "[data-view=schedule]", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
     if (control) {
       event.preventDefault()
       document.querySelector(control).click()
-    } else if (event.key === "Enter" && (event.target.closest?.(".task") || !event.target.closest?.("button, a, summary"))) {
-      event.preventDefault()
-      showEvidence(ui.task)
     } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest?.("#filetree")) {
       event.preventDefault()
       moveTask(event.key === "ArrowDown" ? 1 : -1)
@@ -884,13 +1063,17 @@
   $("fresh-key").addEventListener("click", () => setEditor(true))
   $("editor-back").addEventListener("click", () => setEditor(false))
   $("new-instance").addEventListener("click", showNewInstance)
-  $("evidence-key").addEventListener("click", () => showEvidence(ui.task))
+  $("enter-key").addEventListener("click", () => enterAction())
+  $("patch-key").addEventListener("click", togglePatch)
+  $("sidebar-swap").addEventListener("click", () => setSidebar(sidebarMode() === "changes" ? "files" : "changes"))
   $("implementation-key").addEventListener("click", showImplementation)
   $("quit-key").addEventListener("click", quitDashboard)
   $("restart-key").addEventListener("click", () => location.reload())
 
   $("detail-heading").tabIndex = -1
-  $("filetree").append(tree(fileTree))
+  $("workspace-tree").append(tree(fileTree))
+  renderChanges()
+  renderSidebar()
   renderMetrics()
   renderWork()
   renderInspector()
