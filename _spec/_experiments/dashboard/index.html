@@ -208,7 +208,6 @@
   #terminal-shell[data-mode="editor"] #dashboard-keys,
   #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #workspace-note),
   #terminal-shell[data-tab="proveo"] #sbx-source { display: none; }
-  #terminal-shell[data-tab="proveo"]:not([data-mode="editor"]) .implementation-prefix { display: none; }
   .sbx-preview { margin: 0; }
   .sbx-preview img { display: block; width: 100%; height: auto; }
   .footer { background: var(--raised); border-top: 1px solid var(--line); min-height: 36px; }
@@ -315,19 +314,17 @@
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
     <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="true" hidden><kbd>t</kbd> <span>Hide details</span></button>
-    <button type="button" class="button" id="enter-key" hidden><kbd>Enter</kbd> <span></span></button>
+    <button type="button" class="button" id="enter-key"><kbd>Enter</kbd> <span>Attach</span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
-    <button type="button" class="button" id="details-position" title="Change details position" hidden><kbd>v</kbd> position</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
   </div>
   <div class="keybar" id="editor-keys">
     <button type="button" class="button" id="editor-back"><kbd>Esc</kbd> return to Proveo</button>
     <span class="subtext"><kbd>Enter</kbd> open file</span>
-    <button type="button" class="button" id="patch-key" hidden><kbd>v</kbd> <span>Diff</span></button>
+    <button type="button" class="button" id="patch-key" hidden>Diff</button>
     <span class="subtext">Read-only file preview</span>
   </div>
-  <button type="button" class="button" id="implementation-key"><kbd class="implementation-prefix">Ctrl+G</kbd> <kbd>i</kbd> implementation</button>
   <span class="toast" id="toast" role="status"></span>
   <span class="subtext footer-note" id="workspace-note">Sample workspace</span>
   <a class="subtext footer-note" id="sbx-source" href="https://docs.docker.com/ai/sandboxes/get-started/#whats-next">Docker’s sbx dashboard screenshot ↗</a>
@@ -339,6 +336,7 @@
   <button type="button" data-view="graph" aria-pressed="false"><kbd>2</kbd> Task graph</button>
   <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
   <button type="button" id="details-options" aria-haspopup="dialog"><kbd>4</kbd> Task detail options</button>
+  <button type="button" id="implementation-key" aria-haspopup="dialog"><kbd>i</kbd> Implementation</button>
 </nav>
 
 <section class="exit-state" id="exit-state" aria-label="Preview exit" hidden>
@@ -357,8 +355,8 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Feed all three views from the same task, result, and schedule records. Place Changes and Task details in the left column by default. Press <kbd>t</kbd> to toggle the task details. Use <kbd>4</kbd> to choose the details position and <kbd>v</kbd> to cycle positions. The lower-right split scrolls the task view and details independently.</p>
-    <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
+    <p class="subtext">Feed all three views from the same task, result, and schedule records. Place Changes and Task details in the left column by default. Press <kbd>t</kbd> to toggle the task details. Use <kbd>4</kbd> to choose the details position. The lower-right split scrolls the task view and details independently.</p>
+    <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use the Diff button to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
     <p class="subtext">A task starts when its prerequisites and CPU, RAM, and disk reservations fit. Use <kbd>c</kbd> to change the sample host. Quint models the transition rules and checks invariants outside the Go runtime. <a href="resource_queue.qnt">Quint model ↗</a></p>
@@ -772,11 +770,8 @@
 
   function updateEnterHint() {
     const row = actionRow()
-    const fallback = !ui.editing && canAttach(ui.task) ? "Attach" : ""
-    const hint = row?.dataset.enterAction ?? fallback
-    footerRow = hint ? row : null
-    $("enter-key").hidden = !hint
-    $("enter-key").lastElementChild.textContent = hint
+    footerRow = row
+    $("enter-key").lastElementChild.textContent = row?.dataset.enterAction || "Attach"
   }
 
   function bindEnter(row, label, activate) {
@@ -915,7 +910,6 @@
     for (const hint of work.querySelectorAll(".task-detail-hint")) {
       hint.lastElementChild.textContent = hint.closest('.task[aria-pressed="true"]') ? action : "See details"
     }
-    $("details-position").hidden = ui.editing
     if (!visible && inspector.contains(document.activeElement)) shortcut.focus({preventScroll: true})
     inspector.hidden = !visible
     const anchor = visible && row ? row.closest(".slot, .graph-chain") ?? row : $("task-panel")
@@ -928,11 +922,6 @@
     detailPosition = position
     detailsOpen = true
     placeDetails()
-  }
-
-  function advanceDetailsPosition() {
-    const next = detailPositions.findIndex(([position]) => position === detailPosition) + 1
-    setDetailsPosition(detailPositions[next % detailPositions.length][0])
   }
 
   function toggleDetails(task = ui.task) {
@@ -1425,7 +1414,7 @@
       else item.removeAttribute("aria-current")
     }
     $("patch-key").hidden = !file?.status
-    $("patch-key").lastElementChild.textContent = ui.patch ? "File" : "Diff"
+    $("patch-key").textContent = ui.patch ? "File" : "Diff"
     if (ui.editing) {
       $("detail-heading").textContent = file.path
       let context = ui.editorSidebar === "sandbox" ? "Sample sandbox" : "Host workspace"
@@ -1528,7 +1517,7 @@
     const hint = $("switch-hint")
     hint.dataset.armed = String(armed)
     if (armed) {
-      hint.replaceChildren(node("kbd", "", "Tab"), " switch · ", node("kbd", "", "p"), " proveo · ", node("kbd", "", "s"), " sbx · ", node("kbd", "", "i"), " implementation")
+      hint.replaceChildren(node("kbd", "", "Tab"), " switch · ", node("kbd", "", "p"), " proveo · ", node("kbd", "", "s"), " sbx")
       tabPrefixTimer = setTimeout(() => setTabPrefix(false), 2200)
     } else {
       hint.replaceChildren(
@@ -1597,12 +1586,6 @@
       return
     }
     if (tabPrefix) {
-      if (event.key === "i") {
-        event.preventDefault()
-        setTabPrefix(false)
-        showImplementation()
-        return
-      }
       const active = tabs.find(tab => tab.getAttribute("aria-selected") === "true")
       const next = {p: tabs[0], s: tabs[1], Tab: tabs.find(tab => tab !== active)}[event.key]
       if (next) {
@@ -1617,6 +1600,7 @@
     if (event.target.closest?.("input, textarea, select, [contenteditable]")) return
     const link = event.target.closest?.("button, a, summary")
     const row = actionRow()
+    if (event.key === "Enter" && ui.editing && link && !link.hasAttribute("data-enter-action")) return
     if (event.key === "Enter" && (row || (!link && !ui.editing))) {
       event.preventDefault()
       enterAction(row)
@@ -1632,17 +1616,14 @@
       setEditor()
       return
     }
-    if (ui.editing) {
-      if (event.key === "v") togglePatch()
-      return
-    }
+    if (ui.editing) return
     if (event.key === "t" && row?.dataset.task) {
       event.preventDefault()
       if (row.dataset.task !== ui.task.id) row.focus({preventScroll: true})
       toggleDetails(taskFor(row.dataset.task))
       return
     }
-    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", "4": "#details-options", c: "#capacity-key", e: "#fresh-key", t: "#details-key", v: "#details-position", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
+    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", "4": "#details-options", c: "#capacity-key", e: "#fresh-key", t: "#details-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
     if (control) {
       const button = document.querySelector(control)
       if (button.hidden) return
@@ -1668,7 +1649,6 @@
   $("fresh-key").addEventListener("click", openSandboxFresh)
   $("details-options").addEventListener("click", showDetailOptions)
   $("details-key").addEventListener("click", () => toggleDetails())
-  $("details-position").addEventListener("click", advanceDetailsPosition)
   $("editor-back").addEventListener("click", () => setEditor())
   $("new-instance").addEventListener("click", showNewInstance)
   $("capacity-key").addEventListener("click", showCapacity)

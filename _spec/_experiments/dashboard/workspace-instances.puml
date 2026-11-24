@@ -120,10 +120,11 @@
 ' v2 composes the panes using the existing internal/ui identity roles.
 ' Bubbles v2 key and help draw the bottom key bar from the active bindings.
 ' Follow the sbx footer pattern with a bright key and a muted action.
-' Advertise Enter as Attach for live jobs and as Open file for file rows.
+' Show Enter Attach in the dashboard footer and Enter Open file for
+' file rows.
 ' Mark selection with a cyan cursor and a subtle tint. Keep status colors
-' visible. Put the HTML preview's layout picker and task detail options
-' below the terminal frame. Separate task groups
+' visible. Put the HTML preview's layout picker, task detail options,
+' and implementation guide below the terminal frame. Separate task groups
 ' and panes with rules. Keep task rows compact and graph nodes unboxed.
 ' Reuse creack/pty and x/term primitives on Unix. Evaluate Charm x/vt for
 ' the child screen buffer, alternate screen, cursor, and terminal replies.
@@ -216,7 +217,7 @@
 ' split. Show the highlighted t beside the task phase with See details
 ' or Hide details. Press t to toggle the selected task's details.
 ' Press t on a different task to select it and open its details.
-' Use v to cycle positions. Keep the chosen position across views.
+' Keep the chosen position across views.
 ' Anchor the accordion after the selected
 ' queue row, graph chain, or schedule slot. Use the split for a selection
 ' without a visible row. Give the split separate scroll regions.
