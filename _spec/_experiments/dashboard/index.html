@@ -8,9 +8,9 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #062831;
-    --surface: #0e3a48;
-    --raised: #062831;
+    --bg: #1b1b20;
+    --surface: var(--bg);
+    --raised: #1c1c21;
     --line: #1c5567;
     --text: #eaf5f3;
     --muted: #8fb9c2;
@@ -156,7 +156,7 @@
   .toast:empty { display: none; }
   .toast:not(:empty) + #workspace-note { display: none; }
   dialog { color: var(--text); background: var(--surface); padding: 0; border: 1px solid var(--brand); width: min(760px, calc(100% - 24px)); }
-  dialog::backdrop { background: rgb(6 40 49 / 75%); }
+  dialog::backdrop { background: color-mix(in srgb, var(--bg) 75%, transparent); }
   dialog .panel-body { padding: 10px; }
   dialog .panel-body > * + *, dialog li + li { margin-top: 8px; }
   .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
