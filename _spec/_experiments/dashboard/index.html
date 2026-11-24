@@ -145,6 +145,9 @@
   .evidence { margin-block: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
   .actions { display: flex; gap: 4px; flex-wrap: wrap; }
   .file-preview { margin-block: 8px; padding: 6px; background: var(--bg); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .initial-prompt { margin-block: 8px; }
+  .initial-prompt summary { color: var(--brand); }
+  .initial-prompt pre { max-block-size: 9em; overflow: auto; }
   .editor-lines { list-style: none; margin-top: 7px; padding: 5px 0; color: var(--text); }
   .editor-lines li { display: grid; grid-template-columns: 5ch minmax(0, 1fr); }
   .editor-lines li > span { padding-right: 2ch; text-align: right; color: var(--muted); user-select: none; }
@@ -175,6 +178,8 @@
   .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .launch-fields label { display: grid; gap: 4px; min-width: 0; color: var(--muted); }
   .launch-fields :is(select, input) { color: var(--text); background: var(--raised); width: 100%; border: 1px solid var(--line); border-radius: 0; padding: 4px; font: inherit; }
+  .prompt-field { display: grid; gap: 5px; color: var(--muted); }
+  .prompt-field textarea { width: 100%; min-block-size: 8em; resize: vertical; padding: 6px; color: var(--text); background: var(--bg); border: 1px solid var(--line); font: inherit; }
   .port-plan h3 { color: var(--brand); font-weight: bold; }
   .port-plan p, .port-plan dl { margin-block: 5px 12px; }
   .port-plan dl { display: grid; grid-template-columns: minmax(10ch, 1fr) minmax(0, 2.4fr); gap: 7px 12px; }
@@ -287,6 +292,7 @@
     <h3>One model, three views</h3>
     <p class="subtext">Port the Review queue, Task graph, and Schedule as three views of one workspace model. Feed all three from the same task, result, and schedule records. Keep pane geometry across view switches and scroll task rows inside the frame.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
+    <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
     <p class="subtext">A task starts when its prerequisites and CPU, RAM, and disk reservations fit. Use <kbd>c</kbd> to change the sample host. Quint models the transition rules and checks invariants outside the Go runtime. <a href="resource_queue.qnt">Quint model ↗</a></p>
     <h3>Task graph</h3>
@@ -336,6 +342,7 @@
       id: "PRV-284", slug: "history", title: "Persist instance history", agent: "Codex", source: "Linear",
       phase: 6, state: "review", time: "05:43", instance: "codex-83f91a", revision: "1c2f6e4", pr: "Draft #104",
       branch: "proveo/prv-284/session-history", session: "Checkpoint saved", saved: true,
+      prompt: "Design host-owned session checkpoints for two sandboxes started from the same directory.\nVerify that each agent can resume by native ID after its VM is rebuilt. Record failed exports and keep the last known good checkpoint.",
       summary: "The host recovered both native session IDs after the VMs exited. Review the ownership rule before opening the PR.",
       evidence: ["Unit suite · 42 passed", "Live sbx · two same-pwd instances resumed by ID", "Spec · workspace-instances.puml"],
     },
@@ -344,6 +351,7 @@
       phase: 6, state: "changes", time: "04:12", instance: "claude-2bf0a1", revision: "daa5c70", pr: "PR #102",
       plan: "_spec/_plans/night-budget.puml",
       branch: "proveo/plan-17/night-budget", session: "Checkpoint saved", saved: true,
+      prompt: "Update the night budget plan so a stopped job has time to publish its session checkpoint.\nRun the budget tests and record what a live stop still needs to prove.",
       summary: "Review asked for evidence that a stopped job leaves enough time to publish its history.",
       evidence: ["Unit suite · budget calculation passed", "Live verification · rerun requested after review", "Plan · _spec/_plans/night-budget.puml"],
     },
@@ -351,6 +359,7 @@
       id: "PRV-291", slug: "clones", title: "Verify parallel clone isolation", agent: "OpenCode", source: "Linear",
       phase: 3, state: "active", time: "08:10", instance: "opencode-f91c25", revision: "d37fb13",
       branch: "proveo/prv-291/clone-isolation", job: "parallel-clone-isolation", session: "Native session in VM", saved: false,
+      prompt: "Launch two OpenCode instances from this workspace. Edit the same path in both clones, then verify their changes remain separate and both results can be carried home.",
       summary: "Compare file edits from two agents launched in the same directory. Each clone has its own branch.",
       evidence: ["Unit suite · distinct instance names passed", "Live verification · two agents still running"],
     },
@@ -358,6 +367,7 @@
       id: "PRV-295", slug: "recover", title: "Recover a stopped session", agent: "Hermes", source: "Linear",
       phase: 1, state: "blocked", time: "03:20", instance: "hermes-2d841b", revision: "bc059a2",
       branch: "proveo/prv-295/recovery", session: "Final checkpoint needs retry", saved: false,
+      prompt: "Reproduce a guest stopping during session export. Confirm that the host can recover the last complete checkpoint and report the interrupted export.",
       summary: "The guest stopped before the final checkpoint reached the host. Review the last good checkpoint and the kept VM.",
       evidence: ["Checkpoint · previous attempt available", "Guest export · unreachable at shutdown"],
     },
@@ -366,6 +376,7 @@
       phase: 0, state: "queued", instance: "New instance", revision: "8dd8b76",
       plan: "_spec/_plans/session-index.puml",
       branch: "proveo/plan-21/session-index", session: "Awaiting first run", saved: false,
+      prompt: "Draft a workspace-scoped session index. Include the instance ID, harness, and native session ID needed to resume each saved instance.",
       summary: "Draft the query that lists resumable instances in the current workspace.",
       evidence: ["Plan · _spec/_plans/session-index.puml", "Schedule · 45 minute budget"],
     },
@@ -373,6 +384,7 @@
       id: "PRV-304", slug: "evidence", title: "Bind evidence to the review revision", agent: "Claude Code", source: "Linear",
       phase: 4, state: "queued", instance: "claude-08a532", revision: "5b119c9",
       branch: "proveo/prv-304/review-evidence", session: "Checkpoint saved", saved: true,
+      prompt: "Tie every verification result to the Git revision it tested. Show when a newer commit requires another test run before review.",
       summary: "Apply the verified upgrade and lift the new commit for review.",
       evidence: ["Unit suite · previous attempt passed", "Live verification · recorded against this revision", "Schedule · 75 minute budget"],
     },
@@ -380,6 +392,7 @@
       id: "PRV-278", slug: "output", title: "Keep clone output per attempt", agent: "Codex", source: "Linear",
       phase: 7, state: "merged", time: "Yesterday", instance: "codex-411def", revision: "c0e6b81", pr: "Merged #98",
       branch: "proveo/prv-278/clone-output", session: "Checkpoint saved", saved: true,
+      prompt: "Write output to a directory keyed by attempt ID. Verify that two attempts from the same workspace can keep separate reports.",
       summary: "Merged after the reviewer verified that each attempt keeps its own output.",
       evidence: ["Unit suite · passed", "Live verification · passed", "PR · merged against the verified revision"],
     },
@@ -1013,34 +1026,88 @@
   }
 
   function showNewInstance() {
+    const draft = {agent: agentTarget(ui.task.agent), ticket: ui.task.id, prompt: ui.task.prompt ?? ""}
+    showDialog("New instance")
+    instanceSetup(draft)
+  }
+
+  function instanceSetup(draft) {
     const fields = node("div", "launch-fields")
     const harnessLabel = node("label", "", "Agent")
     const harness = node("select")
     for (const name of [...new Set(tasks.map(({agent}) => agent))]) {
       harness.add(new Option(name, agentTarget(name)))
     }
-    harness.value = agentTarget(ui.task.agent)
+    harness.value = draft.agent
+    harness.addEventListener("change", () => { draft.agent = harness.value })
     harnessLabel.append(harness)
     const ticketLabel = node("label", "", "Task")
     const ticket = node("select")
     ticket.add(new Option("No task", ""))
     for (const task of tasks) ticket.add(new Option(task.id + " · " + task.title, task.id))
-    ticket.value = ui.task.id
+    ticket.value = draft.ticket
+    ticket.addEventListener("change", () => {
+      draft.ticket = ticket.value
+      draft.prompt = taskFor(draft.ticket)?.prompt ?? ""
+    })
     ticketLabel.append(ticket)
     fields.append(harnessLabel, ticketLabel)
-    const name = node("p", "subtext")
-    const command = node("pre", "file-preview")
-    const update = () => {
-      const task = tasks.find(({id}) => id === ticket.value)
-      name.textContent = "Example sandbox · " + sandboxName(harness.value, task, "8ec741")
-      command.textContent = "proveo run " + harness.value + " --new" + (ticket.value ? " --task " + ticket.value : "")
-    }
-    fields.addEventListener("change", update)
-    update()
-    showDialog("New instance in this pwd",
-      node("p", "subtext", "This proposed command creates a separate clone and session in the current workspace."),
-      fields, name, command, button("Copy command", () => copyCommand(command.textContent)),
+    $("dialog-body").replaceChildren(
+      node("p", "kicker", "1 of 3 · Agent and task"),
+      fields,
+      button("Next · Initial prompt", () => instancePrompt(draft), "button primary"),
     )
+    harness.focus()
+  }
+
+  function instancePrompt(draft) {
+    const field = node("label", "prompt-field", "Initial prompt")
+    const input = node("textarea")
+    input.value = draft.prompt
+    input.required = true
+    input.addEventListener("input", () => {
+      draft.prompt = input.value
+      input.setCustomValidity("")
+    })
+    field.append(input)
+    const review = () => {
+      input.setCustomValidity(input.value.trim() ? "" : "Enter the initial prompt.")
+      if (input.reportValidity()) instanceReview(draft)
+    }
+    input.addEventListener("keydown", event => {
+      if (event.ctrlKey && event.key === "Enter") {
+        event.preventDefault()
+        review()
+      }
+    })
+    const actions = node("div", "actions")
+    actions.append(button("Back", () => instanceSetup(draft)), button("Ctrl+Enter · Review launch", review, "button primary"))
+    $("dialog-body").replaceChildren(node("p", "kicker", "2 of 3 · Prompt"), field, actions)
+    input.focus()
+  }
+
+  function instanceReview(draft) {
+    const task = taskFor(draft.ticket)
+    const command = "proveo run " + draft.agent + " --new" + (task ? " --task " + task.id : "")
+    const back = button("Back", () => instancePrompt(draft))
+    const actions = node("div", "actions")
+    actions.append(back, button("Copy command", () => copyCommand(command)))
+    $("dialog-body").replaceChildren(
+      node("p", "kicker", "3 of 3 · Review launch"),
+      node("p", "subtext", "Example sandbox · " + sandboxName(draft.agent, task, "8ec741")),
+      promptDetails(draft.prompt),
+      node("pre", "file-preview", command),
+      actions,
+    )
+    back.focus()
+  }
+
+  function promptDetails(prompt) {
+    const details = node("details", "initial-prompt")
+    details.open = true
+    details.append(node("summary", "", "Initial prompt"))
+    details.append(prompt ? node("pre", "file-preview", prompt) : node("p", "subtext", "No initial prompt recorded."))
+    return details
   }
 
   function queueRework(task) {
@@ -1111,7 +1178,7 @@
       settling: ["Publish sample result", "publish"],
     }[task.state]
     if (demo) actions.append(button(demo[0], () => simulateRunEvent(task, demo[1])))
-    detail.replaceChildren(node("h3", "", task.title), node("p", "subtext", task.summary), facts, phaseList(task), evidence, actions)
+    detail.replaceChildren(node("h3", "", task.title), node("p", "subtext", task.summary), promptDetails(task.prompt), facts, phaseList(task), evidence, actions)
   }
 
   function showDialog(title, ...body) {

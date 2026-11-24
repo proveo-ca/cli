@@ -136,6 +136,12 @@
 ' Proveo indexes agent, Git, task and schedule data. Start with local plan
 ' paths and explicit ticket URLs. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
+' New instance opens a wizard for agent, optional task, and initial prompt.
+' A task can supply a prompt template. Review the chosen target, sandbox
+' name, and prompt before launch. Store the submitted prompt with the
+' instance's first attempt. Task details displays that snapshot even if
+' the task or prompt file is edited later. Deliver the prompt through the
+' runner's input path.
 ' The left pane defaults to Changes for the selected task. Record its
 ' Git base and the exact feature-branch tip carried for the selected
 ' attempt. Group paths from git diff --name-status -z -M <base> <tip>.
