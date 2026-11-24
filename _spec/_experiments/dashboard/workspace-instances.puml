@@ -136,6 +136,8 @@
 ' Proveo indexes agent, Git, task and schedule data. Start with local plan
 ' paths and explicit ticket URLs. The existing scheduler and result store
 ' supply attempt outcomes, time budget, reports and carried refs.
+' Task details pairs the Git provider and task source in its heading.
+' Show ticket, agent, branch, instance, sandbox, and PR above the prompt.
 ' New instance opens a wizard for agent, optional task, and initial prompt.
 ' A task can supply a prompt template. Review the chosen target, sandbox
 ' name, and prompt before launch. Store the submitted prompt with the
