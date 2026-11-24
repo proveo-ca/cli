@@ -70,7 +70,7 @@
   kbd { color: var(--brand); font-weight: bold; }
   .button { text-align: left; color: var(--text); }
   .button.primary { color: var(--brand); }
-  .workbar { border-bottom: 1px solid var(--line); min-height: 36px; }
+  .workbar { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--line); min-height: 36px; }
   .workbar h1 { font-weight: bold; }
   .path { overflow-wrap: anywhere; }
   .layout-picker { margin-left: auto; }
@@ -78,6 +78,7 @@
   .metric { display: flex; gap: .6ch; align-items: baseline; color: var(--muted); }
   .metric strong { color: var(--text); }
   .metric:first-child strong { color: var(--brand); }
+  .capacity-bar { display: flex; gap: 8px; align-items: center; padding: 4px 10px; border-bottom: 1px solid var(--line); }
   .grid { display: grid; flex: 1; grid-template-columns: minmax(170px, .58fr) minmax(0, 2fr) minmax(280px, 1.04fr); min-height: 540px; }
   .panel { min-width: 0; }
   .grid > .panel + .panel { border-left: 1px solid var(--line); }
@@ -102,8 +103,8 @@
   .file[aria-current="true"] { background: var(--brand); color: var(--ink); }
   .file[aria-current="true"]::before { color: inherit; }
   .section + .section { margin-top: 11px; }
-  .section .kicker, .column .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
-  .section .kicker::after, .column .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
+  .section .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
+  .section .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
   .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1ch; text-align: left; padding: 4px 5px 4px 2.6ch; position: relative; border: 0; border-bottom: 1px solid var(--line); background: transparent; }
   .task:last-child { border-bottom-color: transparent; }
   .task:hover { background: var(--raised); }
@@ -122,11 +123,13 @@
   .attach-hint { display: none; color: var(--brand); font-size: .88rem; }
   .task:is(:hover, :focus-visible) .attach-hint { display: block; }
   .task[aria-pressed="true"] .attach-hint { color: inherit; }
-  .column .task-side { justify-items: start; }
-  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: -7px -10px; }
-  .column { min-width: 0; padding: 7px 8px; }
-  .column + .column { border-left: 1px solid var(--line); }
-  .column .task { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .graph-row + .graph-row { margin-top: 10px; }
+  .graph-chain { display: flex; gap: .6ch; align-items: center; flex-wrap: wrap; }
+  .graph-node { border: 1px solid var(--line); }
+  .graph-node[aria-pressed="true"] { color: var(--ink); background: var(--brand); }
+  .graph-fold { color: var(--brand); }
+  .graph-fold[aria-expanded="true"] { background: var(--raised); }
+  .graph-blockers { margin-top: 3px; color: var(--attention); }
   .empty { color: var(--muted); padding: 3px 0; }
   .slot { display: grid; grid-template-columns: 6ch minmax(0, 1fr); align-items: start; gap: 1ch; }
   .slot time { padding-top: 4px; color: var(--attention); }
@@ -154,7 +157,7 @@
   .patch-added { color: var(--brand); }
   .patch-removed { color: var(--attention); }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
-  #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker),
+  #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker, .capacity-bar),
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
   #terminal-shell[data-mode="editor"] #dashboard-keys,
   #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #workspace-note),
@@ -175,7 +178,7 @@
   dialog .panel-body > * + *, dialog li + li { margin-top: 8px; }
   .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .launch-fields label { display: grid; gap: 4px; min-width: 0; color: var(--muted); }
-  .launch-fields select { color: var(--text); background: var(--raised); width: 100%; border: 1px solid var(--line); border-radius: 0; padding: 4px; }
+  .launch-fields :is(select, input) { color: var(--text); background: var(--raised); width: 100%; border: 1px solid var(--line); border-radius: 0; padding: 4px; font: inherit; }
   .port-plan h3 { color: var(--brand); font-weight: bold; }
   .port-plan p, .port-plan dl { margin-block: 5px 12px; }
   .port-plan dl { display: grid; grid-template-columns: minmax(10ch, 1fr) minmax(0, 2.4fr); gap: 7px 12px; }
@@ -205,11 +208,15 @@
       <p class="path">~/projects/proveo</p>
       <div class="layout-picker" role="group" aria-label="Proveo layout proposals">
         <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
-        <button type="button" data-view="board" aria-pressed="false"><kbd>2</kbd> Task board</button>
+        <button type="button" data-view="graph" aria-pressed="false"><kbd>2</kbd> Task graph</button>
         <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
       </div>
     </div>
     <div class="metrics" id="metrics" aria-label="Workspace summary"></div>
+    <div class="capacity-bar">
+      <button type="button" class="button" id="capacity-key"><kbd>c</kbd> Host capacity</button>
+      <span class="subtext" id="capacity-summary"></span>
+    </div>
     <div class="grid">
       <aside class="panel files" aria-labelledby="files-heading">
         <header class="panel-head">
@@ -262,7 +269,7 @@
   </div>
   <button type="button" class="button" id="implementation-key"><kbd class="implementation-prefix">Ctrl+G</kbd> <kbd>i</kbd> implementation</button>
   <span class="toast" id="toast" role="status"></span>
-  <span class="subtext footer-note" id="workspace-note">Sample workspace · 22:00–06:00 local</span>
+  <span class="subtext footer-note" id="workspace-note">Sample workspace</span>
   <a class="subtext footer-note" id="sbx-source" href="https://docs.docker.com/ai/sandboxes/get-started/#whats-next">Docker’s sbx dashboard screenshot ↗</a>
 </footer>
 </div>
@@ -283,8 +290,12 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Port the Review queue, Task board, and Schedule as three views of one workspace model. Feed all three from the same task, result, and schedule records. Keep pane geometry across view switches and scroll task rows inside the frame.</p>
+    <p class="subtext">Port the Review queue, Task graph, and Schedule as three views of one workspace model. Feed all three from the same task, result, and schedule records. Keep pane geometry across view switches and scroll task rows inside the frame.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
+    <h3>Resource admission</h3>
+    <p class="subtext">A task starts when its prerequisites and CPU, RAM, and disk reservations fit. Use <kbd>c</kbd> to change the sample host. Quint models the transition rules and checks invariants outside the Go runtime. <a href="resource_queue.qnt">Quint model ↗</a></p>
+    <h3>Task graph</h3>
+    <p class="subtext">Render ordered dependency paths in terminal rows. Fold long runs into a task count. Keep direct blockers available with the task even when a path is folded.</p>
     <h3>Go libraries</h3>
     <dl>
       <dt><a href="https://pkg.go.dev/charm.land/bubbletea/v2">Bubble Tea v2</a></dt>
@@ -311,14 +322,16 @@
 
   const phases = ["Spec", "Verification", "Spec revision", "Live verification", "Upgrade", "PR", "Review", "Merge"]
   const views = {
-    queue: ["Morning review", "Review queue", "Mon · 08:42 local"],
-    board: ["Task board", "Tasks by stage", "7 sample tasks"],
-    schedule: ["Night schedule", "Run timeline", "Local time"],
+    queue: ["Review queue", "Queue", "Resource admission"],
+    graph: ["Task graph", "Dependencies", "prerequisite → dependent"],
+    schedule: ["Schedule", "Run history", "Local time"],
   }
   const taskStates = {
     review: ["Ready for review", "◇"],
     changes: ["Changes requested", "↶", "warn"],
     active: ["Running", "●"],
+    reserved: ["Starting", "●", "active"],
+    settling: ["Saving results", "◐", "active"],
     blocked: ["Needs attention", "!", "warn"],
     queued: ["Queued", "○"],
     merged: ["Merged", "✓", "saved"],
@@ -355,7 +368,7 @@
     },
     {
       id: "PLAN-21", slug: "session-index", title: "Index native session IDs", agent: "Codex", source: "Local plan",
-      phase: 0, state: "queued", time: "22:00", instance: "New instance", revision: "8dd8b76",
+      phase: 0, state: "queued", instance: "New instance", revision: "8dd8b76",
       plan: "_spec/_plans/session-index.puml",
       branch: "proveo/plan-21/session-index", session: "Awaiting first run", saved: false,
       summary: "Draft the query that lists resumable instances in the current workspace.",
@@ -363,7 +376,7 @@
     },
     {
       id: "PRV-304", slug: "evidence", title: "Bind evidence to the review revision", agent: "Claude Code", source: "Linear",
-      phase: 4, state: "queued", time: "23:30", instance: "claude-08a532", revision: "5b119c9",
+      phase: 4, state: "queued", instance: "claude-08a532", revision: "5b119c9",
       branch: "proveo/prv-304/review-evidence", session: "Checkpoint saved", saved: true,
       summary: "Apply the verified upgrade and lift the new commit for review.",
       evidence: ["Unit suite · previous attempt passed", "Live verification · recorded against this revision", "Schedule · 75 minute budget"],
@@ -376,6 +389,46 @@
       evidence: ["Unit suite · passed", "Live verification · passed", "PR · merged against the verified revision"],
     },
   ]
+  for (const [id, title] of [
+    ["PRV-201", "Name sandbox instances"], ["PRV-244", "Carry feature branches"], ["PRV-262", "Isolate clone output"],
+  ]) {
+    tasks.push({
+      id, title, agent: "Codex", source: "Linear", phase: 7, state: "merged",
+      branch: "proveo/" + id.toLowerCase(), instance: "Archived",
+      session: "Completed", evidence: [], summary: "Completed prerequisite.",
+    })
+  }
+  const dependencies = {
+    "PRV-244": ["PRV-201"], "PRV-262": ["PRV-244"], "PRV-278": ["PRV-262"],
+    "PRV-284": ["PRV-278"], "PRV-304": ["PRV-284", "PRV-291"],
+    "PLAN-17": ["PRV-295"], "PLAN-21": ["PRV-278"],
+  }
+  const queueGroups = [
+    ["Require attention", ["review", "changes", "blocked"]],
+    ["Working", ["reserved", "active", "settling"]],
+    ["Queued", ["queued"]],
+  ]
+  const workingStates = queueGroups[1][1]
+  const edges = {
+    queued: {admit: "reserved", invalid: "blocked"},
+    reserved: {start: "active", fail: "blocked"},
+    active: {exit: "settling"},
+    settling: {publish: "review", fail: "blocked"},
+    changes: {requeue: "queued"},
+    blocked: {requeue: "queued"},
+  }
+  const dimensions = ["cpu", "ram", "disk"]
+  const resourceLabels = {cpu: "CPU", ram: "RAM", disk: "Disk"}
+  const pool = {cpu: 8, ram: 16, disk: 64}
+  const taskDemand = {
+    "PRV-291": {cpu: 2, ram: 6, disk: 12},
+    "PLAN-21": {cpu: 2, ram: 4, disk: 8},
+    "PRV-304": {cpu: 4, ram: 8, disk: 16},
+    "PLAN-17": {cpu: 2, ram: 4, disk: 8},
+    "PRV-295": {cpu: 2, ram: 6, disk: 8},
+  }
+  const host = {free: {cpu: 4, ram: 3, disk: 12}, reflected: new Set(["PRV-291"])}
+  const pending = ["PLAN-21", "PRV-304"]
   const sampleBase = "6bf4c2a"
   const changesByTask = {
     "PRV-284": [
@@ -459,18 +512,126 @@
   }
 
   function renderMetrics() {
-    const counts = [
-      ["Needs review", tasks.filter(({state}) => ["review", "changes"].includes(state)).length],
-      ["Running", tasks.filter(({state}) => state === "active").length],
-      ["Needs attention", tasks.filter(({state}) => state === "blocked").length],
-      ["Queued tonight", tasks.filter(({state}) => state === "queued").length],
-    ]
-    $("metrics").replaceChildren(...counts.map(([label, count]) => metric(label, count)))
+    $("metrics").replaceChildren(...queueGroups.map(([label, states]) =>
+      metric(label, tasks.filter(({state}) => states.includes(state)).length)))
+    const free = available()
+    $("capacity-summary").textContent = free
+      ? "Sample available · CPU " + free.cpu + " cores · RAM " + free.ram + " GiB · Disk " + free.disk + " GiB"
+      : "Sample unavailable · admissions paused"
+  }
+
+  function taskFor(id) {
+    return tasks.find(task => task.id === id)
+  }
+
+  function blockers(task) {
+    return (dependencies[task.id] ?? []).filter(id => taskFor(id)?.state !== "merged")
+  }
+
+  function dependencyError(id, path = new Set(), checked = new Set()) {
+    if (path.has(id)) return "Dependency cycle at " + id
+    if (!taskFor(id)) return "Unknown prerequisite " + id
+    if (checked.has(id)) return ""
+    path.add(id)
+    for (const parent of dependencies[id] ?? []) {
+      const error = dependencyError(parent, path, checked)
+      if (error) return error
+    }
+    path.delete(id)
+    checked.add(id)
+    return ""
+  }
+
+  function available() {
+    if (!host.free) return null
+    const leases = tasks.filter(({state}) => workingStates.includes(state))
+    return Object.fromEntries(dimensions.map(key => {
+      const held = leases.reduce((total, task) => total + taskDemand[task.id][key], 0)
+      const pending = leases.filter(task => !host.reflected.has(task.id))
+        .reduce((total, task) => total + taskDemand[task.id][key], 0)
+      return [key, Math.max(0, Math.min(pool[key] - held, host.free[key] - pending))]
+    }))
+  }
+
+  function queueReason(task) {
+    const waiting = blockers(task)
+    if (waiting.length) return "Blocked by " + waiting.join(", ")
+    const free = available()
+    if (!free) return "Waiting for host sample"
+    const demand = taskDemand[task.id]
+    if (!demand) return "Waiting for resource profile"
+    const short = dimensions.filter(key => demand[key] > free[key])
+    return short.length ? "Waiting for " + short.map(key => resourceLabels[key]).join(" · ") : ""
+  }
+
+  function transition(task, event) {
+    const next = edges[task.state]?.[event]
+    if (!next) return false
+    if (workingStates.includes(task.state) && !workingStates.includes(next) && host.reflected.delete(task.id)) {
+      host.free = null
+    }
+    task.state = next
+    if (next === "queued") pending.push(task.id)
+    return true
+  }
+
+  function admitQueue() {
+    for (const id of [...pending]) {
+      const task = taskFor(id)
+      const error = dependencyError(id)
+      if (error) {
+        task.queueError = error
+        transition(task, "invalid")
+      } else if (queueReason(task) || !transition(task, "admit")) {
+        continue
+      }
+      pending.splice(pending.indexOf(id), 1)
+    }
+  }
+
+  function renderQueueEvent() {
+    admitQueue()
+    renderMetrics()
+    renderWork()
+    renderInspector()
+  }
+
+  function sampleHost(free) {
+    host.free = free
+    host.reflected = new Set(tasks.filter(({state}) => state === "active" || state === "settling").map(({id}) => id))
+    $("dialog").close()
+    renderQueueEvent()
+  }
+
+  function showCapacity() {
+    const form = node("div", "launch-fields")
+    const fields = dimensions.map(key => {
+      const label = node("label", "", resourceLabels[key] + (key === "cpu" ? " · cores" : " · GiB"))
+      const input = node("input")
+      input.type = "number"
+      input.min = 0
+      input.required = true
+      input.value = (host.free ?? pool)[key]
+      label.append(input)
+      form.append(label)
+      return [key, input]
+    })
+    const actions = node("div", "actions")
+    actions.append(
+      button("Apply sample", () => {
+        for (const [, input] of fields) if (!input.reportValidity()) return
+        sampleHost(Object.fromEntries(fields.map(([key, input]) => [key, input.valueAsNumber])))
+      }, "button primary"),
+      button("Sample unavailable", () => sampleHost(null)),
+    )
+    showDialog("Host capacity · sample",
+      node("p", "subtext", "Set the sampled headroom after operator reserve and observed usage. Queued work reserves all three resources before it starts."),
+      form, actions)
   }
 
   function selectTask(task) {
     ui.task = task
-    for (const item of $("work").querySelectorAll(".task")) {
+    for (const item of $("work").querySelectorAll("[data-task]")) {
       item.setAttribute("aria-pressed", String(item.dataset.task === task.id))
     }
     renderChanges()
@@ -521,7 +682,7 @@
     )
     const [label, icon, kind = task.state] = taskStates[task.state]
     const side = node("span", "task-side")
-    side.append(status(label, icon, kind))
+    side.append(status(task.state === "queued" ? queueReason(task) || label : task.queueError || label, icon, kind))
     if (task.job && task.state === "active") {
       const hint = node("span", "attach-hint", "↵ Attach")
       hint.setAttribute("aria-hidden", "true")
@@ -564,33 +725,111 @@
     const work = $("work")
     switch (ui.view) {
       case "queue":
-        work.replaceChildren(
-          taskGroup("Review this morning", tasks.filter(({state}) => ["review", "changes"].includes(state))),
-          taskGroup("Follow up", tasks.filter(({state}) => ["active", "blocked"].includes(state))),
-          taskGroup("Queued tonight", tasks.filter(({state}) => state === "queued")),
-        )
+        work.replaceChildren(...queueGroups.map(([title, states]) =>
+          taskGroup(title, tasks.filter(({state}) => states.includes(state)))))
         break
-      case "board": {
-        const board = node("div", "board")
-        board.append(
-          taskGroup("Spec and verify", tasks.filter(({phase}) => phase < 4), "column"),
-          taskGroup("Upgrade and PR", tasks.filter(({phase}) => phase === 4 || phase === 5), "column"),
-          taskGroup("Review and merge", tasks.filter(({phase}) => phase > 5), "column"),
-        )
-        work.replaceChildren(board)
+      case "graph":
+        work.replaceChildren(taskGraph())
         break
-      }
       case "schedule": {
-        const sort = (items) => items.sort((a, b) => a.time.localeCompare(b.time))
+        const history = tasks.filter(task => task.time && queueGroups[0][1].includes(task.state))
         work.replaceChildren(
-          taskGroup("Last night · outcomes", sort(tasks.filter(({state}) => ["review", "changes", "blocked"].includes(state))), "section", true),
-          taskGroup("Today · in progress", tasks.filter(({state}) => state === "active"), "section", true),
-          taskGroup("Tonight · scheduled starts", sort(tasks.filter(({state}) => state === "queued")), "section", true),
+          taskGroup("Recent outcomes", history.sort((a, b) => b.time.localeCompare(a.time)), "section", true),
+          taskGroup("In progress", tasks.filter(({state}) => workingStates.includes(state))),
+          taskGroup("Waiting for dispatch", tasks.filter(({state}) => state === "queued")),
         )
         break
       }
     }
     $("work-clock").textContent = clock
+  }
+
+  function graphNode(id) {
+    const task = taskFor(id)
+    if (!task) return node("span", "graph-blockers", id + " · missing")
+    const item = button(taskStates[task.state][1] + " " + id, () => selectTask(task), "button graph-node")
+    item.dataset.task = id
+    item.title = task.title + " · " + taskStates[task.state][0]
+    item.setAttribute("aria-label", id + " " + item.title)
+    item.setAttribute("aria-pressed", String(task === ui.task))
+    bindEnter(item, "Attach", () => showAttach(task))
+    return item
+  }
+
+  function graphPath(id) {
+    const path = []
+    const seen = new Set()
+    let next = id
+    while (next && !seen.has(next)) {
+      path.unshift(next)
+      seen.add(next)
+      next = dependencies[next]?.[0]
+    }
+    return {path, cycle: next}
+  }
+
+  function graphLane(path, cycle) {
+    const row = node("div", "graph-row")
+    const chain = node("div", "graph-chain")
+    const append = item => {
+      if (chain.childElementCount) chain.append(node("span", "subtext", "→"))
+      chain.append(item)
+    }
+    const hidden = path.length > 4 ? path.slice(1, -2) : []
+    if (hidden.length) {
+      const details = node("div", "graph-chain")
+      details.hidden = true
+      hidden.forEach((id, index) => {
+        if (index > 0) details.append(node("span", "subtext", "→"))
+        details.append(graphNode(id))
+      })
+      const fold = button(hidden.length + " tasks", () => {
+        details.hidden = !details.hidden
+        fold.setAttribute("aria-expanded", String(!details.hidden))
+      }, "button graph-fold")
+      fold.setAttribute("aria-expanded", "false")
+      append(graphNode(path[0]))
+      append(fold)
+      path.slice(-2).forEach(id => append(graphNode(id)))
+      row.append(chain, details)
+    } else {
+      path.forEach(id => append(graphNode(id)))
+      row.append(chain)
+    }
+    if (cycle) row.append(node("p", "graph-blockers", "Dependency cycle at " + cycle))
+    return row
+  }
+
+  function taskGraph() {
+    const graph = node("div")
+    const parents = new Set(Object.values(dependencies).flat())
+    const leaves = Object.keys(dependencies).filter(id => !parents.has(id))
+    const paths = leaves.map(graphPath)
+    const covered = new Set(paths.flatMap(({path}) => path))
+    for (const id of Object.keys(dependencies)) {
+      if (!covered.has(id)) {
+        const path = graphPath(id)
+        paths.push(path)
+        path.path.forEach(parent => covered.add(parent))
+      }
+    }
+    for (const {path, cycle} of paths) graph.append(graphLane(path, cycle))
+    for (const [id, entries] of Object.entries(dependencies)) {
+      for (const extra of entries.slice(1)) graph.append(graphLane([extra, id]))
+    }
+    const waiting = tasks.filter(task => task.state !== "merged")
+      .map(task => [task.id, dependencyError(task.id), blockers(task)]).filter(([, error, open]) => error || open.length)
+    if (waiting.length) {
+      const list = node("section", "section graph-row")
+      list.append(node("h3", "kicker", "Blockers"))
+      for (const [id, error, open] of waiting) {
+        list.append(node("p", "graph-blockers", error ? id + " · " + error : id + " waits for " + open.join(", ")))
+      }
+      graph.append(list)
+    }
+    const independent = tasks.filter(task => !dependencies[task.id] && !parents.has(task.id))
+    if (independent.length) graph.append(taskGroup("Independent tasks", independent, "section graph-row"))
+    return graph
   }
 
   function tree(entries, parent = "", changes = false) {
@@ -818,14 +1057,18 @@
   }
 
   function queueRework(task) {
-    task.state = "queued"
+    if (!transition(task, "requeue")) return
     task.phase = 2
-    task.time = "22:30"
-    renderMetrics()
-    renderWork()
-    renderInspector()
+    renderQueueEvent()
     $("detail-heading").focus()
-    notify(task.id + " queued · 22:30")
+    notify(task.id + (task.state === "reserved" ? " · capacity reserved" : " · " + queueReason(task)))
+  }
+
+  function simulateRunEvent(task, event) {
+    if (!transition(task, event)) return
+    if (event === "start") task.job = task.job ?? task.slug
+    renderQueueEvent()
+    $("detail-heading").focus()
   }
 
   function renderInspector() {
@@ -854,9 +1097,11 @@
       fact("Branch", task.branch),
       fact("Instance", task.instance),
     )
-    if (task.instance !== "New instance") {
+    if (task.instance !== "New instance" && task.instance !== "Archived") {
       facts.append(fact("Sandbox", sandboxName(agentTarget(task.agent), task, task.instance.slice(-6))))
     }
+    const demand = taskDemand[task.id]
+    if (demand) facts.append(fact("Resources", demand.cpu + " CPU · " + demand.ram + " GiB RAM · " + demand.disk + " GiB disk"))
     if (task.plan) {
       facts.append(fact("Plan", button(task.plan, () => {
         selectFile(filesByPath.get(task.plan))
@@ -867,12 +1112,18 @@
     const evidence = node("div", "evidence")
     evidence.append(
       status(task.session, task.saved ? "✓" : task.state === "blocked" ? "!" : "○", task.saved ? "saved" : task.state === "blocked" ? "warn" : ""),
-      node("p", "subtext", "Evidence · " + task.revision),
+      node("p", "subtext", task.revision ? "Evidence · " + task.revision : ""),
     )
     const actions = node("div", "actions")
-    actions.append(button("Review evidence", () => showEvidence(task), "button primary"))
+    if (task.evidence.length) actions.append(button("Review evidence", () => showEvidence(task), "button primary"))
     if (task.state === "changes") actions.append(button("Queue rework", () => queueRework(task)))
     else if (task.saved) actions.append(button("Resume instance", () => showResume(task)))
+    const demo = {
+      reserved: ["Simulate start", "start"],
+      active: ["Simulate exit", "exit"],
+      settling: ["Publish sample result", "publish"],
+    }[task.state]
+    if (demo) actions.append(button(demo[0], () => simulateRunEvent(task, demo[1])))
     detail.replaceChildren(node("h3", "", task.title), node("p", "subtext", task.summary), facts, phaseList(task), evidence, actions)
   }
 
@@ -977,7 +1228,7 @@
 
   function moveTask(step) {
     hoveredRow = null
-    const rows = [...$("work").querySelectorAll(".task")]
+    const rows = [...$("work").querySelectorAll("[data-task]")].filter(row => row.getClientRects().length)
     const current = rows.findIndex(row => row.getAttribute("aria-pressed") === "true")
     const next = current < 0 ? (step > 0 ? 0 : rows.length - 1) : current + step
     const row = rows[next]
@@ -1019,7 +1270,7 @@
     if ($("proveo").hidden || $("dialog").open || event.ctrlKey || event.metaKey || event.altKey) return
     if (event.target.closest?.("input, textarea, select, [contenteditable]")) return
     const link = event.target.closest?.("button, a, summary")
-    const row = link?.dataset.enterAction ? link : actionRow()
+    const row = actionRow()
     if (event.key === "Enter" && (row || (!link && !ui.editing))) {
       event.preventDefault()
       enterAction(row)
@@ -1039,7 +1290,7 @@
       if (event.key === "v") togglePatch()
       return
     }
-    const control = {"1": "[data-view=queue]", "2": "[data-view=board]", "3": "[data-view=schedule]", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
+    const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", c: "#capacity-key", e: "#fresh-key", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
     if (control) {
       event.preventDefault()
       document.querySelector(control).click()
@@ -1055,14 +1306,15 @@
       "Use pwd to find instances. Give each instance a stable ID and its own clone. Resume from that instance’s native session ID, even after rebuilding its VM.",
       "Checkpoint on managed exit and periodically when the harness allows it. A force-kill, deleted VM, or failed write can leave only the previous checkpoint.",
       "Verify OpenCode’s native JSON export and import in an sbx round trip before removing retained VMs. Give parallel Hermes instances separate homes for their databases and sockets.",
-      "Let agents run scheduled tasks at night. Review the tested revision, evidence, and ticket in the morning.",
-      "Start with the review queue. Use the task board to check ownership and the schedule to check overnight capacity.",
+      "Use the review queue to see which jobs need attention, are working, or are waiting for capacity or prerequisites.",
+      "Use the task graph to trace blockers and the schedule to see run history.",
     ]) points.append(node("li", "", text))
     showDialog("Workspace instance proposal", points, link("Read the lifecycle spec ↗", "workspace-instances.puml"))
   })
   $("fresh-key").addEventListener("click", () => setEditor(true))
   $("editor-back").addEventListener("click", () => setEditor(false))
   $("new-instance").addEventListener("click", showNewInstance)
+  $("capacity-key").addEventListener("click", showCapacity)
   $("enter-key").addEventListener("click", () => enterAction())
   $("patch-key").addEventListener("click", togglePatch)
   $("sidebar-swap").addEventListener("click", () => setSidebar(sidebarMode() === "changes" ? "files" : "changes"))
@@ -1074,6 +1326,7 @@
   $("workspace-tree").append(tree(fileTree))
   renderChanges()
   renderSidebar()
+  admitQueue()
   renderMetrics()
   renderWork()
   renderInspector()

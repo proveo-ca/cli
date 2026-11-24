@@ -174,6 +174,21 @@
       "fingerprint": null
     },
     {
+      "spec": "_spec/_experiments/dashboard/resource-queue.puml",
+      "covers": [
+        "cmd/proveo/schedule.go",
+        "internal/schedule/schedule.go",
+        "internal/schedule/runner.go",
+        "internal/sbx/limits.go",
+        "internal/sbx/host_memory.go",
+        "internal/sbx/host_disk_unix.go",
+        "internal/sbx/host_disk_other.go",
+        "_spec/_experiments/dashboard/index.html",
+        "_spec/_experiments/dashboard/resource_queue.qnt"
+      ],
+      "fingerprint": null
+    },
+    {
       "spec": "_spec/_experiments/dashboard/workspace-instances.puml",
       "covers": [
         "cmd/proveo/main.go",

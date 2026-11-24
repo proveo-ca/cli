@@ -1,0 +1,92 @@
+@startuml ResourceQueue
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: resource admission and durable ownership of queued agent attempts
+' covers: cmd/proveo/schedule.go
+' covers: internal/schedule/schedule.go
+' covers: internal/schedule/runner.go
+' covers: internal/sbx/limits.go
+' covers: internal/sbx/host_memory.go
+' covers: internal/sbx/host_disk_unix.go
+' covers: internal/sbx/host_disk_other.go
+' covers: _spec/_experiments/dashboard/index.html
+' covers: _spec/_experiments/dashboard/resource_queue.qnt
+' status: EXPERIMENT. HTML runs a sample machine. The Go scheduler still
+' launches calendar-due jobs directly. The host sampler and lease ledger
+' are proposed runtime work.
+' Related capacity model: _spec/_paradigms/resource_management.puml
+' Workspace and graph: _spec/_experiments/dashboard/workspace-instances.puml
+'
+' HOST CAPACITY
+' Sample on the sbx host. CPU topology and current guest CPU limits in
+' internal/sbx/limits.go give a ceiling. Admission also needs host CPU
+' utilization over an interval, expressed as integer millicores.
+' Reuse Linux MemAvailable and macOS vm_stat parsing from host_memory.go
+' for system RAM. The local-inference pool can be discrete VRAM.
+' Reuse the Unix Statfs free-space helper for the actual sbx storage and
+' retained-artifact filesystems. Deduplicate paths on one filesystem.
+' Windows needs supported host probes. Totals and model-inference
+' headroom alone are insufficient to label a sample current.
+' Reserve operator headroom. Subtract every outstanding Proveo lease
+' from the configured pool. Separately subtract unreflected reservations
+' from the measured available resources. Admit against the componentwise
+' minimum. Confirm each reservation was reflected before excluding it
+' from that second subtraction. Track disk per filesystem in Go.
+' Missing, stale, or unreconciled inputs pause new admissions while
+' existing jobs continue. A resource change triggers a new evaluation.
+'
+' ADMISSION AND LIVENESS
+' Serialize compare-and-reserve across Proveo queues on the same host.
+' Record a durable lease before launching a job. Reconcile known VMs
+' and job identities on restart. Hold leases through startup, execution,
+' and result carry. An unreachable client retains its lease until
+' inventory confirms the actual VM outcome.
+' Release startup reservations on a verified no-start. Release runnable
+' CPU and RAM after the VM is gone or stopped. Charge disk that remains
+' to a fresh filesystem sample before admitting further writes. Refresh
+' the sample when a reflected lease ends.
+' Consider ready jobs in insertion order and take the oldest whose whole
+' resource vector fits. Later small jobs can bypass an older large one.
+' Continuous small jobs can starve a large one. Expose wait reasons and
+' age. Decide a bounded bypass policy separately if contention warrants it.
+' Queue items become ready through submission and prerequisite completion.
+' A calendar hook can enqueue an item. It never bypasses admission.
+' Runtime time limits and probe freshness still use clocks.
+' Temporary resource pressure and unmet prerequisites keep a task queued.
+' Invalid dependency graphs or unsatisfiable requests require attention.
+' Keep workflow phase separate from admission state.
+'
+' QUINT EVALUATION
+' resource_queue.qnt models two jobs, three integer resources, a sampled
+' headroom, and which leases the sample reflects. Use Quint in verification
+' to check that legal transitions respect the policy pool, keep reflected
+' leases attached to held work, and honor prerequisites before admission.
+' The model's scenarios cover each pressure dimension, unavailable samples,
+' pending reservations, carry and resample, and a delayed prerequisite.
+' Seven Quint scenarios passed. Apalache found no invariant violation
+' within 12 transitions of this two-job model.
+' Keep the live scheduler in Go. The model abstracts OS readings, fsync,
+' lifecycle discovery and simultaneous processes. Cover those boundaries
+' with Go adapter tests and live sbx verification when the runtime is built.
+' Command: npx --yes @informalsystems/quint@0.34.0 test resource_queue.qnt
+' Source: https://quint.sh/docs/getting-started
+
+title Resource-driven task admission
+
+state "Queued\nwait for prerequisites or resources" as Queued
+state "Reserved\nhold CPU, RAM and disk before launch" as Reserved
+state "Running\nhold through execution" as Running
+state "Settling\nhold through outcome and Git carry" as Settling
+state "Require attention\nreview, failure or invalid request" as Attention
+state "Complete\naccepted work" as Complete
+
+[*] --> Queued : submit
+Queued --> Reserved : prerequisites cleared and vector fits
+Queued --> Attention : invalid graph or request
+Reserved --> Running : VM and agent started
+Reserved --> Attention : launch failed and no VM holds lease
+Running --> Settling : agent stopped or outcome recovered
+Settling --> Attention : results published or operator input needed
+Attention --> Queued : operator requeues
+Attention --> Complete : work accepted
+Complete --> [*]
+@enduml

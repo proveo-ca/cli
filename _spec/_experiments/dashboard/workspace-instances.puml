@@ -19,6 +19,7 @@
 ' Current lifecycle: _spec/internal/sbx/instance-lifecycle.puml
 ' Current state transfer: _spec/internal/sbx/state-sync.puml
 ' Earlier retention direction: _spec/_plans/session-continuity.puml
+' Resource admission: _spec/_experiments/dashboard/resource-queue.puml
 '
 ' IDENTITY AND ISOLATION
 ' Keep canonical effective pwd as the workspace key, with explicit input and
@@ -151,13 +152,21 @@
 ' the configured editor for explicit local edits.
 ' Use Fresh's file explorer and editor with the current workspace path.
 ' Fresh's worktree-based Orchestrator stays outside this design.
-' Overnight agents run queued tasks with time, concurrency and retry caps.
-' Daytime review connects agent, ticket, spec, evidence, ref and session.
+' Capacity and prerequisite changes admit queued tasks. Calendar jobs can
+' submit work for overnight runs. Review connects agent, ticket, spec,
+' evidence, ref and session.
 ' Task stages: spec -> verification -> spec -> live verification (repeat)
 ' -> upgrade -> PR -> review -> merge. Review feedback can reopen the loop.
 ' Evidence attaches to the exact tested revision. A revision change reopens
 ' affected verification. The operator controls posting and merging the PR.
-' Review queue, task board and schedule are three layouts of these records.
+' View 1 groups Require attention, Working and Queued. View 2 draws
+' prerequisite-to-dependent paths and explicit extra edges. Validate IDs
+' and cycles before dispatch. Order the paths deterministically. Fold
+' long sections into a count such as "3 tasks", with expansion on demand.
+' Measure the terminal width for the path row, preserve visible endpoints,
+' and list blocker IDs separately from cropped nodes. Use vertical scroll.
+' View 3 shows outcomes and in-progress runs. Queued tasks have wait
+' reasons and no promised start time.
 '
 ' ACCEPTANCE FOR A FUTURE IMPLEMENTATION
 ' Launch two instances from the same pwd and target. Verify disjoint Git
