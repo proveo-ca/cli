@@ -177,7 +177,8 @@
 ' during a live run, with its age. Report when no snapshot has arrived.
 ' Retain referenced Git objects for as long as their reviews are visible.
 ' Enter on a live scheduled task opens a confirmation using the post-exit
-' dialog style. Offer Cancel as the default and Attach to invoke
+' dialog style. Name the agent session and its task in the body.
+' Offer Cancel as the default and Attach to invoke
 ' proveo attach <job>. Report when no job is live.
 ' Return to the same dashboard view when the child client detaches.
 ' Preserve selection, focus, and scroll. The HTML demo models direct

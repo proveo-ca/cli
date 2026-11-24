@@ -1277,7 +1277,8 @@
     footer.append(actions, keys)
     const detach = node("p", "subtext")
     detach.append("Detach with ", node("kbd", "", "Ctrl+B"), " then ", node("kbd", "", "d"), ".")
-    showDialog("Attach · " + task.id, node("p", "", task.title), node("p", "subtext", "proveo attach " + task.job), detach, footer)
+    const description = "You will now enter the " + task.agent + " session in charge of the task “" + task.title + "”."
+    showDialog("Attach · " + task.id, node("p", "", description), node("p", "subtext", "proveo attach " + task.job), detach, footer)
     cancel.focus()
   }
 
