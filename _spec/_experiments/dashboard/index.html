@@ -115,6 +115,8 @@
   .section + .section { margin-top: 11px; }
   .section > .kicker { display: flex; align-items: center; gap: 1ch; margin: 0 0 4px; color: var(--brand); }
   .section > .kicker::after { content: ""; border-top: 1px solid var(--line); flex: 1; }
+  #work #new-instance { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--line); padding: 4px 6px; text-align: center; color: var(--muted); }
+  #work #new-instance:is(:hover, :focus-visible) { background: var(--focus); }
   .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1ch; text-align: left; padding: 2px 5px 2px 2.6ch; line-height: 1.35; position: relative; border: 0; background: transparent; }
   .task:hover { background: var(--raised); }
   :is(.task, .graph-node)[aria-pressed="true"] { background: var(--focus); }
@@ -193,7 +195,7 @@
   #proveo[data-details="split"] { height: 100%; }
   #proveo[data-mode="dashboard"][data-details="split"] .grid {
     min-height: 0;
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr);
     grid-template-areas: "files tasks" "files details";
   }
   #proveo[data-details="split"] :is(.files, .task-panel, .inspector) {
@@ -331,7 +333,7 @@
     <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="true" hidden><kbd>t</kbd> <span>Hide details</span></button>
     <button type="button" class="button" id="enter-key" aria-keyshortcuts="Enter"><kbd>↵</kbd> <span>Attach</span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
-    <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
+    <button type="button" class="button" id="new-instance" aria-haspopup="dialog" aria-keyshortcuts="N"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
   </div>
   <div class="keybar" id="editor-keys">
@@ -373,11 +375,11 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Feed all three views from the same task, result, and schedule records. Place Changes and Task details in the left column by default. Press <kbd>t</kbd> to toggle the task details. Use <kbd>4</kbd> to choose the details position. The lower-right split scrolls the task view and details independently.</p>
+    <p class="subtext">Feed all three views from the same task, result, and schedule records. Start in Review queue with Changes on the left and Task details below the queue on the right. The queue and details scroll independently. Press <kbd>t</kbd> to toggle details or <kbd>4</kbd> to choose their position.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Press <kbd>↵</kbd> to confirm attaching to a running task or to preview a file. Use the Diff button to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
-    <p class="subtext">A task starts when its prerequisites and CPU, RAM, and disk reservations fit. Use <kbd>c</kbd> to change the sample host. Quint models the transition rules and checks invariants outside the Go runtime. <a href="resource_queue.qnt">Quint model ↗</a></p>
+    <p class="subtext">A task starts when its prerequisites clear and its disk reservation fits. CPU and RAM are sampled for display. Use <kbd>c</kbd> to change the host sample. <a href="resource_queue.qnt">Quint model ↗</a></p>
     <h3>Task graph</h3>
     <p class="subtext">Render ordered dependency paths in terminal rows. Fold long runs into a task count. Keep direct blockers available with the task even when a path is folded.</p>
     <h3>Go libraries</h3>
@@ -516,13 +518,8 @@
   }
   const sandboxPollMs = 5_000
   const pool = {cpu: 8, ram: 16, disk: 512}
-  const taskDemand = {
-    "PRV-291": {cpu: 2, ram: 6, disk: 12},
-    "PLAN-21": {cpu: 2, ram: 4, disk: 8},
-    "PRV-304": {cpu: 4, ram: 8, disk: 16},
-    "PLAN-17": {cpu: 2, ram: 4, disk: 8},
-    "PRV-295": {cpu: 2, ram: 6, disk: 8},
-  }
+  const sandboxDiskGiB = 32
+  const sandboxDiskSetting = sandboxDiskGiB + "g"
   const host = {free: {cpu: 4, ram: 3, disk: 180}, reflected: new Set(["PRV-291"])}
   const pending = ["PLAN-21", "PRV-304"]
   const sampleBase = "6bf4c2a"
@@ -576,6 +573,7 @@
   const $ = (id) => document.getElementById(id)
   const ui = { view: "queue", task: tasks[0], sidebar: "changes", editing: false, editorFile: null, editorSidebar: "files", patch: false }
   const inspector = $("task-inspector")
+  const newInstanceControl = $("new-instance")
   let attachedFrom = null
   let attachPrefixUntil = 0
   const detailPositions = [
@@ -583,7 +581,7 @@
     ["accordion", "Accordion"],
     ["split", "Lower-right split"],
   ]
-  let detailPosition = "left"
+  let detailPosition = "split"
   let detailsOpen = true
   const filesByPath = new Map()
   const rowActions = new WeakMap()
@@ -629,10 +627,11 @@
   }
 
   function renderCapacity() {
-    const free = available()
+    const disk = availableDisk()
     const meters = dimensions.map(key => {
       const total = pool[key]
-      const occupied = free ? total - free[key] : null
+      const free = key === "disk" ? disk : host.free?.[key]
+      const occupied = free == null ? null : total - Math.min(total, free)
       const step = capacityStep[key]
       const segments = node("span", "capacity-segments")
       segments.setAttribute("aria-hidden", "true")
@@ -654,7 +653,7 @@
       return meter
     })
     $("capacity-meters").replaceChildren(...meters)
-    $("capacity-summary").textContent = free ? "Sample · used or reserved" : "Sample unavailable · admissions paused"
+    $("capacity-summary").textContent = disk == null ? "Disk sample unavailable · admissions paused" : "Sample · disk includes reservations"
   }
 
   function taskFor(id) {
@@ -679,33 +678,28 @@
     return ""
   }
 
-  function available() {
-    if (!host.free) return null
+  function availableDisk() {
+    const free = host.free?.disk
+    if (free == null) return null
     const leases = tasks.filter(({state}) => workingStates.includes(state))
-    return Object.fromEntries(dimensions.map(key => {
-      const held = leases.reduce((total, task) => total + taskDemand[task.id][key], 0)
-      const pending = leases.filter(task => !host.reflected.has(task.id))
-        .reduce((total, task) => total + taskDemand[task.id][key], 0)
-      return [key, Math.max(0, Math.min(pool[key] - held, host.free[key] - pending))]
-    }))
+    const held = leases.length * sandboxDiskGiB
+    const pending = leases.filter(task => !host.reflected.has(task.id)).length * sandboxDiskGiB
+    return Math.max(0, Math.min(pool.disk - held, free - pending))
   }
 
   function queueReason(task) {
     const waiting = blockers(task)
     if (waiting.length) return "Blocked by " + waiting.join(", ")
-    const free = available()
-    if (!free) return "Waiting for host sample"
-    const demand = taskDemand[task.id]
-    if (!demand) return "Waiting for resource profile"
-    const short = dimensions.filter(key => demand[key] > free[key])
-    return short.length ? "Waiting for " + short.map(key => resourceLabels[key]).join(" · ") : ""
+    const free = availableDisk()
+    if (free == null) return "Waiting for disk sample"
+    return sandboxDiskGiB > free ? "Waiting for disk" : ""
   }
 
   function transition(task, event) {
     const next = edges[task.state]?.[event]
     if (!next) return false
     if (workingStates.includes(task.state) && !workingStates.includes(next) && host.reflected.delete(task.id)) {
-      host.free = null
+      if (host.free) host.free.disk = null
     }
     task.state = next
     if (next === "queued") pending.push(task.id)
@@ -735,7 +729,9 @@
 
   function sampleHost(free) {
     host.free = free
-    host.reflected = new Set(tasks.filter(({state}) => state === "active" || state === "settling").map(({id}) => id))
+    host.reflected = free
+      ? new Set(tasks.filter(({state}) => state === "active" || state === "settling").map(({id}) => id))
+      : new Set()
     $("dialog").close()
     renderQueueEvent()
   }
@@ -747,8 +743,8 @@
       const input = node("input")
       input.type = "number"
       input.min = 0
-      input.required = true
-      input.value = (host.free ?? pool)[key]
+      input.required = key === "disk"
+      input.value = host.free?.[key] ?? ""
       label.append(input)
       form.append(label)
       return [key, input]
@@ -757,12 +753,13 @@
     actions.append(
       button("Apply sample", () => {
         for (const [, input] of fields) if (!input.reportValidity()) return
-        sampleHost(Object.fromEntries(fields.map(([key, input]) => [key, input.valueAsNumber])))
+        sampleHost(Object.fromEntries(fields.map(([key, input]) => [key, input.value === "" ? null : input.valueAsNumber])))
       }, "button primary"),
       button("Sample unavailable", () => sampleHost(null)),
     )
     showDialog("Host capacity · sample",
-      node("p", "subtext", "Set the sampled headroom after operator reserve and observed usage. Queued work reserves all three resources before it starts."),
+      node("p", "subtext", "Set the observed host headroom. CPU and RAM readings are optional."),
+      node("p", "", "Disk reservation per sandbox " + sandboxDiskSetting + " · sample sandbox.disk.dockerVolume"),
       form, actions)
   }
 
@@ -882,8 +879,11 @@
     const work = $("work")
     switch (ui.view) {
       case "queue":
-        work.replaceChildren(...queueGroups.map(([title, states]) =>
-          taskGroup(title, tasks.filter(({state}) => states.includes(state)))))
+        work.replaceChildren(...queueGroups.map(([title, states]) => {
+          const group = taskGroup(title, tasks.filter(({state}) => states.includes(state)))
+          if (states.includes("queued")) group.append(newInstanceControl)
+          return group
+        }))
         break
       case "graph":
         work.replaceChildren(taskGraph())
@@ -898,6 +898,7 @@
         break
       }
     }
+    if (!newInstanceControl.isConnected) $("proposal-button").before(newInstanceControl)
     placeDetails()
     updateEnterHint()
   }
@@ -1515,8 +1516,9 @@
     const sandbox = taskSandboxName(task)
     if (sandbox) facts.append(fact("Sandbox", clippedLabel(sandbox, sandbox.lastIndexOf("-"))))
     if (task.pr) facts.append(fact("PR", task.pr))
-    const demand = taskDemand[task.id]
-    if (demand) facts.append(fact("Requested", demand.cpu + " CPU · " + demand.ram + " GiB RAM · " + demand.disk + " GiB disk"))
+    if (workingStates.includes(task.state) || task.state === "queued") {
+      facts.append(fact("Disk need", sandboxDiskSetting))
+    }
     if (task.plan) {
       const plan = button("", () => {
         setEditor(filesByPath.get(task.plan))
@@ -1633,12 +1635,13 @@
 
   function moveTask(step) {
     hoveredRow = null
-    const rows = [...$("work").querySelectorAll("[data-task]")].filter(row => row.getClientRects().length)
-    const current = rows.findIndex(row => row.getAttribute("aria-pressed") === "true")
+    const rows = [...$("work").querySelectorAll("[data-task], #new-instance")].filter(row => row.getClientRects().length)
+    const focused = rows.indexOf(document.activeElement)
+    const current = focused >= 0 ? focused : rows.findIndex(row => row.getAttribute("aria-pressed") === "true")
     const next = current < 0 ? (step > 0 ? 0 : rows.length - 1) : current + step
     const row = rows[next]
     if (row) {
-      row.click()
+      if (row !== newInstanceControl) row.click()
       row.focus()
     }
   }
@@ -1735,7 +1738,8 @@
   $("details-options").addEventListener("click", showDetailOptions)
   $("details-key").addEventListener("click", () => toggleDetails())
   $("editor-back").addEventListener("click", () => setEditor())
-  $("new-instance").addEventListener("click", showNewInstance)
+  newInstanceControl.addEventListener("click", showNewInstance)
+  bindEnter(newInstanceControl, "New instance", showNewInstance)
   $("capacity-key").addEventListener("click", showCapacity)
   $("enter-key").addEventListener("click", () => enterAction())
   $("enter-key").addEventListener("blur", () => queueMicrotask(updateEnterHint))

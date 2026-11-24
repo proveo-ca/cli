@@ -202,14 +202,16 @@
 ' Hide the binding when the sandbox or editor is unavailable. The HTML
 ' preview uses a distinct read-only file tree for the running sample.
 ' Fresh's worktree-based Orchestrator stays outside this design.
-' Capacity and prerequisite changes admit queued tasks. Calendar jobs can
+' Disk capacity and prerequisite changes admit queued tasks. Calendar jobs can
 ' submit work for overnight runs. Review connects agent, ticket, spec,
 ' evidence, ref and session.
 ' Task stages: spec -> verification -> spec -> live verification (repeat)
 ' -> upgrade -> PR -> review -> merge. Review feedback can reopen the loop.
 ' Evidence attaches to the exact tested revision. A revision change reopens
 ' affected verification. The operator controls posting and merging the PR.
-' View 1 groups Attention required, Working and Queued. View 2 draws
+' View 1 groups Attention required, Working and Queued. Place n new
+' instance in an outlined item below the queued tasks. It opens the
+' same wizard by shortcut or item activation. View 2 draws
 ' prerequisite-to-dependent paths and explicit extra edges. Validate IDs
 ' and cycles before dispatch. Order the paths deterministically. Fold
 ' long sections into a count such as "3 tasks", with expansion on demand.
@@ -218,8 +220,9 @@
 ' View 3 shows outcomes and in-progress runs. Queued tasks have wait
 ' reasons and no promised start time. Align timestamps in a fixed
 ' column across sections. Use muted text for routine timestamps.
-' All three views start with Changes or Files above Task details in
-' the left column. The active task view fills the right column.
+' Default to Review queue with the lower-right split. Show Changes or
+' Files in the left column. Place Task details below the queue on the
+' right. Give the task view and details independent scrolling.
 ' Key 4 opens Task detail options for the current view. Choose the
 ' left column, an accordion at the selected task, or a lower-right
 ' split. Show the highlighted t beside the task phase with See details

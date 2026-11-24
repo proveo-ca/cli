@@ -10,6 +10,7 @@ skinparam noteTextAlignment left
 ' covers: e2e/capacity_test.go
 ' current evidence: _spec/minimum_requirements.puml
 ' related lifecycle: _spec/internal/sbx/kit-lifecycle.puml
+' dashboard queue design: _spec/_experiments/dashboard/resource-queue.puml (disk-only admission)
 ' status: current defaults measured on sbx v0.42.x; proveo capacity manager proposed 2026-09-17
 title Resource management — sbx defaults first;\nthen a four-agent proveo capacity model
 

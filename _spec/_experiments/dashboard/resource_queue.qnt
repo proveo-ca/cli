@@ -1,64 +1,53 @@
 module resource_queue {
-  type Resources = { cpu: int, ram: int, disk: int }
-  type Queue = { phases: str -> str, free: Resources, known: bool, reflected: Set[str], lightReady: bool }
+  type Queue = { phases: str -> str, freeDisk: int, known: bool, reflected: Set[str], secondReady: bool }
 
   var queue: Queue
 
-  pure val pool: Resources = { cpu: 5, ram: 12, disk: 20 }
-  pure val zero: Resources = { cpu: 0, ram: 0, disk: 0 }
-  pure val demands = Map(
-    "heavy" -> { cpu: 3, ram: 8, disk: 12 },
-    "light" -> { cpu: 2, ram: 4, disk: 8 }
-  )
-  pure val tasks = Set("heavy", "light")
+  pure val diskPool = 64
+  pure val diskPerSandbox = 32
+  pure val tasks = Set("first", "second")
   pure val working = Set("reserved", "running", "settling")
 
-  pure def add(a: Resources, b: Resources): Resources = {
-    cpu: a.cpu + b.cpu, ram: a.ram + b.ram, disk: a.disk + b.disk
-  }
-  pure def fits(a: Resources, b: Resources): bool =
-    a.cpu <= b.cpu and a.ram <= b.ram and a.disk <= b.disk
-
   def held: Set[str] = tasks.filter(t => working.contains(queue.phases.get(t)))
-  pure def reserved(ids: Set[str]): Resources = ids.fold(zero, (sum, t) => add(sum, demands.get(t)))
-  def fitsNow(t: str): bool = all {
+  pure def reserved(ids: Set[str]): int = ids.size() * diskPerSandbox
+  def fitsNow: bool = all {
     queue.known,
-    fits(add(reserved(held), demands.get(t)), pool),
-    fits(add(reserved(held.exclude(queue.reflected)), demands.get(t)), queue.free),
+    reserved(held) + diskPerSandbox <= diskPool,
+    reserved(held.exclude(queue.reflected)) + diskPerSandbox <= queue.freeDisk,
   }
   def eligible(t: str): bool = all {
     queue.phases.get(t) == "queued",
-    t != "light" or queue.lightReady,
-    fitsNow(t),
+    t != "second" or queue.secondReady,
+    fitsNow,
   }
 
   pure val empty: Queue = {
-    phases: Map("heavy" -> "queued", "light" -> "queued"),
-    free: zero, known: false, reflected: Set(), lightReady: true,
+    phases: Map("first" -> "queued", "second" -> "queued"),
+    freeDisk: 0, known: false, reflected: Set(), secondReady: true,
   }
   action init = queue' = empty
 
-  action sample(free, known) = queue' = {
+  action sample(freeDisk, known) = queue' = {
     phases: queue.phases,
-    free: free,
+    freeDisk: freeDisk,
     known: known,
-    reflected: held.filter(t => queue.phases.get(t) != "reserved"),
-    lightReady: queue.lightReady,
+    reflected: if (known) held.filter(t => queue.phases.get(t) != "reserved") else Set(),
+    secondReady: queue.secondReady,
   }
 
   action move(t, phase) = queue' = {
-    phases: queue.phases.set(t, phase), free: queue.free,
-    known: queue.known, reflected: queue.reflected, lightReady: queue.lightReady,
+    phases: queue.phases.set(t, phase), freeDisk: queue.freeDisk,
+    known: queue.known, reflected: queue.reflected, secondReady: queue.secondReady,
   }
 
-  action setLightReady(ready) = all {
-    queue.phases.get("light") == "queued",
-    queue' = queue.with("lightReady", ready),
+  action setSecondReady(ready) = all {
+    queue.phases.get("second") == "queued",
+    queue' = queue.with("secondReady", ready),
   }
 
   action admit(t) = all {
     eligible(t),
-    t == "heavy" or not(eligible("heavy")),
+    t == "first" or not(eligible("first")),
     move(t, "reserved"),
   }
   action start(t) = all { queue.phases.get(t) == "reserved", move(t, "running") }
@@ -66,10 +55,10 @@ module resource_queue {
 
   action release(t, phase) = queue' = {
     phases: queue.phases.set(t, phase),
-    free: queue.free,
+    freeDisk: queue.freeDisk,
     known: queue.known and not(queue.reflected.contains(t)),
     reflected: queue.reflected.exclude(Set(t)),
-    lightReady: queue.lightReady,
+    secondReady: queue.secondReady,
   }
   action publish(t) = all { queue.phases.get(t) == "settling", release(t, "attention") }
   action failedStart(t) = all { queue.phases.get(t) == "reserved", release(t, "attention") }
@@ -80,58 +69,54 @@ module resource_queue {
       nondet t = tasks.oneOf()
       any { admit(t), start(t), end(t), publish(t), failedStart(t), retry(t) }
     },
-    sample(pool, true),
-    sample({ cpu: 1, ram: 12, disk: 20 }, true),
-    sample({ cpu: 4, ram: 4, disk: 20 }, true),
-    sample({ cpu: 4, ram: 12, disk: 4 }, true),
-    sample(zero, false),
-    setLightReady(false),
-    setLightReady(true),
+    sample(diskPool, true),
+    sample(48, true),
+    sample(32, true),
+    sample(16, true),
+    sample(0, false),
+    setSecondReady(false),
+    setSecondReady(true),
   }
 
-  invariant withinPool = fits(reserved(held), pool)
+  invariant withinPool = reserved(held) <= diskPool
   invariant reflectedLeases = queue.reflected.subseteq(held)
-  invariant prerequisitesCleared = not(held.contains("light")) or queue.lightReady
+  invariant prerequisitesCleared = not(held.contains("second")) or queue.secondReady
 
-  run waitingForRamTest = init
-    .then(sample({ cpu: 4, ram: 4, disk: 20 }, true))
-    .expect(not(eligible("heavy")) and eligible("light"))
-    .then(admit("light"))
-    .expect(queue.phases.get("light") == "reserved" and queue.phases.get("heavy") == "queued")
-
-  run waitingForCpuTest = init
-    .then(sample({ cpu: 1, ram: 12, disk: 20 }, true))
-    .expect(not(eligible("heavy")) and not(eligible("light")))
+  run exactCapacityTest = init
+    .then(sample(diskPool, true))
+    .then(admit("first")).then(admit("second"))
+    .expect(reserved(held) == diskPool and withinPool)
 
   run waitingForDiskTest = init
-    .then(sample({ cpu: 4, ram: 12, disk: 4 }, true))
-    .expect(not(eligible("heavy")) and not(eligible("light")))
+    .then(sample(16, true))
+    .expect(not(eligible("first")) and not(eligible("second")))
 
   run unknownSampleTest = init
-    .then(sample(pool, false))
-    .expect(not(eligible("heavy")) and not(eligible("light")))
+    .then(sample(diskPool, false))
+    .expect(not(eligible("first")) and not(eligible("second")))
 
   run releaseAfterCarryTest = init
-    .then(sample(pool, true)).then(admit("heavy")).then(start("heavy"))
-    .then(sample({ cpu: 1, ram: 4, disk: 8 }, true))
-    .then(end("heavy"))
-    .expect(not(eligible("light")))
-    .then(publish("heavy"))
-    .expect(not(eligible("light")))
-    .then(sample(pool, true))
-    .then(admit("light"))
-    .expect(queue.phases.get("light") == "reserved")
+    .then(sample(diskPool, true)).then(admit("first")).then(start("first"))
+    .then(sample(16, true)).then(end("first"))
+    .expect(not(eligible("second")))
+    .then(publish("first"))
+    .expect(not(queue.known) and not(eligible("second")))
+    .then(sample(32, true)).then(admit("second"))
+    .expect(queue.phases.get("second") == "reserved")
 
   run pendingReservationTest = init
-    .then(sample({ cpu: 3, ram: 12, disk: 20 }, true))
-    .then(admit("heavy"))
-    .expect(not(eligible("light")) and withinPool)
+    .then(sample(48, true)).then(admit("first"))
+    .expect(not(eligible("second")) and withinPool)
+
+  run reflectedReservationTest = init
+    .then(sample(diskPool, true)).then(admit("first")).then(start("first"))
+    .then(sample(32, true)).then(admit("second"))
+    .expect(reserved(held) == diskPool and reflectedLeases)
 
   run prerequisiteTest = init
-    .then(sample({ cpu: 5, ram: 4, disk: 20 }, true))
-    .then(setLightReady(false))
-    .expect(not(eligible("light")))
-    .then(setLightReady(true))
-    .then(admit("light"))
-    .expect(prerequisitesCleared and queue.phases.get("light") == "reserved")
+    .then(sample(diskPool, true)).then(admit("first"))
+    .then(setSecondReady(false))
+    .expect(not(eligible("second")))
+    .then(setSecondReady(true)).then(admit("second"))
+    .expect(prerequisitesCleared and queue.phases.get("second") == "reserved")
 }
