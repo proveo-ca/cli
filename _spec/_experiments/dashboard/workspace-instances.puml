@@ -205,12 +205,14 @@
 ' View 3 shows outcomes and in-progress runs. Queued tasks have wait
 ' reasons and no promised start time. Align timestamps in a fixed
 ' column across sections. Use muted text for routine timestamps.
-' View 4 starts with Changes or Files above Task details in the left
-' column. The review queue fills the right column. Toggle details with
-' t. Use v to cycle between the left column, an accordion after the
-' selected queue row, and a lower-right split. The accordion moves with
-' selection. Put details in the split when the selected task has no
-' queue row. Give the split's queue and details separate scroll regions.
+' All three views start with Changes or Files above Task details in
+' the left column. The active task view fills the right column.
+' Key 4 opens Task detail options for the current view. Choose the
+' left column, an accordion at the selected task, or a lower-right
+' split. Toggle details with t and cycle positions with v. Keep the
+' chosen position across views. Anchor the accordion after the selected
+' queue row, graph chain, or schedule slot. Use the split for a selection
+' without a visible row. Give the split separate scroll regions.
 ' Keep Enter on a live task bound to attach in each position. Opening a
 ' file uses the shared preview and returning restores the details position.
 '
