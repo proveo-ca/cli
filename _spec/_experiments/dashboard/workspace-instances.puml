@@ -182,7 +182,7 @@
 ' Preserve filename extensions and identifier suffixes when clipping.
 ' Keep the full values available and show the opened file's full path.
 ' Use f for Files in the effective host pwd and g for carried Changes.
-' Highlight the shortcut letters in See files and See Changes.
+' Show the highlighted key first in f See files and g See changes.
 ' Offer e (Fresh) for the selected task when its sandbox is running and
 ' Fresh is available in the guest's workspace. Resolve the sandbox's
 ' recorded identity and guest workdir. Launch Fresh with interactive sbx
@@ -210,10 +210,11 @@
 ' the left column. The active task view fills the right column.
 ' Key 4 opens Task detail options for the current view. Choose the
 ' left column, an accordion at the selected task, or a lower-right
-' split. Show t See details beside the task phase. Press t to reveal
-' details for the focused, hovered, or selected task. Use the options
-' to hide details and v to cycle positions. Keep the
-' chosen position across views. Anchor the accordion after the selected
+' split. Show the highlighted t beside the task phase with See details
+' or Hide details. Press t to toggle the selected task's details.
+' Press t on a different task to select it and open its details.
+' Use v to cycle positions. Keep the chosen position across views.
+' Anchor the accordion after the selected
 ' queue row, graph chain, or schedule slot. Use the split for a selection
 ' without a visible row. Give the split separate scroll regions.
 ' Keep Enter on a live task bound to attach in each position. Opening a

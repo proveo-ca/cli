@@ -20,8 +20,16 @@
 ' Sample on the sbx host. CPU topology and current guest CPU limits in
 ' internal/sbx/limits.go give a ceiling. Admission also needs host CPU
 ' utilization over an interval, expressed as integer millicores.
-' Reuse Linux MemAvailable and macOS vm_stat parsing from host_memory.go
-' for system RAM. The local-inference pool can be discrete VRAM.
+' Admit sandbox RAM against the operating system's physical memory on
+' the host that runs sbx. Read Linux MemTotal and MemAvailable. On macOS
+' pair hw.memsize with vm_stat headroom. Reuse host_memory.go's parsers.
+' Record discrete VRAM as a separate per-device inference budget.
+' Treat an integrated or unified GPU's shared allocations as usage of
+' the same system RAM pool. Charge pending shared allocations once.
+' With samples of 32 GiB system RAM and 16 GiB dedicated VRAM, verify
+' the RAM total is 32 GiB. Verify a unified host reports a single RAM pool.
+' The inference helper's Free field can report VRAM. Read system RAM
+' directly for admission even when GPU memory topology is unknown.
 ' Reuse the Unix Statfs free-space helper for the actual sbx storage and
 ' retained-artifact filesystems. Deduplicate paths on one filesystem.
 ' Windows needs supported host probes. Totals and model-inference

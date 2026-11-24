@@ -94,7 +94,7 @@
   .files .panel-head { flex-wrap: wrap; }
   .files .panel-body { padding: 5px 6px; }
   .file-views { display: flex; flex-wrap: wrap; gap: 2px; }
-  .file-views .button { font-size: .88rem; padding-inline: 3px; }
+  .file-views .button { color: var(--muted); font-size: .88rem; padding-inline: 3px; }
   #filetree { font-size: .92rem; }
   .tree { list-style: none; padding: 0; }
   .tree .tree { padding-left: .8ch; border-left: 1px solid var(--line); margin-left: 1ch; }
@@ -275,8 +275,8 @@
         <header class="panel-head">
           <h2 id="files-heading">Changes</h2>
           <div class="file-views" id="file-views" role="group" aria-label="Workspace file views">
-            <button type="button" class="button" id="files-key" aria-pressed="false" aria-keyshortcuts="F">See <kbd>f</kbd>iles</button>
-            <button type="button" class="button" id="changes-key" aria-pressed="true" aria-keyshortcuts="G">See Chan<kbd>g</kbd>es</button>
+            <button type="button" class="button" id="files-key" aria-pressed="false" aria-keyshortcuts="F"><kbd>f</kbd> See files</button>
+            <button type="button" class="button" id="changes-key" aria-pressed="true" aria-keyshortcuts="G"><kbd>g</kbd> See changes</button>
           </div>
         </header>
         <div class="panel-body">
@@ -322,9 +322,9 @@
   <button type="button" class="button" id="quit-key"><kbd>Ctrl+C</kbd> quit</button>
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
+    <button type="button" class="button" id="details-key" aria-controls="task-inspector" aria-expanded="true" hidden><kbd>t</kbd> <span>Hide details</span></button>
     <button type="button" class="button" id="enter-key" hidden><kbd>Enter</kbd> <span></span></button>
     <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
-    <button type="button" class="button" id="details-key" aria-controls="task-inspector" hidden><kbd>t</kbd> details</button>
     <button type="button" class="button" id="details-position" title="Change details position" hidden><kbd>v</kbd> position</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
@@ -358,7 +358,7 @@
 <template id="implementation-details">
   <article class="port-plan">
     <h3>One model, three views</h3>
-    <p class="subtext">Feed all three views from the same task, result, and schedule records. Place Changes and Task details in the left column by default. Press <kbd>t</kbd> on a task to see its details. Use <kbd>4</kbd> to choose the details position and <kbd>v</kbd> to cycle positions. The lower-right split scrolls the task view and details independently.</p>
+    <p class="subtext">Feed all three views from the same task, result, and schedule records. Place Changes and Task details in the left column by default. Press <kbd>t</kbd> to toggle the task details. Use <kbd>4</kbd> to choose the details position and <kbd>v</kbd> to cycle positions. The lower-right split scrolls the task view and details independently.</p>
     <p class="subtext">Build the Changes tree from each task’s Git base and last carried branch tip. Enter attaches to a running scheduled task or opens the selected file across the center and right panes. Use <kbd>v</kbd> to switch between the file and its diff.</p>
     <p class="subtext">New instance collects the agent, task, and initial prompt. The task inspector shows the original prompt recorded for that instance.</p>
     <h3>Resource admission</h3>
@@ -813,7 +813,7 @@
     const attach = canAttach(task)
     bindEnter(card, attach ? "Attach" : "", () => showAttach(task))
     const detailHint = node("span", "task-detail-hint")
-    detailHint.append(node("kbd", "", "t"), " See details")
+    detailHint.append(node("kbd", "", "t"), " ", node("span", "", "See details"))
     detailHint.setAttribute("aria-hidden", "true")
     const meta = node("span", "task-meta", [task.id, task.agent, phases[task.phase]].join(" · "))
     meta.append(detailHint)
@@ -908,7 +908,13 @@
       row.setAttribute("aria-controls", inspector.id)
     }
     const shortcut = $("details-key")
+    const action = visible ? "Hide details" : "See details"
     shortcut.hidden = ui.editing
+    shortcut.setAttribute("aria-expanded", String(visible))
+    shortcut.lastElementChild.textContent = action
+    for (const hint of work.querySelectorAll(".task-detail-hint")) {
+      hint.lastElementChild.textContent = hint.closest('.task[aria-pressed="true"]') ? action : "See details"
+    }
     $("details-position").hidden = ui.editing
     if (!visible && inspector.contains(document.activeElement)) shortcut.focus({preventScroll: true})
     inspector.hidden = !visible
@@ -929,16 +935,14 @@
     setDetailsPosition(detailPositions[next % detailPositions.length][0])
   }
 
-  function toggleDetails() {
-    detailsOpen = !detailsOpen
-    placeDetails()
-  }
-
-  function revealTaskDetails(task = ui.task) {
-    detailsOpen = true
-    if (task === ui.task) placeDetails()
-    else selectTask(task)
-    $("detail-heading").focus()
+  function toggleDetails(task = ui.task) {
+    if (task === ui.task) {
+      detailsOpen = !detailsOpen
+      placeDetails()
+    } else {
+      detailsOpen = true
+      selectTask(task)
+    }
   }
 
   function showDetailOptions() {
@@ -957,7 +961,7 @@
       const choice = addChoice(String(index + 1), label, () => setDetailsPosition(position))
       choice.setAttribute("aria-pressed", String(detailsOpen && position === detailPosition))
     }
-    addChoice("t", detailsOpen ? "Hide details" : "Show details", toggleDetails)
+    addChoice("t", detailsOpen ? "Hide details" : "See details", toggleDetails)
     choices.addEventListener("keydown", event => {
       if (event.ctrlKey || event.metaKey || event.altKey) return
       const choice = [...choices.children].find(item => item.dataset.key === event.key)
@@ -1635,7 +1639,8 @@
     }
     if (event.key === "t" && row?.dataset.task) {
       event.preventDefault()
-      revealTaskDetails(taskFor(row.dataset.task))
+      if (row.dataset.task !== ui.task.id) row.focus({preventScroll: true})
+      toggleDetails(taskFor(row.dataset.task))
       return
     }
     const control = {"1": "[data-view=queue]", "2": "[data-view=graph]", "3": "[data-view=schedule]", "4": "#details-options", c: "#capacity-key", e: "#fresh-key", t: "#details-key", v: "#details-position", n: "#new-instance", i: "#implementation-key", "?": "#proposal-button"}[event.key]
@@ -1663,7 +1668,7 @@
   })
   $("fresh-key").addEventListener("click", openSandboxFresh)
   $("details-options").addEventListener("click", showDetailOptions)
-  $("details-key").addEventListener("click", () => revealTaskDetails())
+  $("details-key").addEventListener("click", () => toggleDetails())
   $("details-position").addEventListener("click", advanceDetailsPosition)
   $("editor-back").addEventListener("click", () => setEditor())
   $("new-instance").addEventListener("click", showNewInstance)
