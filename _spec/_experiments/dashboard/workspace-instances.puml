@@ -20,6 +20,7 @@
 ' Current state transfer: _spec/internal/sbx/state-sync.puml
 ' Earlier retention direction: _spec/_plans/session-continuity.puml
 ' Resource admission: _spec/_experiments/dashboard/resource-queue.puml
+' Delivery order and verification: _spec/_plans/dashboard-delivery.puml
 '
 ' IDENTITY AND ISOLATION
 ' Keep canonical effective pwd as the workspace key, with explicit input and

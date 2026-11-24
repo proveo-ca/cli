@@ -13,6 +13,7 @@ skinparam noteTextAlignment left
 ' covers: cmd/proveo/running.go
 ' covers: cmd/proveo/running_test.go
 ' covers: e2e/schedule_test.go
+' covers: e2e/dashboard_tmux_test.go (TestDashboardAttachBaselineOnTmux)
 ' covers: internal/run/choices.go (resolveAddonFlags), internal/run/params.go (AddonsSet, Yes)
 ' covers: internal/backend/sandbox/stop_signal_test.go
 '   the screen vocabulary these lines use ...... _spec/internal/ui/output-vocabulary.puml
