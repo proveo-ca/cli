@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Proveo Dashboard Proposal</title>
+<style>
+  :root {
+    --bg: #141916;
+    --surface: #1a211d;
+    --raised: #202923;
+    --line: #344239;
+    --text: #edf2eb;
+    --muted: #a3b1a7;
+    --accent: #d3f589;
+    --accent-bg: #29382a;
+    --sky: #a9d7da;
+    --amber: #f1c18d;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    font-family: "Geist", "Inter", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-synthesis: none;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; min-width: 280px; }
+  h1, h2, h3, p, ol, ul, dl, dd, pre { margin: 0; }
+  button, input { font: inherit; }
+  button { color: inherit; }
+  button, summary { cursor: pointer; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .mono, code, pre { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .subtext { color: var(--muted); font-size: .84rem; line-height: 1.55; }
+  .kicker { font: .7rem/1.4 var(--mono); letter-spacing: .07em; color: var(--muted); text-transform: uppercase; }
+  .wrap { width: min(1480px, 100%); margin-inline: auto; padding-inline: clamp(16px, 3vw, 46px); }
+  .top { border-bottom: 1px solid var(--line); background: #181e1a; }
+  .bar { display: flex; min-height: 62px; align-items: stretch; gap: clamp(12px, 3vw, 38px); }
+  .brand { display: flex; align-items: center; gap: 9px; font: 700 1rem var(--mono); }
+  .mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: var(--accent); color: #1d2916; font-size: .8rem; }
+  .tabs { display: flex; align-items: stretch; gap: 3px; }
+  .tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 0 clamp(10px, 2vw, 22px); color: var(--muted); font: .83rem var(--mono); }
+  .tab:hover { background: var(--surface); color: var(--text); }
+  .tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent); }
+  .top-end { margin-left: auto; display: flex; gap: 15px; align-items: center; }
+  .prototype { font: .68rem var(--mono); color: var(--muted); }
+  .button { display: inline-flex; align-items: center; justify-content: center; gap: .4em; padding: 8px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); font-weight: 600; font-size: .79rem; text-decoration: none; }
+  .button:hover { border-color: var(--muted); }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: #202b17; }
+  .button.primary:hover { background: #e4ffa9; }
+  .button.clear { background: transparent; }
+  .workspace { padding-block: 33px 24px; }
+  .intro { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 22px; }
+  .path { font: .78rem var(--mono); color: var(--accent); display: flex; gap: 9px; align-items: center; overflow-wrap: anywhere; }
+  h1 { margin-block: 9px 7px; font-size: clamp(1.9rem, 4vw, 2.85rem); line-height: 1.06; letter-spacing: -.045em; font-weight: 660; }
+  .intro-side { text-align: right; flex-shrink: 0; }
+  .intro-side .kicker { margin-bottom: 8px; }
+  .layout-picker { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #171d19; gap: 2px; }
+  .layout-picker button { padding: 7px 9px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); font-size: .76rem; font-weight: 610; white-space: nowrap; }
+  .layout-picker button:hover { color: var(--text); }
+  .layout-picker button[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: #435440; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 18px; }
+  .metric { padding: 12px 14px; display: flex; gap: 9px; flex-wrap: wrap; align-items: baseline; }
+  .metric + .metric { border-left: 1px solid var(--line); }
+  .metric strong { font: 620 1.08rem var(--mono); }
+  .metric:first-child strong { color: var(--accent); }
+  .metric span { color: var(--muted); font-size: .78rem; }
+  .grid { display: grid; grid-template-columns: minmax(180px, .64fr) minmax(0, 1.95fr) minmax(280px, 1fr); align-items: start; gap: 15px; }
+  .panel { border: 1px solid var(--line); border-radius: 9px; background: var(--surface); min-width: 0; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+  .panel-head h2 { font-size: .87rem; font-weight: 650; }
+  .panel-tools { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+  .panel-tools .button { padding: 5px 8px; }
+  .panel-body { padding: 13px 14px; }
+  .files .panel-body { padding: 8px 9px 12px; }
+  .files .panel-head .kicker { color: var(--sky); }
+  .tree { list-style: none; padding: 0; }
+  .tree .tree { padding-left: 11px; border-left: 1px solid var(--line); margin-left: 9px; }
+  .tree summary, .file { padding: 6px 5px; font: .73rem/1.35 var(--mono); overflow-wrap: anywhere; width: 100%; text-align: left; }
+  .tree summary { color: var(--muted); }
+  .tree summary::marker { color: var(--accent); }
+  .file { background: transparent; border: 1px solid transparent; border-radius: 5px; color: var(--text); display: block; }
+  .file:hover, .file[aria-current="true"] { background: var(--raised); border-color: var(--line); color: var(--accent); }
+  .file::before { content: "·"; color: var(--muted); margin-right: 7px; }
+  .file-footer { margin-top: 14px; padding: 10px 4px 1px; border-top: 1px solid var(--line); }
+  .file-footer .button { width: 100%; }
+  .section + .section { margin-top: 16px; }
+  .section .kicker, .column .kicker { margin-bottom: 8px; }
+  .tasks { display: grid; gap: 7px; }
+  .task { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; text-align: left; padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: #1d2620; }
+  .task:hover { border-color: #71826d; }
+  .task[aria-pressed="true"] { background: var(--accent-bg); border-color: #839b60; box-shadow: inset 2px 0 var(--accent); }
+  .task-heading, .task-meta { display: block; overflow-wrap: anywhere; }
+  .task-heading { font-size: .87rem; font-weight: 650; line-height: 1.38; }
+  .task-meta { margin-top: 4px; color: var(--muted); font: .67rem/1.5 var(--mono); }
+  .state { display: inline-flex; align-items: baseline; gap: 5px; color: var(--muted); font: .67rem/1.4 var(--mono); white-space: nowrap; }
+  .state.review, .state.saved { color: var(--accent); }
+  .state.active { color: var(--sky); }
+  .state.warn { color: var(--amber); }
+  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .column { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #171e19; }
+  .column .task { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px; }
+  .empty { color: var(--muted); font-size: .76rem; padding: 6px 0; }
+  .slot { display: grid; grid-template-columns: 50px minmax(0, 1fr); align-items: center; gap: 9px; }
+  .slot time { font: .75rem var(--mono); color: var(--sky); }
+  .inspector h3 { font-size: 1.13rem; letter-spacing: -.02em; line-height: 1.24; overflow-wrap: anywhere; }
+  .inspector .state { white-space: normal; }
+  .inspector p + p, .inspector h3 + p { margin-top: 6px; }
+  .facts { margin-block: 11px; display: grid; gap: 6px; }
+  .fact { background: #171e19; border-radius: 5px; padding: 4px 6px; display: grid; grid-template-columns: 45px minmax(0, 1fr); gap: 7px; align-items: baseline; }
+  .fact dt { color: var(--muted); font-size: .7rem; }
+  .fact dd { font: .68rem/1.5 var(--mono); overflow-wrap: anywhere; }
+  .file-link { border: 0; background: transparent; color: var(--accent); font: inherit; text-decoration: underline; text-align: left; padding: 0; }
+  .phases { border-top: 1px solid var(--line); padding-top: 10px; }
+  .phases ol { color: var(--muted); list-style: none; padding: 0; margin-block: 6px 9px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 5px; }
+  .phase { font: .69rem/1.45 var(--mono); padding: 4px; display: flex; gap: 5px; min-width: 0; align-items: baseline; }
+  .phase.complete { color: var(--text); }
+  .phase[aria-current="step"] { color: var(--accent); background: var(--accent-bg); border-radius: 5px; }
+  .phases .subtext { font-size: .73rem; }
+  .evidence { margin-block: 11px; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: #181f1a; }
+  .evidence .subtext { font-size: .76rem; }
+  .actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .file-preview, .terminal pre { color: var(--text); background: #111813; border: 1px solid var(--line); border-radius: 7px; padding: 12px; font: .76rem/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .file-preview { margin-block: 12px; }
+  .terminal { min-height: 450px; }
+  .terminal-empty { display: grid; justify-items: start; align-content: center; gap: 15px; min-height: 360px; max-width: 590px; margin-inline: auto; padding: 28px 16px; }
+  .terminal-empty h2 { font-size: 1.2rem; }
+  .terminal-empty code { color: var(--accent); font-size: 1rem; }
+  .terminal pre { margin: 16px; white-space: pre; overflow-x: auto; }
+  .uploader { display: grid; gap: 7px; }
+  .uploader input { max-width: 100%; font-size: .78rem; color: var(--muted); }
+  .footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px; padding-top: 13px; }
+  .footer .subtext { font-size: .75rem; }
+  dialog { color: var(--text); background: var(--surface); padding: 0; border: 1px solid var(--line); border-radius: 10px; width: min(610px, calc(100% - 28px)); }
+  dialog::backdrop { background: #090e0bdc; }
+  dialog .panel-body { padding: 16px; }
+  dialog .panel-body > * + * { margin-top: 11px; }
+  dialog li + li { margin-top: 6px; }
+  .launch-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .launch-fields label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: .78rem; }
+  .launch-fields select { width: 100%; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 7px; }
+  .toast { position: fixed; z-index: 1; bottom: 16px; right: 16px; margin-left: 16px; padding: 10px 14px; border-radius: 7px; border: 1px solid #718855; background: var(--accent-bg); color: var(--accent); font-size: .83rem; }
+  .toast:empty { display: none; }
+  @media (max-width: 1050px) {
+    .grid { grid-template-columns: minmax(145px, .52fr) minmax(0, 1.78fr) minmax(248px, 1fr); gap: 10px; }
+    .panel-head, .panel-body { padding-inline: 10px; }
+    .board { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 790px) {
+    .intro { align-items: start; flex-direction: column; }
+    .intro-side { text-align: left; }
+    .grid { grid-template-columns: minmax(145px, .5fr) minmax(0, 1fr); align-items: start; }
+    .inspector { grid-column: 2; }
+    .files { grid-row: span 2; }
+  }
+  @media (max-width: 500px) {
+    .bar { gap: 8px; }
+    .brand { gap: 5px; font-size: .86rem; }
+    .mark { width: 23px; height: 23px; }
+    .prototype { display: none; }
+    .workspace { padding-block: 20px; }
+    .metrics { grid-template-columns: 1fr 1fr; }
+    .metric:nth-child(3) { border-left: 0; }
+    .metric:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .grid { display: flex; flex-direction: column; }
+    .grid > * { width: 100%; }
+    .files { order: 3; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <span class="brand"><span class="mark" aria-hidden="true">&gt;_</span>proveo</span>
+    <nav class="tabs" role="tablist" aria-label="Dashboard">
+      <button type="button" class="tab" id="tab-proveo" role="tab" aria-controls="proveo" aria-selected="true">proveo</button>
+      <button type="button" class="tab" id="tab-sbx" role="tab" aria-controls="sbx" aria-selected="false" tabindex="-1">sbx</button>
+    </nav>
+    <div class="top-end">
+      <span class="prototype">Prototype · sample data</span>
+      <button type="button" class="button clear" id="proposal-button">Proposal</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap workspace">
+  <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo">
+    <div class="intro">
+      <div>
+        <p class="path"><span aria-hidden="true">⌁</span> ~/projects/proveo</p>
+        <h1 id="view-title">Morning review</h1>
+        <p class="subtext" id="view-subtitle">Pick up the work agents left overnight.</p>
+      </div>
+      <div class="intro-side">
+        <p class="kicker">Choose a layout</p>
+        <div class="layout-picker" role="group" aria-label="Proveo layout proposals">
+          <button type="button" data-view="queue" aria-pressed="true">Review queue</button>
+          <button type="button" data-view="board" aria-pressed="false">Task board</button>
+          <button type="button" data-view="schedule" aria-pressed="false">Schedule</button>
+        </div>
+      </div>
+    </div>
+    <div class="metrics" id="metrics" aria-label="Workspace summary"></div>
+    <div class="grid">
+      <aside class="panel files" aria-labelledby="files-heading">
+        <header class="panel-head"><h2 id="files-heading">Files</h2><span class="kicker">pwd</span></header>
+        <div class="panel-body">
+          <div id="filetree"></div>
+          <div class="file-footer"><button type="button" class="button clear" id="fresh-button">Open in Fresh <span aria-hidden="true">↗</span></button></div>
+        </div>
+      </aside>
+      <section class="panel" aria-labelledby="work-heading">
+        <header class="panel-head">
+          <h2 id="work-heading">Review queue</h2>
+          <div class="panel-tools">
+            <span class="kicker" id="work-clock">Mon · 08:42 local</span>
+            <button type="button" class="button clear" id="new-instance">+ New instance</button>
+          </div>
+        </header>
+        <div class="panel-body" id="work"></div>
+      </section>
+      <aside class="panel inspector" aria-labelledby="detail-heading">
+        <header class="panel-head"><h2 id="detail-heading">Task details</h2><span class="kicker" id="detail-context">Linear</span></header>
+        <div class="panel-body" id="detail"></div>
+      </aside>
+    </div>
+    <footer class="footer">
+      <span class="subtext">Schedule window <span class="mono">22:00–06:00 local</span></span>
+    </footer>
+  </section>
+
+  <section id="sbx" role="tabpanel" aria-labelledby="tab-sbx" hidden>
+    <div class="intro">
+      <div>
+        <p class="path">~/projects/proveo</p>
+        <h1>Native sbx</h1>
+        <p class="subtext">MicroVMs, network, ports, and egress.</p>
+      </div>
+    </div>
+    <section class="panel terminal" aria-labelledby="terminal-heading">
+      <header class="panel-head"><h2 id="terminal-heading">Terminal</h2><span class="kicker">sbx</span></header>
+      <div class="terminal-empty" id="terminal-empty">
+        <h2>Open the native dashboard</h2>
+        <p class="subtext">The proposed terminal app hands this tab to the stock <code>sbx</code> command. Exit sbx to return to Proveo. This HTML preview can display a native plain-text capture.</p>
+        <button type="button" class="button" id="sbx-command"><span class="mono">$ sbx</span> · Copy command</button>
+        <a href="https://docs.docker.com/ai/sandboxes/usage/#interactive-mode">Docker’s interactive mode ↗</a>
+      </div>
+      <pre id="terminal-capture" aria-label="Native sbx capture" hidden></pre>
+      <div class="panel-body uploader">
+        <label class="subtext" for="capture-file">Load a plain-text sbx capture</label>
+        <input type="file" id="capture-file" accept="text/plain,.txt,.log">
+      </div>
+    </section>
+  </section>
+</main>
+
+<dialog id="dialog" aria-labelledby="dialog-title">
+  <header class="panel-head">
+    <h2 id="dialog-title"></h2>
+    <form method="dialog"><button type="submit" class="button clear">Close</button></form>
+  </header>
+  <div class="panel-body" id="dialog-body"></div>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+  "use strict"
+
+  const phases = ["Spec", "Verification", "Spec revision", "Live verification", "Upgrade", "PR", "Review", "Merge"]
+  const views = {
+    queue: ["Morning review", "Pick up the work agents left overnight.", "Review queue", "Mon · 08:42 local"],
+    board: ["Task board", "Follow each task from spec through evidence and review.", "Tasks by stage", ""],
+    schedule: ["Night schedule", "Plan agent work at night and reserve the day for review.", "Run timeline", "Local time"],
+  }
+  const taskStates = {
+    review: ["Ready for review", "◇"],
+    changes: ["Changes requested", "↶", "warn"],
+    active: ["Running", "●"],
+    blocked: ["Needs attention", "!", "warn"],
+    queued: ["Queued", "○"],
+    merged: ["Merged", "✓", "saved"],
+  }
+  const tasks = [
+    {
+      id: "PRV-284", title: "Persist instance history", agent: "Codex", source: "Linear",
+      phase: 6, state: "review", time: "05:43", instance: "codex-83f91a", revision: "1c2f6e4", pr: "Draft #104",
+      branch: "proveo/prv-284/session-history", session: "Checkpoint saved", saved: true,
+      summary: "The host recovered both native session IDs after the VMs exited. Review the ownership rule before opening the PR.",
+      evidence: ["Unit suite · 42 passed", "Live sbx · two same-pwd instances resumed by ID", "Spec · workspace-instances.puml"],
+    },
+    {
+      id: "PLAN-17", title: "Cap overnight run budgets", agent: "Claude Code", source: "Local plan",
+      phase: 6, state: "changes", time: "04:12", instance: "claude-2bf0a1", revision: "daa5c70", pr: "PR #102",
+      plan: "_spec/_plans/night-budget.puml",
+      branch: "proveo/plan-17/night-budget", session: "Checkpoint saved", saved: true,
+      summary: "Review asked for evidence that a stopped job leaves enough time to publish its history.",
+      evidence: ["Unit suite · budget calculation passed", "Live verification · rerun requested after review", "Plan · _spec/_plans/night-budget.puml"],
+    },
+    {
+      id: "PRV-291", title: "Verify parallel clone isolation", agent: "OpenCode", source: "Linear",
+      phase: 3, state: "active", time: "08:10", instance: "opencode-f91c25", revision: "d37fb13",
+      branch: "proveo/prv-291/clone-isolation", session: "Native session in VM", saved: false,
+      summary: "Compare file edits from two agents launched in the same directory. Each clone has its own branch.",
+      evidence: ["Unit suite · distinct instance names passed", "Live verification · two agents still running"],
+    },
+    {
+      id: "PRV-295", title: "Recover a stopped session", agent: "Hermes", source: "Linear",
+      phase: 1, state: "blocked", time: "03:20", instance: "hermes-2d841b", revision: "bc059a2",
+      branch: "proveo/prv-295/recovery", session: "Final checkpoint needs retry", saved: false,
+      summary: "The guest stopped before the final checkpoint reached the host. Review the last good checkpoint and the kept VM.",
+      evidence: ["Checkpoint · previous attempt available", "Guest export · unreachable at shutdown"],
+    },
+    {
+      id: "PLAN-21", title: "Index native session IDs", agent: "Codex", source: "Local plan",
+      phase: 0, state: "queued", time: "22:00", instance: "New instance", revision: "8dd8b76",
+      plan: "_spec/_plans/session-index.puml",
+      branch: "proveo/plan-21/session-index", session: "Awaiting first run", saved: false,
+      summary: "Draft the query that lists resumable instances in the current workspace.",
+      evidence: ["Plan · _spec/_plans/session-index.puml", "Schedule · 45 minute budget"],
+    },
+    {
+      id: "PRV-304", title: "Bind evidence to the review revision", agent: "Claude Code", source: "Linear",
+      phase: 4, state: "queued", time: "23:30", instance: "claude-08a532", revision: "5b119c9",
+      branch: "proveo/prv-304/review-evidence", session: "Checkpoint saved", saved: true,
+      summary: "Apply the verified upgrade and lift the new commit for review.",
+      evidence: ["Unit suite · previous attempt passed", "Live verification · recorded against this revision", "Schedule · 75 minute budget"],
+    },
+    {
+      id: "PRV-278", title: "Keep clone output per attempt", agent: "Codex", source: "Linear",
+      phase: 7, state: "merged", time: "Yesterday", instance: "codex-411def", revision: "c0e6b81", pr: "Merged #98",
+      branch: "proveo/prv-278/clone-output", session: "Checkpoint saved", saved: true,
+      summary: "Merged after the reviewer verified that each attempt keeps its own output.",
+      evidence: ["Unit suite · passed", "Live verification · passed", "PR · merged against the verified revision"],
+    },
+  ]
+  const fileTree = [
+    ["_spec", [
+      ["_experiments", [
+        ["dashboard", [
+          ["workspace-instances.puml", "Proposed instance lifecycle\n\npwd → workspace\ninstance ID → isolated clone + native history\nattempt ID → checkpoint + Git result\n\nOne active writer per native session."],
+        ]],
+      ]],
+      ["_plans", [
+        ["night-budget.puml", "Night budget\n\nAllow time for a final checkpoint.\nRecord requested stops and final export results."],
+        ["session-index.puml", "Session index\n\nReturn instances for the effective pwd.\nResume by instance and native session ID."],
+      ]],
+    ]],
+    ["internal", [
+      ["backend", [["sandbox.go", "Lifecycle entry point\n\nResolve the sandbox, start the agent, then carry results during teardown."]]],
+      ["schedule", [["runner.go", "Run a scheduled attempt with a time budget.\nKeep the result, transcript, and report."]]],
+    ]],
+    ["defs", [["README.md", "Definitions use the effective working directory for project-scoped defaults."]]],
+    ["README.md", "Proveo runs coding agents in Docker Sandboxes.\nBrowse proposals under _spec/."],
+  ]
+
+  const $ = (id) => document.getElementById(id)
+  const ui = { view: "queue", task: tasks[0], file: null }
+  let toastTimer
+
+  function node(tag, className, content) {
+    const element = document.createElement(tag)
+    if (className) element.className = className
+    if (content) element.textContent = content
+    return element
+  }
+
+  function button(text, action, className = "button clear") {
+    const element = node("button", className, text)
+    element.type = "button"
+    element.addEventListener("click", action)
+    return element
+  }
+
+  function link(text, href) {
+    const element = node("a", "", text)
+    element.href = href
+    return element
+  }
+
+  function status(text, icon, kind) {
+    const element = node("span", "state " + kind)
+    const symbol = node("span", "", icon)
+    symbol.setAttribute("aria-hidden", "true")
+    element.append(symbol, document.createTextNode(text))
+    return element
+  }
+
+  function metric(label, count) {
+    const display = node("div", "metric")
+    display.append(node("strong", "mono", String(count).padStart(2, "0")), node("span", "", label))
+    return display
+  }
+
+  function renderMetrics() {
+    const counts = [
+      ["Needs review", tasks.filter(({state}) => ["review", "changes"].includes(state)).length],
+      ["Running", tasks.filter(({state}) => state === "active").length],
+      ["Needs attention", tasks.filter(({state}) => state === "blocked").length],
+      ["Queued tonight", tasks.filter(({state}) => state === "queued").length],
+    ]
+    $("metrics").replaceChildren(...counts.map(([label, count]) => metric(label, count)))
+  }
+
+  function selectTask(task) {
+    ui.task = task
+    ui.file = null
+    for (const item of $("work").querySelectorAll(".task")) {
+      item.setAttribute("aria-pressed", String(item.dataset.task === task.id))
+    }
+    renderInspector()
+  }
+
+  function taskCard(task) {
+    const card = button("", () => selectTask(task), "task")
+    card.dataset.task = task.id
+    card.setAttribute("aria-pressed", String(!ui.file && task === ui.task))
+    const name = node("span")
+    name.append(
+      node("span", "task-heading", task.title),
+      node("span", "task-meta", [task.id, task.agent, phases[task.phase]].join(" · ")),
+    )
+    const [label, icon, kind = task.state] = taskStates[task.state]
+    card.append(name, status(label, icon, kind))
+    return card
+  }
+
+  function taskGroup(title, items, variant = "section", withTime = false) {
+    const section = node("section", variant)
+    section.append(node("h3", "kicker", title))
+    if (items.length === 0) {
+      section.append(node("p", "empty", "No tasks"))
+      return section
+    }
+    const list = node("div", "tasks")
+    for (const task of items) {
+      const card = taskCard(task)
+      if (withTime) {
+        const slot = node("div", "slot")
+        slot.append(node("time", "", task.time), card)
+        list.append(slot)
+      } else {
+        list.append(card)
+      }
+    }
+    section.append(list)
+    return section
+  }
+
+  function renderWork() {
+    const [title, subtitle, heading, clock] = views[ui.view]
+    $("view-title").textContent = title
+    $("view-subtitle").textContent = subtitle
+    $("work-heading").textContent = heading
+    for (const control of document.querySelectorAll("[data-view]")) {
+      control.setAttribute("aria-pressed", String(control.dataset.view === ui.view))
+    }
+
+    const work = $("work")
+    switch (ui.view) {
+      case "queue":
+        work.replaceChildren(
+          taskGroup("Review this morning", tasks.filter(({state}) => ["review", "changes"].includes(state))),
+          taskGroup("Follow up", tasks.filter(({state}) => ["active", "blocked"].includes(state))),
+          taskGroup("Queued tonight", tasks.filter(({state}) => state === "queued")),
+        )
+        break
+      case "board": {
+        const board = node("div", "board")
+        board.append(
+          taskGroup("Spec and verify", tasks.filter(({phase}) => phase < 4), "column"),
+          taskGroup("Upgrade and PR", tasks.filter(({phase}) => phase === 4 || phase === 5), "column"),
+          taskGroup("Review and merge", tasks.filter(({phase}) => phase > 5), "column"),
+        )
+        work.replaceChildren(board)
+        break
+      }
+      case "schedule": {
+        const sort = (items) => items.sort((a, b) => a.time.localeCompare(b.time))
+        work.replaceChildren(
+          taskGroup("Last night · outcomes", sort(tasks.filter(({state}) => ["review", "changes", "blocked"].includes(state))), "section", true),
+          taskGroup("Today · in progress", tasks.filter(({state}) => state === "active"), "section", true),
+          taskGroup("Tonight · scheduled starts", sort(tasks.filter(({state}) => state === "queued")), "section", true),
+        )
+        break
+      }
+    }
+    $("work-clock").textContent = ui.view === "board" ? tasks.length + " sample tasks" : clock
+  }
+
+  function tree(entries, parent = "") {
+    const list = node("ul", "tree")
+    for (const [name, value] of entries) {
+      const path = parent ? parent + "/" + name : name
+      const item = node("li")
+      if (Array.isArray(value)) {
+        const group = node("details")
+        group.open = path.startsWith("_spec")
+        group.append(node("summary", "", name), tree(value, path))
+        item.append(group)
+      } else {
+        const file = button(name, () => {
+          selectFile({name, path, value})
+        }, "file")
+        file.dataset.path = path
+        item.append(file)
+      }
+      list.append(item)
+    }
+    return list
+  }
+
+  function selectFile(file) {
+    ui.file = file
+    for (const task of $("work").querySelectorAll(".task")) task.setAttribute("aria-pressed", "false")
+    renderInspector()
+  }
+
+  function fact(label, text) {
+    const row = node("div", "fact")
+    const value = node("dd")
+    value.append(text)
+    row.append(node("dt", "", label), value)
+    return row
+  }
+
+  function phaseList(task) {
+    const region = node("div", "phases")
+    const list = node("ol")
+    phases.forEach((phase, index) => {
+      const item = node("li", index < task.phase ? "phase complete" : "phase")
+      const glyph = node("span", "", index < task.phase ? "✓" : index === task.phase ? "→" : "·")
+      glyph.setAttribute("aria-hidden", "true")
+      item.append(glyph, document.createTextNode(phase))
+      if (index === task.phase) item.setAttribute("aria-current", "step")
+      list.append(item)
+    })
+    region.append(node("p", "kicker", "Workflow"), list, node("p", "subtext", "↶ Verification and review can return a task to the spec."))
+    return region
+  }
+
+  function showEvidence(task) {
+    const list = node("ul", "subtext")
+    for (const entry of task.evidence) list.append(node("li", "", entry))
+    showDialog("Evidence · " + task.id,
+      node("p", "subtext", "Sample evidence for revision " + task.revision),
+      list,
+      node("p", "subtext", "A revised commit reopens the affected verification steps."),
+    )
+  }
+
+  function showResume(task) {
+    const command = "proveo run " + agentTarget(task.agent) + " --instance " + task.instance
+    showCommand("Resume " + task.instance, "This proposed command selects the instance and restores its last saved native session.", command)
+  }
+
+  function agentTarget(name) {
+    return name === "Claude Code" ? "claudecode" : name.toLowerCase()
+  }
+
+  function showNewInstance() {
+    const fields = node("div", "launch-fields")
+    const harnessLabel = node("label", "", "Agent")
+    const harness = node("select")
+    for (const name of [...new Set(tasks.map(({agent}) => agent))]) {
+      harness.add(new Option(name, agentTarget(name)))
+    }
+    harness.value = agentTarget(ui.task.agent)
+    harnessLabel.append(harness)
+    const ticketLabel = node("label", "", "Task")
+    const ticket = node("select")
+    ticket.add(new Option("No task", ""))
+    for (const task of tasks) ticket.add(new Option(task.id + " · " + task.title, task.id))
+    ticket.value = ui.task.id
+    ticketLabel.append(ticket)
+    fields.append(harnessLabel, ticketLabel)
+    const command = node("pre", "file-preview")
+    const update = () => {
+      command.textContent = "proveo run " + harness.value + " --new" + (ticket.value ? " --task " + ticket.value : "")
+    }
+    fields.addEventListener("change", update)
+    update()
+    showDialog("New instance in this pwd",
+      node("p", "subtext", "This proposed command creates a separate clone and session in the current workspace."),
+      fields, command, button("Copy command", () => copyCommand(command.textContent)),
+    )
+  }
+
+  function queueRework(task) {
+    task.state = "queued"
+    task.phase = 2
+    task.time = "22:30"
+    renderMetrics()
+    renderWork()
+    renderInspector()
+    $("detail-heading").focus()
+    notify(task.id + " queued for 22:30 in the prototype.")
+  }
+
+  function renderInspector() {
+    const detail = $("detail")
+    for (const file of $("filetree").querySelectorAll(".file")) {
+      if (ui.file?.path === file.dataset.path) file.setAttribute("aria-current", "true")
+      else file.removeAttribute("aria-current")
+    }
+    if (ui.file) {
+      $("detail-heading").textContent = "File preview"
+      $("detail-context").textContent = "Sample file"
+      detail.replaceChildren(
+        node("h3", "", ui.file.name),
+        node("p", "subtext mono", ui.file.path),
+        node("pre", "file-preview", ui.file.value),
+        button("Back to task", () => selectTask(ui.task)),
+      )
+      return
+    }
+
+    const task = ui.task
+    $("detail-heading").textContent = "Task details"
+    $("detail-context").textContent = task.source
+    const facts = node("dl", "facts")
+    facts.append(
+      fact("Ticket", task.id),
+      fact("Agent", task.agent),
+      fact("Branch", task.branch),
+      fact("Instance", task.instance),
+    )
+    if (task.plan) {
+      facts.append(fact("Plan", button(task.plan, () => {
+        const file = [...$("filetree").querySelectorAll(".file")].find(({dataset}) => dataset.path === task.plan)
+        file?.click()
+        $("detail-heading").focus()
+      }, "file-link")))
+    }
+    if (task.pr) facts.append(fact("PR", task.pr))
+    const evidence = node("div", "evidence")
+    evidence.append(
+      status(task.session, task.saved ? "✓" : task.state === "blocked" ? "!" : "○", task.saved ? "saved" : task.state === "blocked" ? "warn" : ""),
+      node("p", "subtext mono", "Evidence · " + task.revision),
+    )
+    const actions = node("div", "actions")
+    actions.append(button("Review evidence", () => showEvidence(task), "button primary"))
+    if (task.state === "changes") actions.append(button("Queue rework", () => queueRework(task)))
+    else if (task.saved) actions.append(button("Resume instance", () => showResume(task)))
+    detail.replaceChildren(node("h3", "", task.title), node("p", "subtext", task.summary), facts, phaseList(task), evidence, actions)
+  }
+
+  function showDialog(title, ...body) {
+    $("dialog-title").textContent = title
+    $("dialog-body").replaceChildren(...body)
+    $("dialog").showModal()
+  }
+
+  function notify(message) {
+    clearTimeout(toastTimer)
+    $("toast").textContent = message
+    toastTimer = setTimeout(() => { $("toast").textContent = "" }, 3500)
+  }
+
+  async function copyCommand(command) {
+    try {
+      await navigator.clipboard.writeText(command)
+      notify("Command copied.")
+    } catch {
+      if ($("dialog").open) $("dialog").close()
+      showDialog("Copy this command", node("pre", "file-preview", command))
+    }
+  }
+
+  function showCommand(title, explanation, command) {
+    showDialog(title,
+      node("p", "subtext", explanation),
+      node("pre", "file-preview", command),
+      button("Copy command", () => copyCommand(command)),
+    )
+  }
+
+  const tabs = [...document.querySelectorAll('[role="tab"]')]
+  function showTab(chosen, focus = false) {
+    for (const tab of tabs) {
+      const selected = tab === chosen
+      tab.setAttribute("aria-selected", String(selected))
+      tab.tabIndex = selected ? 0 : -1
+      $(tab.getAttribute("aria-controls")).hidden = !selected
+    }
+    if (focus) chosen.focus()
+  }
+
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => showTab(tab))
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
+      event.preventDefault()
+      const next = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs.at(-1) : tabs.find((other) => other !== tab)
+      showTab(next, true)
+    })
+  }
+
+  for (const control of document.querySelectorAll("[data-view]")) {
+    control.addEventListener("click", () => {
+      ui.view = control.dataset.view
+      renderWork()
+    })
+  }
+
+  $("proposal-button").addEventListener("click", () => {
+    const points = node("ul", "subtext")
+    for (const text of [
+      "Use pwd to find instances. Give each instance a stable ID and its own clone. Resume from that instance’s native session ID, even after rebuilding its VM.",
+      "Checkpoint on managed exit and periodically when the harness allows it. A force-kill, deleted VM, or failed write can leave only the previous checkpoint.",
+      "Verify OpenCode’s native JSON export and import in an sbx round trip before removing retained VMs. Give parallel Hermes instances separate homes for their databases and sockets.",
+      "Let agents run scheduled tasks at night. Review the tested revision, evidence, and ticket in the morning.",
+      "Start with the review queue. Use the task board to check ownership and the schedule to check overnight capacity.",
+    ]) points.append(node("li", "", text))
+    showDialog("Workspace instance proposal", points, link("Read the lifecycle spec ↗", "workspace-instances.puml"))
+  })
+  $("fresh-button").addEventListener("click", () => showCommand(
+    "Open the workspace in Fresh",
+    "From the working directory, open Fresh’s file explorer and editor. The prototype uses a sample file tree.",
+    "fresh .",
+  ))
+  $("new-instance").addEventListener("click", showNewInstance)
+  $("sbx-command").addEventListener("click", () => copyCommand("sbx"))
+  $("capture-file").addEventListener("change", async (event) => {
+    const file = event.currentTarget.files[0]
+    if (!file) return
+    try {
+      $("terminal-capture").textContent = await file.text()
+      $("terminal-capture").hidden = false
+      $("terminal-empty").hidden = true
+    } catch {
+      notify("Could not read the capture.")
+    }
+    event.target.value = ""
+  })
+
+  $("detail-heading").tabIndex = -1
+  $("filetree").append(tree(fileTree))
+  renderMetrics()
+  renderWork()
+  renderInspector()
+</script>
+</body>
+</html>

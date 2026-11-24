@@ -1,0 +1,159 @@
+@startuml WorkspaceInstances
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: propose independent sandbox instances and host-owned resume from one working directory
+' covers: cmd/proveo/main.go
+' covers: internal/run/run.go
+' covers: internal/sbx/run.go
+' covers: internal/backend/sandbox/sandbox.go
+' covers: internal/backend/sandbox/teardown.go
+' covers: internal/backend/sandbox/opencode_engine.go
+' covers: internal/backend/sandbox/agent_home.go
+' covers: internal/proveohome/proveohome.go
+' covers: internal/schedule/runner.go
+' covers: internal/results/results.go
+' status: EXPERIMENT. The HTML prototype is index.html in this directory.
+' Current lifecycle: _spec/internal/sbx/instance-lifecycle.puml
+' Current state transfer: _spec/internal/sbx/state-sync.puml
+' Earlier retention direction: _spec/_plans/session-continuity.puml
+'
+' IDENTITY AND ISOLATION
+' Keep canonical effective pwd as the workspace key, with explicit input and
+' scope taking precedence. List any number of logical instances under that
+' workspace, subject to machine capacity and scheduling limits. Generate an
+' immutable instance ID for each new instance. Store target, optional label,
+' optional task reference and selected Git base alongside it. Derive the sbx
+' name from the instance ID and bind the record to the daemon-reported VM ID.
+' Every launch creates a separate attempt ID. A task can own several instances.
+' Sample CLI: proveo run codex --new --task PRV-284; proveo run codex --instance ID.
+' One host lease per instance covers restore through final save and removal.
+' Different instances run concurrently. One native session has one writer.
+' Git work uses one private sbx clone per instance from a recorded commit.
+' Check out the recorded base inside the guest and give it its own branch.
+' Resolve the Git source separately from the agent cwd. Preserve any scope
+' restrictions when preparing the guest checkout.
+' Fetch the base by ref or stage a Git bundle when the ref is unavailable.
+' Carry results under per-attempt refs. Keep host edits in the host checkout.
+' Use an explicit snapshot when the operator wants uncommitted input.
+' Seed isolated writes from a snapshot for a non-Git directory. Export
+' results under the attempt ID.
+' Shared writable direct mode permits one writer over overlapping host paths.
+' Reject a second writer or require a private copy. Distinct VMs can still
+' share dependencies through read-only mounts and contend for host ports.
+'
+' RESUME AND RETENTION
+' Save instance records and a host index under the existing state root.
+' Resume identifies the instance and the exact harness-native session ID.
+' Restore the selected state and Git ref into a clean guest before launch.
+' Each instance records its last verified native session. An explicit
+' native session ID can select an earlier session in that instance.
+' Reuse a matching VM only when its ID and launch receipt match and it has
+' no live owner. A disposable VM can resume the same logical instance.
+' Keep the current single-instance shortcut where one candidate exists.
+' With several candidates, --continue opens a picker, or reports required
+' selection in noninteractive use. Scheduled jobs pin an instance or ask
+' for a new one. Migrate a legacy workspace key into one default instance.
+' Use only a trusted listing when binding that record to an existing VM.
+'
+' HISTORY ON MANAGED EXIT
+' Record the attempt before launch. After any managed agent exit, including
+' a failed attempt or requested stop, try to publish its native session
+' checkpoint and result. Git carry and history save have their own status.
+' Export per instance into private staging. Verify manifest and payload,
+' then fsync and atomically publish an immutable checkpoint on the host.
+' Update the instance head after publication. Retry is idempotent by
+' attempt and checkpoint ID. An older attempt cannot replace a newer head.
+' Periodic safe checkpoints reduce loss on host crash, forced kill or VM
+' deletion. A failed final save leaves the last good checkpoint and keeps
+' the VM for recovery when it still exists. Show retry needed or missing.
+' Disk full, guest unreachability and permission errors can block an export.
+' Preserving history and carrying work are independent. Remove the VM only
+' after both have succeeded or the operator explicitly discards the residue.
+' Raw sbx stop or removal can bypass the managed exit path. Reconcile the
+' daemon inventory and try to recover surviving VMs. Raw sbx removal
+' before a checkpoint can destroy the only copy. Unmanaged sandboxes have
+' no Proveo session contract. Deduplicate repeated exports on retry.
+'
+' HARNESS EXPORT CONTRACTS
+' Claude Code: carry this instance's projects and verified native session
+' records. sessions/ contains live process registrations. Keep it and
+' daemon locks, sockets and status files in the guest.
+' Codex: persist rollout JSONL and verify native resume from the host index.
+' Probe whether the pinned version needs SQLite metadata restored as well.
+' Cursor: verify its pinned native chat export and resume format before
+' offering resume from a rebuilt VM. Show transcript availability separately.
+' OpenCode: existing replacement exports the engine database as a SQLite
+' backup. OpenCode v2 mixes credentials and history in that database. Use
+' native session export/import for portable resume. A local v2.4.1 probe
+' exported a session as JSON, imported it into a blank store at another
+' directory, and found it by the original ID. The sanitized export redacted
+' the title. Test message and child-session round trips in sbx before
+' replacing retained engines. Keep full resume archives private and use
+' redacted evidence for review. The session list filters by project, so
+' check for the native ID before treating an empty list as data loss.
+' Hermes: current durable HERMES_HOME is shared. Parallel copies need a
+' per-instance home so state.db and gateway sockets have a single owner.
+' Decide separately how personal memory can travel between instances.
+' Across all harnesses, validate native IDs, paths and restore version.
+' Keep credentials, auth stores and live process state out of the archive.
+'
+' DASHBOARD AND HANDOFF
+' Bare proveo on an interactive terminal opens Proveo and sbx tabs. Keep
+' help available via --help and on noninteractive invocation. Selecting sbx
+' yields the foreground terminal to the native sbx command with its own
+' input, resize behavior and controls. Returning closes only that view.
+' Proveo indexes agent, Git, task and schedule data. Start with local plan
+' paths and explicit ticket URLs. The existing scheduler and result store
+' supply attempt outcomes, time budget, reports and carried refs.
+' Files come from the effective pwd. Offer read-only previews first and a
+' handoff to Fresh or the configured editor for explicit local edits.
+' Use Fresh's file explorer and editor with the current workspace path.
+' Fresh's worktree-based Orchestrator stays outside this design.
+' Overnight agents run queued tasks with time, concurrency and retry caps.
+' Daytime review connects agent, ticket, spec, evidence, ref and session.
+' Task stages: spec -> verification -> spec -> live verification (repeat)
+' -> upgrade -> PR -> review -> merge. Review feedback can reopen the loop.
+' Evidence attaches to the exact tested revision. A revision change reopens
+' affected verification. The operator controls posting and merging the PR.
+' Review queue, task board and schedule are three layouts of these records.
+'
+' ACCEPTANCE FOR A FUTURE IMPLEMENTATION
+' Launch two instances from the same pwd and target. Verify disjoint Git
+' trees and native history. End them in both orders and resume each by ID
+' in a rebuilt VM. Verify failed export, force-kill, retry, stale IDs and
+' dropped VM behavior. Check that a stopped or stale instance cannot
+' remove another. Check credentials and live process files stay excluded.
+' Exercise schedule budget, review feedback, PR revision changes and a
+' trip through the native sbx tab while scheduled work keeps running.
+' [Unverified] Portable native checkpoint restore across every harness.
+' Upstream: https://docs.docker.com/ai/sandboxes/usage/#interactive-mode
+'           https://docs.docker.com/ai/sandboxes/usage/#reconnect-and-name-sandboxes
+'           https://docs.docker.com/ai/sandboxes/workflows/git/#clone-mode
+'           https://github.com/sinelaw/fresh#feature-overview
+
+title Proposed instance lifecycle for one working directory
+
+actor Operator as OP
+participant "proveo run or schedule" as PROVEO
+database "host instance index and checkpoints" as HOST
+participant "sbx instance" as VM
+
+OP -> PROVEO : choose task, instance or new instance
+PROVEO -> HOST : resolve pwd and acquire instance lease
+PROVEO -> VM : create private clone or reuse verified VM
+HOST -> VM : restore selected native checkpoint and Git ref
+PROVEO -> VM : start agent with exact native session ID when resuming
+opt periodic checkpoint available
+  VM -> HOST : publish immutable checkpoint for this attempt
+end
+VM --> PROVEO : managed agent exits
+PROVEO -> VM : collect Git result and session checkpoint
+alt verified checkpoint published
+  PROVEO -> HOST : advance instance checkpoint and record outcome
+  opt Git work and outputs are safe
+    PROVEO -> VM : stop or remove per instance policy
+  end
+else export failed or VM unavailable
+  PROVEO -> HOST : record recovery status and last good checkpoint
+end
+PROVEO --> OP : show evidence and resume choices
+@enduml
