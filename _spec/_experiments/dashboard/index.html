@@ -112,8 +112,6 @@
   .task-meta { color: var(--muted); font-size: .88rem; }
   .state { display: inline-flex; align-items: baseline; gap: .6ch; color: var(--muted); font-size: .88rem; }
   .state.review, .state.active { color: var(--brand); }
-  .state.saved { color: var(--text); }
-  .state.saved > span { color: var(--success); }
   .state.warn { color: var(--attention); }
   .task-side { display: grid; justify-items: end; }
   .attach-hint { display: none; color: var(--brand); font-size: .88rem; }
@@ -137,12 +135,8 @@
   .fact dd { overflow-wrap: anywhere; }
   .file-link { border: 0; background: transparent; color: var(--brand); text-align: left; padding: 0; overflow-wrap: anywhere; }
   .file-link:hover { color: var(--text); }
-  .phases { border-top: 1px solid var(--line); padding-top: 7px; }
-  .phases ol { color: var(--muted); list-style: none; padding: 0; margin-block: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px; }
-  .phase { padding: 2px; display: flex; gap: 4px; align-items: baseline; }
-  .phase.complete { color: var(--text); }
-  .phase[aria-current="step"] { color: var(--ink); background: var(--brand); }
-  .evidence { margin-block: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .task-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+  .last-push { font-size: .88rem; }
   .actions { display: flex; gap: 4px; flex-wrap: wrap; }
   .file-preview { margin-block: 8px; padding: 6px; background: var(--bg); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
   .initial-prompt { margin-block: 8px; }
@@ -234,6 +228,7 @@
         <header class="panel-head">
           <h2 id="work-heading">Review queue</h2>
           <div class="panel-tools">
+            <div class="actions" id="task-controls"></div>
             <span class="kicker" id="work-clock">Mon · 08:42 local</span>
           </div>
         </header>
@@ -342,60 +337,53 @@
     {
       id: "PRV-284", slug: "history", title: "Persist instance history", agent: "Codex", source: "Linear",
       phase: 6, state: "review", time: "05:43", instance: "codex-83f91a", revision: "1c2f6e4", pr: "Draft #104",
-      branch: "proveo/prv-284/session-history", session: "Checkpoint saved", saved: true,
+      branch: "proveo/prv-284/session-history", lastPushed: "2026-11-23T05:43",
       prompt: "Design host-owned session checkpoints for two sandboxes started from the same directory.\nVerify that each agent can resume by native ID after its VM is rebuilt. Record failed exports and keep the last known good checkpoint.",
-      summary: "The host recovered both native session IDs after the VMs exited. Review the ownership rule before opening the PR.",
-      evidence: ["Unit suite · 42 passed", "Live sbx · two same-pwd instances resumed by ID", "Spec · workspace-instances.puml"],
+      description: "Preserve native session history on the host when a sandbox exits. Verify that two sandboxes launched from the same directory can be rebuilt independently and that each session resumes using its original ID.",
     },
     {
       id: "PLAN-17", slug: "budget", title: "Cap overnight run budgets", agent: "Claude Code", gitSource: "GitLab", source: "_plan/",
       phase: 6, state: "changes", time: "04:12", instance: "claude-2bf0a1", revision: "daa5c70", pr: "PR #102",
       plan: "_spec/_plans/night-budget.puml",
-      branch: "proveo/plan-17/night-budget", session: "Checkpoint saved", saved: true,
+      branch: "proveo/plan-17/night-budget", lastPushed: "2026-11-22T04:12",
       prompt: "Update the night budget plan so a stopped job has time to publish its session checkpoint.\nRun the budget tests and record what a live stop still needs to prove.",
-      summary: "Review asked for evidence that a stopped job leaves enough time to publish its history.",
-      evidence: ["Unit suite · budget calculation passed", "Live verification · rerun requested after review", "Plan · _spec/_plans/night-budget.puml"],
+      description: "Give jobs enough time to publish their session history when a run reaches its budget.",
     },
     {
       id: "PRV-291", slug: "clones", title: "Verify parallel clone isolation", agent: "OpenCode", source: "Linear",
       phase: 3, state: "active", time: "08:10", instance: "opencode-f91c25", revision: "d37fb13",
-      branch: "proveo/prv-291/clone-isolation", job: "parallel-clone-isolation", session: "Native session in VM", saved: false,
+      branch: "proveo/prv-291/clone-isolation", job: "parallel-clone-isolation",
       prompt: "Launch two OpenCode instances from this workspace. Edit the same path in both clones, then verify their changes remain separate and both results can be carried home.",
-      summary: "Compare file edits from two agents launched in the same directory. Each clone has its own branch.",
-      evidence: ["Unit suite · distinct instance names passed", "Live verification · two agents still running"],
+      description: "Compare file edits from two agents launched in the same directory. Each clone has its own branch.",
     },
     {
       id: "PRV-295", slug: "recover", title: "Recover a stopped session", agent: "Hermes", source: "Linear",
       phase: 1, state: "blocked", time: "03:20", instance: "hermes-2d841b", revision: "bc059a2",
-      branch: "proveo/prv-295/recovery", session: "Final checkpoint needs retry", saved: false,
+      branch: "proveo/prv-295/recovery",
       prompt: "Reproduce a guest stopping during session export. Confirm that the host can recover the last complete checkpoint and report the interrupted export.",
-      summary: "The guest stopped before the final checkpoint reached the host. Review the last good checkpoint and the kept VM.",
-      evidence: ["Checkpoint · previous attempt available", "Guest export · unreachable at shutdown"],
+      description: "Recover the last complete checkpoint after a guest stops during session export.",
     },
     {
       id: "PLAN-21", slug: "session-index", title: "Index native session IDs", agent: "Codex", source: "_plan/",
       phase: 0, state: "queued", instance: "New instance", revision: "8dd8b76",
       plan: "_spec/_plans/session-index.puml",
-      branch: "proveo/plan-21/session-index", session: "Awaiting first run", saved: false,
+      branch: "proveo/plan-21/session-index",
       prompt: "Draft a workspace-scoped session index. Include the instance ID, harness, and native session ID needed to resume each saved instance.",
-      summary: "Draft the query that lists resumable instances in the current workspace.",
-      evidence: ["Plan · _spec/_plans/session-index.puml", "Schedule · 45 minute budget"],
+      description: "Draft the query that lists resumable instances in the current workspace.",
     },
     {
       id: "PRV-304", slug: "evidence", title: "Bind evidence to the review revision", agent: "Claude Code", source: "Linear",
       phase: 4, state: "queued", instance: "claude-08a532", revision: "5b119c9",
-      branch: "proveo/prv-304/review-evidence", session: "Checkpoint saved", saved: true,
+      branch: "proveo/prv-304/review-evidence", lastPushed: "2026-11-22T23:18",
       prompt: "Tie every verification result to the Git revision it tested. Show when a newer commit requires another test run before review.",
-      summary: "Apply the verified upgrade and lift the new commit for review.",
-      evidence: ["Unit suite · previous attempt passed", "Live verification · recorded against this revision", "Schedule · 75 minute budget"],
+      description: "Record the tested Git revision with every result. Flag it for another verification pass when the branch tip changes.",
     },
     {
       id: "PRV-278", slug: "output", title: "Keep clone output per attempt", agent: "Codex", source: "Linear",
       phase: 7, state: "merged", time: "Yesterday", instance: "codex-411def", revision: "c0e6b81", pr: "Merged #98",
-      branch: "proveo/prv-278/clone-output", session: "Checkpoint saved", saved: true,
+      branch: "proveo/prv-278/clone-output", lastPushed: "2026-11-22T16:54",
       prompt: "Write output to a directory keyed by attempt ID. Verify that two attempts from the same workspace can keep separate reports.",
-      summary: "Merged after the reviewer verified that each attempt keeps its own output.",
-      evidence: ["Unit suite · passed", "Live verification · passed", "PR · merged against the verified revision"],
+      description: "Keep generated reports separate for every attempt, including parallel work from the same checkout.",
     },
   ]
   for (const [id, title] of [
@@ -404,7 +392,7 @@
     tasks.push({
       id, title, agent: "Codex", source: "Linear", phase: 7, state: "merged",
       branch: "proveo/" + id.toLowerCase(), instance: "Archived",
-      session: "Completed", evidence: [], summary: "Completed prerequisite.",
+      description: "Completed prerequisite.",
     })
   }
   const dependencies = {
@@ -976,36 +964,6 @@
     return row
   }
 
-  function phaseList(task) {
-    const region = node("div", "phases")
-    const list = node("ol")
-    phases.forEach((phase, index) => {
-      const item = node("li", index < task.phase ? "phase complete" : "phase")
-      const glyph = node("span", "", index < task.phase ? "✓" : index === task.phase ? "→" : "·")
-      glyph.setAttribute("aria-hidden", "true")
-      item.append(glyph, document.createTextNode(phase))
-      if (index === task.phase) item.setAttribute("aria-current", "step")
-      list.append(item)
-    })
-    region.append(node("p", "kicker", "Workflow"), list, node("p", "subtext", "↶ Verification and review can return a task to the spec."))
-    return region
-  }
-
-  function showEvidence(task) {
-    const list = node("ul", "subtext")
-    for (const entry of task.evidence) list.append(node("li", "", entry))
-    showDialog("Evidence · " + task.id,
-      node("p", "subtext", "Sample evidence for revision " + task.revision),
-      list,
-      node("p", "subtext", "A revised commit reopens the affected verification steps."),
-    )
-  }
-
-  function showResume(task) {
-    const command = "proveo run " + agentTarget(task.agent) + " --instance " + task.instance
-    showCommand("Resume " + task.instance, "This proposed command selects the instance and restores its last saved native session.", command)
-  }
-
   function showAttach(task) {
     selectTask(task)
     if (!task.job || task.state !== "active") {
@@ -1126,6 +1084,18 @@
     $("detail-heading").focus()
   }
 
+  function renderTaskControls(task) {
+    const controls = $("task-controls")
+    const demo = {
+      reserved: ["Simulate start", "start"],
+      active: ["Simulate exit", "exit"],
+      settling: ["Publish sample result", "publish"],
+    }[task.state]
+    if (task.state === "changes") controls.replaceChildren(button("Queue rework", () => queueRework(task)))
+    else if (demo) controls.replaceChildren(button(demo[0], () => simulateRunEvent(task, demo[1])))
+    else controls.replaceChildren()
+  }
+
   function renderInspector() {
     const detail = $("detail")
     const file = ui.editing ? ui.editorFile : null
@@ -1143,6 +1113,7 @@
     }
 
     const task = ui.task
+    renderTaskControls(task)
     $("detail-heading").textContent = "Task details"
     $("detail-context").textContent = (task.gitSource ?? workspaceGitSource) + " + " + task.source
     const facts = node("dl", "facts")
@@ -1164,22 +1135,18 @@
         $("detail-heading").focus()
       }, "file-link")))
     }
-    const evidence = node("div", "evidence")
-    evidence.append(
-      status(task.session, task.saved ? "✓" : task.state === "blocked" ? "!" : "○", task.saved ? "saved" : task.state === "blocked" ? "warn" : ""),
-      node("p", "subtext", task.revision ? "Evidence · " + task.revision : ""),
+    const lastPush = node("p", "subtext last-push", "Last pushed: ")
+    if (task.lastPushed) {
+      const time = node("time", "", task.lastPushed.replace("T", " "))
+      time.dateTime = task.lastPushed
+      lastPush.append(time)
+    } else {
+      lastPush.append("—")
+    }
+    detail.replaceChildren(
+      node("h3", "", task.title), facts, node("p", "subtext task-excerpt", task.description), lastPush,
+      promptDetails(task.prompt),
     )
-    const actions = node("div", "actions")
-    if (task.evidence.length) actions.append(button("Review evidence", () => showEvidence(task), "button primary"))
-    if (task.state === "changes") actions.append(button("Queue rework", () => queueRework(task)))
-    else if (task.saved) actions.append(button("Resume instance", () => showResume(task)))
-    const demo = {
-      reserved: ["Simulate start", "start"],
-      active: ["Simulate exit", "exit"],
-      settling: ["Publish sample result", "publish"],
-    }[task.state]
-    if (demo) actions.append(button(demo[0], () => simulateRunEvent(task, demo[1])))
-    detail.replaceChildren(node("h3", "", task.title), facts, node("p", "subtext", task.summary), promptDetails(task.prompt), phaseList(task), evidence, actions)
   }
 
   function showDialog(title, ...body) {

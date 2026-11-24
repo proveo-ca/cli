@@ -138,6 +138,11 @@
 ' supply attempt outcomes, time budget, reports and carried refs.
 ' Task details pairs the Git provider and task source in its heading.
 ' Show ticket, agent, branch, instance, sandbox, and PR above the prompt.
+' Clip the task-source description to three rows with an ellipsis. Show
+' the latest observed branch push as a local date and time in smaller,
+' muted text. Keep run controls outside the scrolling task details.
+' End task details with the initial prompt. Show the current phase in
+' the queue row.
 ' New instance opens a wizard for agent, optional task, and initial prompt.
 ' A task can supply a prompt template. Review the chosen target, sandbox
 ' name, and prompt before launch. Store the submitted prompt with the
