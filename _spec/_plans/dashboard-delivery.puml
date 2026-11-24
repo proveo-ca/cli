@@ -2,7 +2,30 @@
 !include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
 skinparam noteTextAlignment left
 ' purpose: deliver same-directory sandbox instances and the native Proveo dashboard
-' status: PLANNED. The tmux baselines in D0 run today. D1–D7 are implementation gates.
+' covers: _spec/_experiments/dashboard/**
+' covers: e2e/dashboard*_test.go
+' covers: e2e/testdata/_spec/_plans/*.puml
+' status: IMPLEMENTATION IN PROGRESS. D7 is pending live sbx acceptance.
+' D0: sbx v0.54.1 returned 10g from settings in the Linux verifier.
+' D1 is implemented. The three-VM gate needs an authenticated sbx host.
+' D2: Codex and Claude Code transcript archives and exact-ID selection
+' pass host fixtures. Rebuilt-VM native restore is still pending.
+' D3: independent OpenCode change. The v2.4.1 native CLI round-tripped
+' a parent, child, and message after a directory change.
+' D4: disk setting, ledger, queue, and dispatcher restart pass fixtures.
+' Physical allocation reflection is unverified. Leases charge conservatively.
+' D5: task identity, dependency folding, phase revisions and Git previews
+' run locally. Provider and live push data depend on configured clients.
+' D6: tmux fixtures cover color, attach, cancel, detach, guest-only Fresh,
+' wizard, resize, tab switch, Ctrl+C and terminal restore.
+' Stock-child parity is pending.
+' D7: rerun live verification on Apple Silicon or Linux with KVM, an
+' authenticated sbx, and the required images. The current Linux verifier
+' has no /dev/kvm. Its CLI reads settings, and inventory requires sign-in.
+' Local Go build, vet, lint, race baseline, PlantUML and dashboard E2E
+' passed. The full E2E suite reproduced four failures at the merge base
+' with origin/main. These cover deploy print arguments and three offline
+' sbx preflight expectations.
 ' UI reference: _spec/_experiments/dashboard/index.html (Review queue, lower-right split)
 ' Runtime design: _spec/_experiments/dashboard/workspace-instances.puml
 ' Admission design: _spec/_experiments/dashboard/resource-queue.puml and resource_queue.qnt
@@ -40,8 +63,8 @@ skinparam noteTextAlignment left
 ' from e2e/testdata/_spec/_plans/ into one workdir. It checks
 ' overlapping pane lifetimes, prompt routing and separate run outcomes.
 ' The fixture workers share the host directory.
-' [Unverified] Live sbx parity, disk settings and telemetry on the daemon
-' host. The Linux verification environment has no sbx binary or daemon.
+' [Unverified] Live sbx parity, guest telemetry, and physical disk
+' allocation on an authenticated daemon.
 '
 ' D1  INSTANCE IDENTITY, PRIVATE WORK, SAFE MIGRATION
 ' Runtime implemented. The live three-VM acceptance gate is pending.
@@ -244,8 +267,15 @@ skinparam noteTextAlignment left
 ' runs unit/contract tests, go vet and PlantUML, and records skip reasons.
 ' Run tmux checks on Linux and macOS. Run live sbx gates on a supported
 ' daemon host. A prerequisite skip leaves a release gate pending.
+' Run the targeted live suite with:
+'   PROVEO_DASHBOARD_LIVE_TEST=1 mise exec -- go test -tags=e2e ./e2e -v -run
+'     'TestDashboard(ThreeParallelSandboxInstancesSharePWD|ResumesTwoNativeSessionsAcrossRebuiltVMs|MatchesStockSbxOnTmux)$'
+' Prepare the Codex and Claude Code images and credentials on that host.
+' Treat a skip or signed-out inventory as pending. Inspect raw allocation
+' reflection on that daemon before reducing conservative disk charges.
+' Host Go race tests use cgo and a mise-provisioned Zig C compiler on Linux.
 
-title PLANNED — Native dashboard and same-directory sandboxes
+title Native dashboard and same-directory sandboxes — live acceptance pending
 
 component "D0\nCapture current behavior" as D0 <<host>>
 component "D1\nInstance identity and private checkout" as D1 <<app>>

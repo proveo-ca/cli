@@ -18,7 +18,10 @@ import (
 	"github.com/proveo-ca/proveo/internal/schedule"
 )
 
+const dashboardLiveGate = "PROVEO_DASHBOARD_LIVE_TEST"
+
 func TestDashboardThreeParallelSandboxInstancesSharePWD(t *testing.T) {
+	failSkipsWhenOptedIn(t, dashboardLiveGate)
 	const target = "claudecode"
 	requireHarness(t, target)
 	bin := buildProveo(t)

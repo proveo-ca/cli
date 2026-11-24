@@ -78,7 +78,7 @@ Transcripts and results: <proveo home>/logs/schedule/<job>/.`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return scheduleTable(cmd) },
 	}
-	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), scheduleWatchCmd(),
+	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), scheduleWatchCmd(), scheduleDispatchCmd(), scheduleAcceptCmd(), schedulePhaseCmd(),
 		scheduleAttachCmd(), scheduleInstallCmd(), scheduleUninstallCmd())
 	return cmd
 }
@@ -255,7 +255,7 @@ func retryJob(home string, c schedule.Config, name string) error {
 	case !last.Failed():
 		return errNotFailed{name, last.Outcome}
 	}
-	if err := schedule.Launch(home, proveoExe(), name, last.Entry, j, nil); err != nil {
+	if err := submitScheduled(home, name, last.Entry, j); err != nil {
 		return err
 	}
 	ui.Okf("%s — started again", name)
@@ -280,7 +280,7 @@ func scheduleTickCmd() *cobra.Command {
 			home, c, err := loadSchedule()
 			var none errNoSchedule
 			if errors.As(err, &none) {
-				return nil
+				return restartDispatcher(home)
 			}
 			if err != nil {
 				return refuse("", err)
@@ -288,6 +288,18 @@ func scheduleTickCmd() *cobra.Command {
 			now := scheduleNow()
 			st := schedule.LoadState(home)
 			for _, d := range c.Due(now, st) {
+				job := c.Jobs[d.Job]
+				if queuedJob(job) {
+					if err := submitScheduled(home, d.Job, d.Entry, job); err != nil && !errors.Is(err, schedule.ErrRunning) {
+						return err
+					}
+					st.Mark(d.Job, d.Entry, d.At)
+					if err := st.Save(home); err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s tick: queued %s for %q\n", now.Format(time.RFC3339), d.Job, d.Entry)
+					continue
+				}
 				st.Mark(d.Job, d.Entry, d.At)
 				if err := st.Save(home); err != nil {
 					return err
@@ -302,9 +314,17 @@ func scheduleTickCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s tick: started %s for %q (due %s)\n", now.Format(time.RFC3339), d.Job, d.Entry,
 					d.At.Format(time.RFC3339))
 			}
-			return nil
+			return restartDispatcher(home)
 		},
 	}
+}
+
+func restartDispatcher(home string) error {
+	pending, err := schedule.QueuePending(home)
+	if err != nil || !pending {
+		return err
+	}
+	return schedule.StartDispatcher(home, proveoExe())
 }
 
 func scheduleRunCmd() *cobra.Command {
@@ -325,8 +345,12 @@ func scheduleRunCmd() *cobra.Command {
 			if printOnly {
 				return schedule.Describe(cmd.OutOrStdout(), home, proveoExe(), args[0], j, scheduleNow(), printScheduledRun)
 			}
-			if err := schedule.Launch(home, proveoExe(), args[0], "manual", j, nil); err != nil {
+			if err := submitScheduled(home, args[0], "manual", j); err != nil {
 				return refuse(args[0], err)
+			}
+			if queuedJob(j) {
+				ui.Okf("%s — queued", args[0])
+				return nil
 			}
 			ui.Okf("%s — started", args[0])
 			return nil
@@ -360,7 +384,7 @@ func scheduleRetryCmd() *cobra.Command {
 }
 
 func scheduleWatchCmd() *cobra.Command {
-	var entry, transcript string
+	var entry, transcript, snapshot string
 	var typed bool
 	cmd := &cobra.Command{
 		Use:    "watch <job>",
@@ -368,11 +392,18 @@ func scheduleWatchCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, c, err := loadSchedule()
-			if err != nil {
-				return refuse(args[0], err)
+			home := proveohome.Root(os.Getenv)
+			var j schedule.Job
+			var err error
+			if snapshot != "" {
+				j, err = schedule.ReadJobSnapshot(snapshot)
+			} else {
+				_, c, loadErr := loadSchedule()
+				if loadErr != nil {
+					return refuse(args[0], loadErr)
+				}
+				j, err = jobNamed(c, args[0])
 			}
-			j, err := jobNamed(c, args[0])
 			if err != nil {
 				return refuse(args[0], err)
 			}
@@ -387,6 +418,7 @@ func scheduleWatchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&entry, "entry", "", "the schedule entry that fired")
 	cmd.Flags().StringVar(&transcript, "transcript", "", "the transcript file")
 	cmd.Flags().BoolVar(&typed, "typed", false, "the instruction is already in; only wait for the report or the budget")
+	cmd.Flags().StringVar(&snapshot, "job-snapshot", "", "read the submitted job and prompt snapshot")
 	return cmd
 }
 
@@ -476,6 +508,13 @@ func attachSession(job string, readOnly bool) error {
 		return notAttachable(job, sess)
 	}
 	args, nested := attachArgs(sess, readOnly, os.Getenv("TMUX") != "")
+	if args[0] == "switch-client" {
+		client, err := originTmuxClient(os.Getenv("TMUX_PANE"))
+		if err != nil {
+			return err
+		}
+		args = append(args, "-c", client)
+	}
 	if args[0] == "attach" && !stdinTerminal() {
 		return reported(sandbox.Item{Fail: true, Text: job + " — not attached", Detail: []string{"tmux needs a terminal"}},
 			fmt.Errorf("%s: tmux needs a terminal", job))
@@ -491,6 +530,25 @@ func attachSession(job string, readOnly bool) error {
 		return reported(sandbox.Item{Warn: true, Text: "attach — stopped at tmux"}, err)
 	}
 	return nil
+}
+
+func originTmuxClient(pane string) (string, error) {
+	if pane == "" {
+		return "", fmt.Errorf("current tmux pane is unavailable")
+	}
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", pane, "#{session_id}").Output()
+	if err != nil {
+		return "", fmt.Errorf("locate this tmux pane: %w", err)
+	}
+	out, err = exec.Command("tmux", "list-clients", "-t", strings.TrimSpace(string(out)), "-F", "#{client_name}").Output()
+	if err != nil {
+		return "", fmt.Errorf("locate this tmux client: %w", err)
+	}
+	clients := strings.Fields(string(out))
+	if len(clients) != 1 {
+		return "", fmt.Errorf("attach needs one client on the current tmux session (found %d)", len(clients))
+	}
+	return clients[0], nil
 }
 
 // notAttachable is the × for a task whose session is not up, worded from schedule.yml.

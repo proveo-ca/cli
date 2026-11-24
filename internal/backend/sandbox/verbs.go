@@ -116,6 +116,12 @@ func RemoveKept(name, resultsDir string, report func(string, ...any), stop bool,
 	if err := saveKept(name, carried); err != nil {
 		return notRemoved(name, fmt.Errorf("%w — %s kept", err, name), "`proveo rm "+name+"` tries again; "+unsavedDelete(name))
 	}
+	if i != nil {
+		if _, err := checkpointInstance(in.ctx(), in, agentWorkdir(in, cfg.Mounts), time.Time{}); err != nil {
+			err = errors.Join(err, recordHistoryFailure(in, err))
+			return notRemoved(name, err, err.Error())
+		}
+	}
 	report("sbx rm --force %s", name)
 	if i != nil {
 		if err := i.checkVM(); err != nil {

@@ -54,8 +54,8 @@
 ' A new non-Git instance takes a private directory copy. New instances
 ' get dedicated writable harness home and state. Brokered logins still
 ' come from sbx. Named browser profiles retain their own selectors.
-' The existing per-harness resume behavior applies within the selected
-' home and engine. The native checkpoint index is a later delivery gate.
+' The selected home and engine isolate native resume state. Codex and
+' Claude Code also resolve host checkpoint IDs through state-sync.puml.
 '
 ' HISTORICAL BASELINE
 '

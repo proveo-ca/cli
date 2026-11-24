@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/proveo-ca/proveo/internal/schedule"
 	"github.com/proveo-ca/proveo/internal/testx"
-	"gopkg.in/yaml.v3"
 )
 
 func TestDashboardDialogStyleBaselineOnTmux(t *testing.T) {
@@ -88,12 +89,22 @@ printf 'ATTACH_EXIT=%s\n' "$?"
 exec cat`
 			command := []string{"env", "TERM=xterm-256color", "PROVEO_HOME=" + t.TempDir(), "PROVEO_STATE_ROOT=" + t.TempDir()}
 			driver := []string{"sh", "-c", invoke, "sh", binary, job}
+			var spectator *schedule.TmuxSession
 			if tc.inside {
 				origin := schedule.NewTmux("origin", tmux)
 				if err := origin.Start(120, 40, append(command, driver...)...); err != nil {
 					t.Fatal(err)
 				}
 				driver = []string{"tmux", "attach", "-t", origin.Name}
+				observed := schedule.NewTmux("observed", tmux)
+				if err := observed.Start(120, 40, "sh", "-c", "printf 'SPECTATOR_READY\\n'; exec cat"); err != nil {
+					t.Fatal(err)
+				}
+				spectator = schedule.NewTmux("spectator", tmux)
+				if err := spectator.Start(120, 40, "env", "TMUX=", "tmux", "attach", "-t", observed.Name); err != nil {
+					t.Fatal(err)
+				}
+				waitDashboardPane(t, spectator, "SPECTATOR_READY")
 			}
 			terminal := schedule.NewTmux("terminal", tmux)
 			if err := terminal.Start(120, 40, append(append(command, "TMUX="), driver...)...); err != nil {
@@ -104,6 +115,9 @@ exec cat`
 				t.Fatal(err)
 			}
 			waitDashboardPane(t, terminal, "AGENT_READY")
+			if spectator != nil {
+				waitDashboardPane(t, spectator, "SPECTATOR_READY")
+			}
 			if err := terminal.SendText("before-return"); err != nil {
 				t.Fatal(err)
 			}

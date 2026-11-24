@@ -66,6 +66,10 @@ func main() {
 // reraised stop ends proveo by its signal.
 // SPEC: _spec/internal/backend/exit-code.puml
 func exitWith(err error) {
+	if errors.Is(err, sandbox.ErrDiskWait) {
+		ui.Warnf("%v", err)
+		os.Exit(sandbox.DiskWaitExit)
+	}
 	code, ok := exitCode(err)
 	if !ok {
 		ui.Failf("%v", err)
@@ -130,6 +134,9 @@ func rootCmd() *cobra.Command {
 			}
 			if flagInit {
 				return doInit(initOptions{})
+			}
+			if stdioInteractive(cmd) {
+				return openDashboard(cmd)
 			}
 			return cmd.Help()
 		},
@@ -257,12 +264,8 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 	if f.task != "" && !f.newInstance {
 		return fmt.Errorf("--task requires --new")
 	}
-	resumeArgs, err := proveohome.ResumeArgs(target, f.resumeID, f.contSession, f.listSessions)
-	if err != nil {
+	if _, err := proveohome.ResumeArgs(target, f.resumeID, f.contSession, f.listSessions); err != nil {
 		return err
-	}
-	if len(resumeArgs) > 0 {
-		extra = append(append([]string{}, resumeArgs...), extra...)
 	}
 	return run.Do(run.Params{
 		Target: target, Image: image, ImageSet: f.imageOverride != "", Credentials: f.credentials,
@@ -271,6 +274,7 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 		Input: f.input, Output: f.output, Scope: f.scope, DataDir: f.dataDir,
 		PrintOnly: f.printOnly, Extra: extra,
 		NewInstance: f.newInstance, Instance: f.instance, Task: f.task,
+		ResumeID: f.resumeID, Continue: f.contSession, ListSessions: f.listSessions,
 		Clone: f.cloneMode, CloneSet: cmd.Flags().Changed("clone"),
 		Addons: f.addons, AddonsSet: cmd.Flags().Changed("addon"), Yes: f.yes,
 	}, runDeps())

@@ -86,6 +86,7 @@ type ChoiceSpec struct {
 type BackendSpec struct {
 	Instance                     *sandbox.Instance
 	InstanceWork, InstanceBundle string
+	RestoreTip                   string
 
 	Clone        bool
 	CloneOff     string

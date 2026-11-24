@@ -19,14 +19,27 @@ import (
 
 type Instance struct {
 	ID, Name, Target, Workspace, Repo, Task, Base, Host, VMID, Attempt string
+	Job                                                                string
 	Legacy                                                             bool
+	CheckoutTip                                                        string
+	resident                                                           bool
 	dir                                                                string
+}
+
+func (i *Instance) HasVM() bool { return i.resident }
+
+func (i *Instance) DiscardUnstarted() error {
+	if i.Isolated() && !i.resident && i.Attempt == "" && i.VMID == "" {
+		return os.RemoveAll(i.dir)
+	}
+	return nil
 }
 
 func (i *Instance) Isolated() bool { return i != nil && !i.Legacy }
 
 type InstanceRequest struct {
 	State, Target, Workspace, Repo, LegacyName, ID, Task string
+	Job                                                  string
 	New, Print                                           bool
 	Pick                                                 func([]string) (int, error)
 }
@@ -99,6 +112,20 @@ func instanceEntries(state string) ([]*Instance, error) {
 		}
 	}
 	return entries, nil
+}
+
+func WorkspaceInstances(state, cwd string) ([]Instance, error) {
+	entries, err := instanceEntries(state)
+	if err != nil {
+		return nil, err
+	}
+	var out []Instance
+	for _, i := range entries {
+		if i.Workspace == cwd {
+			out = append(out, *i)
+		}
+	}
+	return out, nil
 }
 
 func SelectInstance(q InstanceRequest) (*Instance, error) {
@@ -180,7 +207,7 @@ func allocateInstance(q InstanceRequest) (*Instance, error) {
 		name := taskSandboxName(q.Target, q.Task, id[:10])
 		dir := instanceDir(q.State, name)
 		i := &Instance{ID: id, Name: name, Target: q.Target, Workspace: q.Workspace, Repo: q.Repo,
-			Task: q.Task, Base: base, Host: host, dir: dir}
+			Task: q.Task, Job: q.Job, Base: base, Host: host, dir: dir}
 		if q.Print {
 			return i, nil
 		}
@@ -301,6 +328,7 @@ func (i *Instance) begin(agent, source string) error {
 	if err != nil {
 		return err
 	}
+	i.resident = row != nil
 	if row != nil && i.Legacy && old == nil {
 		receipt := readReceipt(i.Name)
 		if receipt == nil || receipt.InstanceID != "" || receipt.Agent != agent || row.Agent != agent ||
@@ -423,6 +451,24 @@ func InstanceRuns(state string) (map[string]bool, error) {
 
 func (i *Instance) Home(root string) string {
 	return filepath.Join(root, "instances", i.ID)
+}
+
+func (i *Instance) HistoryDir() string { return filepath.Join(i.dir, "history") }
+
+func (i *Instance) GuestWorkspace() string {
+	if !i.Isolated() {
+		return i.Workspace
+	}
+	if i.Repo == "" {
+		return i.worktree()
+	}
+	if receipt := readReceipt(i.Name); receipt != nil && receipt.Source != "" {
+		if rel, ok := nestedRel(i.Repo, i.Workspace); ok {
+			return filepath.Join(receipt.Source, filepath.FromSlash(rel))
+		}
+		return receipt.Source
+	}
+	return i.Workspace
 }
 
 func (i *Instance) Branch() string { return "proveo/" + i.Name }

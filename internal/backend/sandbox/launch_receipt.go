@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/proveo-ca/proveo/internal/proveohome"
 	"github.com/proveo-ca/proveo/internal/sbx"
@@ -276,6 +277,11 @@ func retireSandbox(in Input, cfg sbx.RunConfig, report func(string, ...any)) err
 	if out, err := SaveState(cfg.Name, cfg.Env, !sbx.Gone(cfg.Name), guestRun); err != nil {
 		carried.Item(Item{Warn: true, Text: "resume state — not saved", Detail: []string{failure(err, out)}})
 		return fmt.Errorf("%s — %s kept; %s", keptUnsaved, cfg.Name, retireUnsavedFix(cfg.Name, sbx.Running(cfg.Name)))
+	}
+	if in.Instance != nil {
+		if _, err := checkpointInstance(in.ctx(), in, agentWorkdir(in, cfg.Mounts), time.Time{}); err != nil {
+			return errors.Join(err, recordHistoryFailure(in, err))
+		}
 	}
 	stateHome := StateHome(cfg.Env)
 	if was := readReceipt(cfg.Name); Harness(in) == "claudecode" && was != nil &&

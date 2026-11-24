@@ -36,6 +36,8 @@ type Params struct {
 	PrintOnly                                                                    bool
 	NewInstance                                                                  bool
 	Instance, Task                                                               string
+	ResumeID                                                                     string
+	Continue, ListSessions                                                       bool
 	Extra                                                                        []string
 	Clone, CloneSet                                                              bool
 	Ports                                                                        []devports.Candidate

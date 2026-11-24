@@ -14,6 +14,8 @@ skinparam noteTextAlignment left
 ' covers: cmd/proveo/running_test.go
 ' covers: e2e/schedule_test.go
 ' covers: e2e/dashboard_tmux_test.go (TestDashboardAttachBaselineOnTmux, TestDashboardRunsThreeTasksFromOneDirectoryOnTmux)
+' covers: internal/schedule/queue.go
+' covers: e2e/dashboard_admission_test.go
 ' Target jobs accept `instance: ID` or `new: true` with an optional `task:`.
 ' Forward the selector to proveo run and keep workdir as the workspace key.
 ' covers: internal/run/choices.go (resolveAddonFlags), internal/run/params.go (AddonsSet, Yes)
@@ -340,7 +342,9 @@ skinparam noteTextAlignment left
 ' run and harness pickers alike. A clean detach prints nothing: tmux says
 ' "[detached …]" itself.
 '   plain terminal       tmux attach [-r] -t proveo-sched-<job>
-'   inside tmux          switch-client -t …  (tmux refuses a nested attach)
+'   inside tmux          switch-client -c <origin> -t <task>
+'                        Identify the origin from the pane's session.
+'                        Refuse ambiguous shared sessions.
 '                        Use the prefix then L to return to the previous
 '                        session. The defaults are Ctrl-b L.
 '   inside tmux + -r     TMUX= tmux attach -r -t …  — a nested client, detach

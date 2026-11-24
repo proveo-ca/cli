@@ -1,0 +1,240 @@
+//go:build e2e && !windows
+
+// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+package e2e
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/proveo-ca/proveo/internal/schedule"
+)
+
+func TestNativeDashboardTabsOnTmux(t *testing.T) {
+	requireTmux(t)
+	bin := buildProveo(t)
+	home, work, tools := t.TempDir(), t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(work, "README.md"), []byte("Dashboard file preview marker\n"))
+	sbx := filepath.Join(tools, "sbx")
+	const stock = `#!/bin/sh
+case "$1" in
+settings) printf '{"value":"32g"}\n' ;;
+df) printf '{}\n' ;;
+daemon) printf '{}\n' ;;
+"") printf '\033[?1049h\033[2J\033[H\033[31mStock child pane\033[0m\n'; stty -echo; exec cat ;;
+esac
+`
+	if err := os.WriteFile(sbx, []byte(stock), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tmux := dashboardTmux(t)
+	sess := schedule.NewTmux("native-dashboard", tmux)
+	const line = `cd "$1" || exit
+before=$(stty -g)
+"$2"
+rc=$?
+after=$(stty -g)
+printf '\nDASHBOARD_EXIT=%s\n' "$rc"
+if [ "$before" = "$after" ]; then printf 'TERMINAL_RESTORED\n'; fi
+exec cat`
+	err := sess.Start(120, 40, "env", "TERM=xterm-256color", "COLORTERM=truecolor", "NO_COLOR=0", "PROVEO_HOME="+home,
+		"PROVEO_STATE_ROOT="+home, "PROVEO_SBX_STORAGE="+home, "PATH="+tools+string(os.PathListSeparator)+os.Getenv("PATH"), "sh", "-c", line, "sh", work, bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitDashboardPane(t, sess, "Review queue")
+	keys := func(keys ...string) {
+		t.Helper()
+		if err := sess.SendKeys(keys...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keys("2")
+	waitDashboardPane(t, sess, "Task graph")
+	keys("3")
+	waitDashboardPane(t, sess, "Schedule")
+	keys("1", "f", "Enter")
+	waitDashboardPane(t, sess, "Dashboard file preview marker")
+	keys("Escape")
+	waitDashboardPane(t, sess, "Review queue")
+	keys("C-g", "Tab")
+	waitDashboardPane(t, sess, "Stock child pane")
+	ansi, err := tmux("capture-pane", "-ep", "-t", sess.Name)
+	if err != nil || !strings.Contains(ansi, "\x1b[31mStock child pane") {
+		t.Errorf("styled sbx capture: %q, %v", ansi, err)
+	}
+	keys("C-g", "Tab")
+	waitDashboardPane(t, sess, "Review queue")
+	if _, err := tmux("resize-window", "-t", sess.Name, "-x", "80", "-y", "24"); err != nil {
+		t.Fatal(err)
+	}
+	keys("C-g", "Tab")
+	waitDashboardPane(t, sess, "Stock child pane")
+	keys("C-c")
+	waitDashboardPane(t, sess, "DASHBOARD_EXIT=130")
+	waitDashboardPane(t, sess, "TERMINAL_RESTORED")
+}
+
+func TestNativeDashboardAttachAndWizardOnTmux(t *testing.T) {
+	requireTmux(t)
+	bin, home, work, tools := buildProveo(t), t.TempDir(), t.TempDir(), t.TempDir()
+	prompt := filepath.Join(work, "prompt.txt")
+	writeFile(t, prompt, []byte("Original review prompt"))
+	const job = "dashboard-attach"
+	config, err := yaml.Marshal(schedule.Config{Jobs: map[string]schedule.Job{
+		job: {Target: "codex", Workdir: work, PromptFile: prompt},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, schedule.Path(home), config)
+	const sandboxName, vmID = "codex-dashboard-1234", "vm-dashboard-1234"
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err = filepath.EvalSymlinks(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instanceDir := filepath.Join(home, "instances", sandboxName)
+	mkdirAll(t, instanceDir)
+	record, err := json.Marshal(map[string]string{
+		"ID": "codex-1234", "Name": sandboxName, "VMID": vmID, "Target": "codex",
+		"Workspace": work, "Host": host, "Job": job,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(instanceDir, "instance.json"), record)
+	guest := filepath.Join(tools, "guest")
+	writeFile(t, guest, []byte("active"))
+	freshLog := filepath.Join(tools, "fresh.log")
+	sbx := filepath.Join(tools, "sbx")
+	if err := os.WriteFile(sbx, []byte("#!/bin/sh\n"+`case "$1" in
+settings) printf '{"value":"32g"}\n' ;;
+ls)
+  if test -f "$FIXTURE_GUEST"; then
+    printf '[{"name":"codex-dashboard-1234","id":"vm-dashboard-1234","status":"running"}]\n'
+  else
+    printf '[]\n'
+  fi ;;
+exec)
+  if [ "$2" = -i ]; then
+    printf '%s\n' "$@" >> "$FIXTURE_FRESH_LOG"
+  else
+    printf 'cpu=2%%\nram=1073741824\ndisk=2147483648\nfresh=yes\n'
+  fi ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tmux := dashboardTmux(t)
+	agent := schedule.NewTmux(schedule.SessionName(job), tmux)
+	if err := agent.Start(120, 40, "sh", "-c", `printf 'AGENT_READY\n'; exec cat`); err != nil {
+		t.Fatal(err)
+	}
+	waitDashboardPane(t, agent, "AGENT_READY")
+	agentPID, err := agent.PanePID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := schedule.NewTmux("native-dashboard", tmux)
+	err = sess.Start(120, 40, "env", "TMUX=", "TERM=xterm-256color", "PROVEO_HOME="+home,
+		"PROVEO_STATE_ROOT="+home, "PROVEO_SBX_STORAGE="+home, "PROVEO_SBX_DISK_POOL=1g",
+		"FIXTURE_GUEST="+guest, "FIXTURE_FRESH_LOG="+freshLog,
+		"PATH="+tools+string(os.PathListSeparator)+os.Getenv("PATH"), "sh", "-c", `cd "$1" && exec "$2"`, "sh", work, bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := func(keys ...string) {
+		t.Helper()
+		if err := sess.SendKeys(keys...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enterText := func(value string) {
+		t.Helper()
+		if err := sess.SendText(value); err != nil {
+			t.Fatal(err)
+		}
+		keys("Enter")
+	}
+	waitDashboardPane(t, sess, "Original review prompt")
+	keys("Enter")
+	waitDashboardPane(t, sess, "Cancel ↵")
+	keys("Enter")
+	waitDashboardPane(t, sess, "Review queue")
+	keys("Enter", "Left")
+	waitDashboardPane(t, sess, "Attach ↵")
+	keys("Enter")
+	waitDashboardPane(t, sess, "AGENT_READY")
+	enterText("typed inside agent")
+	waitDashboardPane(t, agent, "typed inside agent")
+	keys("C-b", "d")
+	waitDashboardPane(t, sess, "Original review prompt")
+	if got, err := agent.PanePID(); err != nil || got != agentPID {
+		t.Fatalf("agent PID after detach = %q (%v), want %q", got, err, agentPID)
+	}
+
+	waitDashboardPane(t, sess, "e Fresh")
+	keys("e")
+	if !waitUntil(5*time.Second, func() bool {
+		return strings.Contains(readIn(tools, "fresh.log"), "\nfresh\n.\n")
+	}) {
+		t.Fatal("Fresh was not launched in the live guest")
+	}
+	got := readIn(tools, "fresh.log")
+	if !strings.Contains(got, "-u\nagent\n-w\n"+filepath.Join(instanceDir, "workspace")+"\n"+sandboxName+"\n") {
+		t.Errorf("Fresh guest argv = %q", got)
+	}
+	if err := os.Remove(guest); err != nil {
+		t.Fatal(err)
+	}
+	keys("e")
+	if !waitUntil(12*time.Second, func() bool {
+		frame, err := sess.Capture()
+		return err == nil && !strings.Contains(frame, "e Fresh")
+	}) {
+		t.Fatal("Fresh remained visible after the guest disappeared")
+	}
+	if after := readIn(tools, "fresh.log"); after != got {
+		t.Fatal("Fresh was invoked again after the guest disappeared")
+	}
+
+	keys("n")
+	waitDashboardPane(t, sess, "New instance")
+	keys("C-a", "C-k")
+	enterText("codex")
+	waitDashboardPane(t, sess, "Task label")
+	enterText("Verify clone isolation")
+	waitDashboardPane(t, sess, "Ticket URL")
+	keys("Enter")
+	waitDashboardPane(t, sess, "Review launch")
+	if err := sess.SendText("Check the three isolated branches."); err != nil {
+		t.Fatal(err)
+	}
+	keys("C-s")
+	waitDashboardPane(t, sess, "Queue instance")
+	keys("Enter")
+	if !waitUntil(10*time.Second, func() bool {
+		queue, err := schedule.ReadQueue(home)
+		return err == nil && len(queue) == 1 && queue[0].State == schedule.Queued &&
+			queue[0].Job.Task == "Verify clone isolation" && queue[0].Job.New
+	}) {
+		t.Fatal("new-instance wizard did not persist an isolated submission")
+	}
+	queue, err := schedule.ReadQueue(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readIn(filepath.Dir(queue[0].Job.PromptFile), "prompt"); got != "Check the three isolated branches." {
+		t.Errorf("persisted wizard prompt = %q", got)
+	}
+}

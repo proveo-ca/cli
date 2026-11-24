@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/proveo-ca/proveo/internal/proveohome"
 	"github.com/proveo-ca/proveo/internal/sbx"
 )
 
@@ -34,7 +35,7 @@ func (i *Instance) PrepareWorkspace(runDir string, print bool) (work, bundle str
 	if err != nil {
 		return "", "", err
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 	if err := os.CopyFS(stage, os.DirFS(i.Workspace)); err != nil {
 		return "", "", fmt.Errorf("copy private workspace: %w", err)
 	}
@@ -49,9 +50,17 @@ func (i *Instance) prepareBundle(runDir string, print bool) (string, error) {
 		if fi, err := os.Stat(cached); err == nil && fi.Mode().IsRegular() {
 			return cached, nil
 		}
-		dir = filepath.Join(runDir, "git")
+		dir = filepath.Join(runDir, "git", i.Base)
+		if out, err := exec.Command("git", "-C", i.Repo, "rev-parse", "HEAD").Output(); err == nil &&
+			strings.TrimSpace(string(out)) != i.Base {
+			out, err := exec.Command("git", "-C", i.Repo, "for-each-ref", "--count=1", "--format=%(refname)", "--points-at", i.Base).Output()
+			if err != nil || len(strings.Fields(string(out))) == 0 {
+				return "", fmt.Errorf("no host ref points at the recorded Git revision %s", i.Base)
+			}
+			args = strings.Fields(string(out))
+		}
 	} else {
-		ref := "refs/proveo-instance-base/" + i.ID
+		ref := "refs/proveo-instance-base/" + i.ID + "-" + i.Base
 		if out, err := exec.Command("git", "-C", i.Repo, "update-ref", ref, i.Base).CombinedOutput(); err != nil {
 			return "", fmt.Errorf("pin Git base %s: %w: %s", i.Base, err, strings.TrimSpace(string(out)))
 		}
@@ -68,7 +77,7 @@ func (i *Instance) prepareBundle(runDir string, print bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 	tmp := filepath.Join(stage, "base.bundle")
 	cmd := exec.Command("git", append([]string{"-C", i.Repo, "bundle", "create", tmp}, args...)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -77,9 +86,22 @@ func (i *Instance) prepareBundle(runDir string, print bool) (string, error) {
 	return path, os.Rename(tmp, path)
 }
 
+func (i *Instance) PrepareResumeTip(runDir, tip string, print bool) (string, error) {
+	if !instanceBase.MatchString(tip) || i.Repo == "" {
+		return "", fmt.Errorf("invalid resume commit %q", tip)
+	}
+	copy := *i
+	copy.Base = tip
+	return copy.prepareBundle(runDir, print)
+}
+
 func (in Input) instanceCheckout() sbx.KitCommand {
+	base := in.Instance.Base
+	if in.InstanceResumeTip != "" {
+		base = in.InstanceResumeTip
+	}
 	return sbx.KitCommand{Description: "prepare the instance branch", Command: []string{"sh", "-ec", instanceCheckoutScript,
-		"prepare-instance", in.InstanceCloneRoot, in.Instance.Base, in.Instance.Branch(), in.InstanceBundle, in.ScopeRel}}
+		"prepare-instance", in.InstanceCloneRoot, base, in.Instance.Branch(), in.InstanceBundle, in.ScopeRel}}
 }
 
 func (in Input) instanceMounts(mounts []sbx.Mount) []sbx.Mount {
@@ -103,6 +125,13 @@ func (in Input) instanceMounts(mounts []sbx.Mount) []sbx.Mount {
 	}
 	if in.InstanceBundle != "" {
 		out = append(out, sbx.Mount{Host: filepath.Dir(in.InstanceBundle), ReadOnly: true})
+	}
+	if dir := os.Getenv("PROVEO_SCHEDULE_REPORT_DIR"); filepath.IsAbs(dir) && in.Instance.Job != "" {
+		root := filepath.Join(proveohome.Root(os.Getenv), "logs", "schedule")
+		dir = canonicalInstancePath(dir)
+		if strings.HasSuffix(dir, ".handoff") && within(dir, canonicalInstancePath(root)) {
+			out = append(out, sbx.Mount{Host: dir})
+		}
 	}
 	return out
 }

@@ -1,6 +1,6 @@
 @startuml WorkspaceInstances
 !include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
-' purpose: propose independent sandbox instances and host-owned resume from one working directory
+' purpose: define independent sandbox instances and the task dashboard for one working directory
 ' covers: cmd/proveo/main.go
 ' covers: go.mod
 ' covers: internal/ui/ui.go
@@ -15,7 +15,21 @@
 ' covers: internal/proveohome/proveohome.go
 ' covers: internal/schedule/runner.go
 ' covers: internal/results/results.go
-' status: EXPERIMENT. The HTML prototype is index.html in this directory.
+' covers: cmd/proveo/dashboard.go
+' covers: internal/dashboard/**
+' covers: internal/choiceui/attach_confirm.go
+' covers: internal/schedule/dashboard_job.go
+' covers: internal/schedule/phase.go
+' covers: e2e/dashboard_native_tmux_test.go
+' covers: e2e/dashboard_sbx_tmux_test.go
+' status: The HTML prototype is index.html in this directory. The native
+' Go dashboard implements Review queue with lower-right task details.
+' Task graph, Schedule and alternate details are keyboard-selectable.
+' Stock sbx parity and Fresh still need an authenticated guest run.
+' Join scheduled tasks by stable job keys or explicit instance IDs.
+' Ad hoc titles can repeat and do not establish task ownership.
+' New scheduled instances mount a private per-attempt handoff directory
+' for report.md so sibling jobs never consume each other's reports.
 ' Current lifecycle: _spec/internal/sbx/instance-lifecycle.puml
 ' Current state transfer: _spec/internal/sbx/state-sync.puml
 ' Earlier retention direction: _spec/_plans/session-continuity.puml
@@ -129,7 +143,7 @@
 ' and panes with rules. Keep task rows compact and graph nodes unboxed.
 ' Reuse creack/pty and x/term primitives on Unix. Evaluate Charm x/vt for
 ' the child screen buffer, alternate screen, cursor, and terminal replies.
-' x/vt v0.1.0 compiled with Proveo's current Ultraviolet and ANSI pins.
+' The native Go dashboard pins x/vt with Ultraviolet and ANSI.
 ' A local probe exercised alternate-screen entry, restore and resizing.
 ' [Unverified] Native sbx behavior under the embedded emulator.
 ' Keep native output within the pane and route its replies to the child.
@@ -151,8 +165,9 @@
 ' Read the selected running sandbox on selection and every 5s while the
 ' task pane is visible. Resolve its recorded sbx ID on the owning host.
 ' Bound reads to one in flight and discard replies for an earlier selection.
-' The current sbx inventory reader provides identity and status. Validate a
-' structured telemetry source on the sbx host before wiring native polling.
+' The sbx inventory reader verifies local VM identity. The live probe uses
+' ps, /proc/meminfo and df in the recorded guest workdir as user agent.
+' Live guest verification of those measurements is pending.
 ' The HTML preview polls sample telemetry.
 ' Show ticket, branch, instance, sandbox, and PR above the prompt.
 ' Clip the task-source description to three rows with an ellipsis. Show

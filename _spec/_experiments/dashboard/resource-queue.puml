@@ -10,9 +10,15 @@
 ' covers: internal/sbx/host_disk_other.go
 ' covers: _spec/_experiments/dashboard/index.html
 ' covers: _spec/_experiments/dashboard/resource_queue.qnt
-' status: EXPERIMENT. HTML runs a sample machine. The Go scheduler still
-' launches calendar-due jobs directly. The host sampler and lease ledger
-' are proposed runtime work.
+' covers: cmd/proveo/admission.go
+' covers: internal/backend/sandbox/admission.go
+' covers: internal/backend/sandbox/admission_test.go
+' covers: internal/schedule/queue*.go
+' covers: internal/sbx/capacity.go
+' covers: e2e/dashboard_admission_test.go
+' status: Go admission and the durable queue are implemented.
+' HTML and Quint also model disk allocation reflection; the Go ledger
+' charges outstanding reservations conservatively until live qualification.
 ' Related capacity model: _spec/_paradigms/resource_management.puml
 ' Workspace and graph: _spec/_experiments/dashboard/workspace-instances.puml
 '
@@ -31,8 +37,10 @@
 ' with --json and normalize it to bytes for accounting using sbx units.
 ' Display the configured size in its original units. Record the value
 ' with the reservation so a settings change applies to new launches.
-' Reuse the Unix Statfs free-space helper for the actual sbx storage and
-' retained-artifact filesystems. Deduplicate paths on one filesystem.
+' Use Unix Statfs for the daemon store and retained-artifact paths.
+' The smaller free-space sample bounds admission. The daemon store sample
+' drives its displayed occupied space. A same-filesystem pair has
+' the same free-space limit. PROVEO_SBX_STORAGE names a custom store.
 ' Subtract all reservations from the configured disk pool. Subtract
 ' reservations pending in the measurements from available filesystem
 ' space. Admit against the smaller result. Confirm whether a reservation
@@ -59,6 +67,10 @@
 ' writes. Refresh the disk sample when a reflected lease ends.
 ' Consider ready jobs in insertion order and take the oldest whose disk
 ' reservation fits. Expose wait reasons and age.
+' Calendar and manual submissions persist prompt snapshots before start.
+' The dispatcher samples every 5s while work remains. On shutdown it
+' releases its worker lock before checking for newly submitted work.
+' An installed calendar service restarts dispatch on its next tick.
 ' Queue items become ready through submission and prerequisite completion.
 ' A calendar hook can enqueue an item. It never bypasses admission.
 ' Runtime time limits and probe freshness still use clocks.
@@ -73,11 +85,11 @@
 ' leases attached to held work, and honor prerequisites before admission.
 ' The scenarios cover disk pressure, unavailable samples, exact capacity,
 ' pending and reflected reservations, carry, resample, and prerequisites.
-' Seven Quint scenarios passed. Apalache checked all three invariants
+' Eight Quint scenarios passed. Apalache checked all three invariants
 ' through 12 transitions without a violation.
 ' Keep the live scheduler in Go. The model abstracts OS readings, fsync,
 ' lifecycle discovery and simultaneous processes. Cover those boundaries
-' with Go adapter tests and live sbx verification when the runtime is built.
+' with Go adapter tests and live sbx verification.
 ' Command: npx --yes @informalsystems/quint@0.34.0 test resource_queue.qnt
 ' Source: https://quint.sh/docs/getting-started
 

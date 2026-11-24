@@ -184,7 +184,13 @@
         "internal/sbx/host_disk_unix.go",
         "internal/sbx/host_disk_other.go",
         "_spec/_experiments/dashboard/index.html",
-        "_spec/_experiments/dashboard/resource_queue.qnt"
+        "_spec/_experiments/dashboard/resource_queue.qnt",
+        "cmd/proveo/admission.go",
+        "internal/backend/sandbox/admission.go",
+        "internal/backend/sandbox/admission_test.go",
+        "internal/schedule/queue*.go",
+        "internal/sbx/capacity.go",
+        "e2e/dashboard_admission_test.go"
       ],
       "fingerprint": null
     },
@@ -204,7 +210,14 @@
         "internal/backend/sandbox/agent_home.go",
         "internal/proveohome/proveohome.go",
         "internal/schedule/runner.go",
-        "internal/results/results.go"
+        "internal/results/results.go",
+        "cmd/proveo/dashboard.go",
+        "internal/dashboard/**",
+        "internal/choiceui/attach_confirm.go",
+        "internal/schedule/dashboard_job.go",
+        "internal/schedule/phase.go",
+        "e2e/dashboard_native_tmux_test.go",
+        "e2e/dashboard_sbx_tmux_test.go"
       ],
       "fingerprint": null
     },
@@ -336,6 +349,15 @@
       "covers": [
         "mise.toml",
         ".golangci.yml"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_plans/dashboard-delivery.puml",
+      "covers": [
+        "_spec/_experiments/dashboard/**",
+        "e2e/dashboard*_test.go",
+        "e2e/testdata/_spec/_plans/*.puml"
       ],
       "fingerprint": null
     },
@@ -588,7 +610,8 @@
         "cmd/proveo/maintainer_surface_test.go",
         "cmd/proveo/env_help.go",
         "cmd/proveo/running.go",
-        "cmd/proveo/running_test.go"
+        "cmd/proveo/running_test.go",
+        "cmd/proveo/dashboard.go"
       ],
       "fingerprint": null
     },
@@ -1718,7 +1741,11 @@
         "internal/sbx/third_party/claude.yaml",
         "internal/sbx/upstream_test.go",
         "internal/contract/config_set_test.go",
-        "cmd/proveo/golden_test.go"
+        "cmd/proveo/golden_test.go",
+        "internal/backend/sandbox/history.go",
+        "internal/proveohome/history*.go",
+        "internal/run/instances.go",
+        "e2e/dashboard_history_sbx_test.go"
       ],
       "fingerprint": null
     },
@@ -1761,7 +1788,9 @@
         "internal/schedule/table.go",
         "internal/schedule/table_test.go",
         "internal/schedule/tmux.go",
-        "internal/backend/sandbox/stop_signal_test.go"
+        "internal/backend/sandbox/stop_signal_test.go",
+        "internal/schedule/queue.go",
+        "e2e/dashboard_admission_test.go"
       ],
       "fingerprint": null
     },

@@ -28,6 +28,9 @@ type Job struct {
 	Instance   string   `yaml:"instance,omitempty"`
 	New        bool     `yaml:"new,omitempty"`
 	Task       string   `yaml:"task,omitempty"`
+	DependsOn  []string `yaml:"depends_on,omitempty"`
+	Ticket     string   `yaml:"ticket,omitempty"`
+	Phase      string   `yaml:"phase,omitempty"`
 	Model      string   `yaml:"model,omitempty"`
 	Addons     []string `yaml:"addons,omitempty"`
 	Args       []string `yaml:"args,omitempty"` // extra `proveo run` flags
@@ -54,11 +57,20 @@ func Path(home string) string { return filepath.Join(home, FileName) }
 func Load(home string) (Config, error) {
 	var c Config
 	b, err := os.ReadFile(Path(home))
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return c, err
 	}
-	if err := yaml.Unmarshal(b, &c); err != nil {
+	if err == nil {
+		if err := yaml.Unmarshal(b, &c); err != nil {
+			return c, fmt.Errorf("%s: %w", Path(home), err)
+		}
+	}
+	manualErr := err
+	if err := loadDashboardJobs(home, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", Path(home), err)
+	}
+	if len(c.Jobs) == 0 && manualErr != nil {
+		return c, manualErr
 	}
 	for name, j := range c.Jobs {
 		if err := j.validate(); err != nil {

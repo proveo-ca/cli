@@ -1131,6 +1131,7 @@ func FirstHost(mounts []sbx.Mount) string {
 type Input struct {
 	Instance                                        *Instance
 	InstanceWork, InstanceCloneRoot, InstanceBundle string
+	InstanceResumeTip                               string
 	bindInstance                                    func() error
 
 	Stop                   context.Context // ends teardown's subprocesses when cancelled; nil never does
@@ -1792,13 +1793,21 @@ func Run(in Input) (runResultErr error) {
 		keepHomeAccess = true
 	}
 	launchCfg := reuseOrCreate(cfg, exists)
+	if launchCfg.KitDir != "" && in.ResultsDir != "" {
+		if err := reserveDisk(filepath.Dir(in.ResultsDir), cfg.Name, in.Sid); err != nil {
+			return err
+		}
+	}
 	if launchCfg.KitDir != "" {
 		if in.Instance != nil {
 			in.Instance.VMID, in.Instance.Attempt = "", in.Sid
 			if err := in.Instance.save(); err != nil {
 				return fmt.Errorf("record pending instance create: %w", err)
 			}
-			in.bindInstance = func() error { return in.Instance.bind(in.Sid, receipt) }
+			in.bindInstance = func() error {
+				in.Instance.CheckoutTip = in.InstanceResumeTip
+				return in.Instance.bind(in.Sid, receipt)
+			}
 		} else if err := writeReceipt(cfg.Name, receipt); err != nil && named {
 			return fmt.Errorf("record browser profile ownership: %w", err)
 		}
@@ -1971,7 +1980,9 @@ func Run(in Input) (runResultErr error) {
 	}
 	start.StartAs("start "+in.Target, agentStartLine(in))
 	startedAt := time.Now()
+	stopHistory := startPeriodicHistory(runCtx, in, cfg, startedAt)
 	runErr := run()
+	stopHistory()
 	browserErr := stopViewport()
 	if browserErr != nil {
 		ui.Warnf("browser cleanup in %s — %s", cfg.Name, browserErr)
@@ -1993,7 +2004,7 @@ func Run(in Input) (runResultErr error) {
 	}
 	if in.Instance != nil {
 		if err := in.Instance.checkVM(); err != nil {
-			return errors.Join(runErr, fmt.Errorf("sandbox ownership before teardown: %w", err))
+			return errors.Join(runErr, fmt.Errorf("sandbox ownership before teardown: %w", err), recordHistoryFailure(in, err))
 		}
 	}
 	td := &teardown{

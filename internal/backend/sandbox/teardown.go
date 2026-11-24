@@ -288,9 +288,10 @@ func gone(name string, detail ...string) Item {
 
 // saveState is SaveState under ctx.
 func (t *teardown) saveState(ctx context.Context) (string, error) {
-	return SaveState(t.cfg.Name, t.cfg.Env, !sbx.Gone(t.cfg.Name), func(args ...string) (string, error) {
+	saved, err := SaveState(t.cfg.Name, t.cfg.Env, !sbx.Gone(t.cfg.Name), func(args ...string) (string, error) {
 		return guestRunIn(ctx, args...)
 	})
+	return saved, t.sessionCheckpoint(ctx, err)
 }
 
 // failedEnd carries what it can home, saves the agent's state (its transcript with it), prints

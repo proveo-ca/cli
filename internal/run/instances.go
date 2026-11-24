@@ -2,16 +2,54 @@
 package run
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/proveo-ca/proveo/internal/backend/sandbox"
+	"github.com/proveo-ca/proveo/internal/proveohome"
 	"github.com/proveo-ca/proveo/internal/sbx"
 	"github.com/proveo-ca/proveo/internal/ui"
 	"github.com/proveo-ca/proveo/internal/workspace"
 )
+
+func prepareResume(rs *Spec, p *Params) error {
+	id, cont := p.ResumeID, p.Continue
+	if i := rs.Backend.Instance; i != nil && (cont || id != "") && proveohome.HistorySupported(p.Target) {
+		c, err := proveohome.FindCheckpoint(i.HistoryDir(), id)
+		if err == nil {
+			if c.Target != p.Target {
+				return fmt.Errorf("checkpoint belongs to %s", c.Target)
+			}
+			if !p.PrintOnly {
+				home := instanceHome(rs, proveohome.Root(os.Getenv), false)
+				if err := os.MkdirAll(home, 0o700); err != nil {
+					return err
+				}
+				if err := proveohome.RestoreCheckpoint(i.HistoryDir(), home, c); err != nil {
+					return fmt.Errorf("restore session %s: %w", c.NativeID, err)
+				}
+			}
+			id, cont = c.NativeID, false
+			if !i.HasVM() && i.Isolated() && c.GitTip != "" {
+				bundle, err := i.PrepareResumeTip(rs.RunDir, c.GitTip, p.PrintOnly)
+				if err != nil {
+					return fmt.Errorf("prepare session Git revision: %w", err)
+				}
+				rs.Backend.InstanceBundle, rs.Backend.RestoreTip = bundle, c.GitTip
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read native session checkpoint: %w", err)
+		}
+	}
+	args, err := proveohome.ResumeArgs(p.Target, id, cont, p.ListSessions)
+	if err == nil {
+		p.Extra = append(args, p.Extra...)
+	}
+	return err
+}
 
 func prepareInstance(rs *Spec, p *Params, d Deps) (func(), error) {
 	explicit := p.NewInstance || p.Instance != ""
@@ -37,6 +75,7 @@ func prepareInstance(rs *Spec, p *Params, d Deps) (func(), error) {
 	req := sandbox.InstanceRequest{
 		State: realPathOf(StateDir()), Target: p.Target, Workspace: effective, Repo: repo,
 		New: p.NewInstance, ID: p.Instance, Task: p.Task, Print: p.PrintOnly,
+		Job: os.Getenv("PROVEO_SCHEDULE_JOB"),
 	}
 	if !p.PrintOnly || p.Instance != "" {
 		req.LegacyName = sbx.SandboxName(p.Target, legacyKey)
@@ -85,6 +124,16 @@ func prepareInstance(rs *Spec, p *Params, d Deps) (func(), error) {
 			return nil, err
 		}
 		rs.Backend.InstanceWork, rs.Backend.InstanceBundle = work, bundle
+		if i.HasVM() && i.CheckoutTip != "" {
+			bundle, err := i.PrepareResumeTip(rs.RunDir, i.CheckoutTip, p.PrintOnly)
+			if err != nil {
+				if release != nil {
+					release()
+				}
+				return nil, err
+			}
+			rs.Backend.RestoreTip, rs.Backend.InstanceBundle = i.CheckoutTip, bundle
+		}
 		p.Clone = repo != ""
 		if p.Clone {
 			p.CloneSet = true

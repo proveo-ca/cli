@@ -120,6 +120,16 @@ func Do(p Params, d Deps) (err error) {
 	}
 	if releaseInstance != nil {
 		defer releaseInstance()
+		if p.NewInstance {
+			defer func() {
+				if errors.Is(err, sandbox.ErrDiskWait) {
+					err = errors.Join(err, rs.Backend.Instance.DiscardUnstarted())
+				}
+			}()
+		}
+	}
+	if err := prepareResume(&rs, &p); err != nil {
+		return err
 	}
 	if err := configureInstanceOutput(&rs, &p); err != nil {
 		return err
@@ -1006,8 +1016,8 @@ func launchSandbox(rs *Spec, p *Params, d Deps, cdpEnv []string) error {
 	in := sandbox.Input{
 		AgentEnv: agentEnv,
 		Instance: rs.Backend.Instance, InstanceWork: rs.Backend.InstanceWork, InstanceBundle: rs.Backend.InstanceBundle,
-		InstanceCloneRoot: instanceCloneRoot,
-		Target:            p.Target, Image: p.Image, AuthVar: p.AuthVar,
+		InstanceCloneRoot: instanceCloneRoot, InstanceResumeTip: rs.Backend.RestoreTip,
+		Target: p.Target, Image: p.Image, AuthVar: p.AuthVar,
 		AgentVersion: rs.Backend.AgentVersion,
 		Clone:        rs.Backend.Clone, CloneOff: rs.Backend.CloneOff, Extra: p.Extra,
 		RepoRoot: rs.Workspace.WS.RepoRoot, OutputDir: p.Output,

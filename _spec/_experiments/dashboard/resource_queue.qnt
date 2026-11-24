@@ -27,11 +27,11 @@ module resource_queue {
   }
   action init = queue' = empty
 
-  action sample(freeDisk, known) = queue' = {
+  action sample(freeDisk, known, exactReflection) = queue' = {
     phases: queue.phases,
     freeDisk: freeDisk,
     known: known,
-    reflected: if (known) held.filter(t => queue.phases.get(t) != "reserved") else Set(),
+    reflected: if (known and exactReflection) held.filter(t => queue.phases.get(t) != "reserved") else Set(),
     secondReady: queue.secondReady,
   }
 
@@ -69,11 +69,12 @@ module resource_queue {
       nondet t = tasks.oneOf()
       any { admit(t), start(t), end(t), publish(t), failedStart(t), retry(t) }
     },
-    sample(diskPool, true),
-    sample(48, true),
-    sample(32, true),
-    sample(16, true),
-    sample(0, false),
+    sample(diskPool, true, false),
+    sample(48, true, false),
+    sample(32, true, false),
+    sample(16, true, false),
+    sample(0, false, false),
+    sample(32, true, true),
     setSecondReady(false),
     setSecondReady(true),
   }
@@ -83,38 +84,43 @@ module resource_queue {
   invariant prerequisitesCleared = not(held.contains("second")) or queue.secondReady
 
   run exactCapacityTest = init
-    .then(sample(diskPool, true))
+    .then(sample(diskPool, true, false))
     .then(admit("first")).then(admit("second"))
     .expect(reserved(held) == diskPool and withinPool)
 
   run waitingForDiskTest = init
-    .then(sample(16, true))
+    .then(sample(16, true, false))
     .expect(not(eligible("first")) and not(eligible("second")))
 
   run unknownSampleTest = init
-    .then(sample(diskPool, false))
+    .then(sample(diskPool, false, false))
     .expect(not(eligible("first")) and not(eligible("second")))
 
   run releaseAfterCarryTest = init
-    .then(sample(diskPool, true)).then(admit("first")).then(start("first"))
-    .then(sample(16, true)).then(end("first"))
+    .then(sample(diskPool, true, false)).then(admit("first")).then(start("first"))
+    .then(sample(16, true, true)).then(end("first"))
     .expect(not(eligible("second")))
     .then(publish("first"))
     .expect(not(queue.known) and not(eligible("second")))
-    .then(sample(32, true)).then(admit("second"))
+    .then(sample(32, true, false)).then(admit("second"))
     .expect(queue.phases.get("second") == "reserved")
 
   run pendingReservationTest = init
-    .then(sample(48, true)).then(admit("first"))
+    .then(sample(48, true, false)).then(admit("first"))
     .expect(not(eligible("second")) and withinPool)
 
   run reflectedReservationTest = init
-    .then(sample(diskPool, true)).then(admit("first")).then(start("first"))
-    .then(sample(32, true)).then(admit("second"))
+    .then(sample(diskPool, true, false)).then(admit("first")).then(start("first"))
+    .then(sample(32, true, true)).then(admit("second"))
     .expect(reserved(held) == diskPool and reflectedLeases)
 
+  run conservativeRunningLeaseTest = init
+    .then(sample(diskPool, true, false)).then(admit("first")).then(start("first"))
+    .then(sample(32, true, false))
+    .expect(not(eligible("second")) and withinPool)
+
   run prerequisiteTest = init
-    .then(sample(diskPool, true)).then(admit("first"))
+    .then(sample(diskPool, true, false)).then(admit("first"))
     .then(setSecondReady(false))
     .expect(not(eligible("second")))
     .then(setSecondReady(true)).then(admit("second"))
