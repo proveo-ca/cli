@@ -211,7 +211,7 @@
   <section id="proveo" role="tabpanel" aria-labelledby="tab-proveo" data-mode="dashboard">
     <div class="workbar">
       <h1 id="view-title">Morning review</h1>
-      <p class="path">~/projects/proveo</p>
+      <p class="path" id="workspace-path">~/projects/proveo</p>
       <div class="layout-picker" role="group" aria-label="Proveo layout proposals">
         <button type="button" data-view="queue" aria-pressed="true"><kbd>1</kbd> Review queue</button>
         <button type="button" data-view="graph" aria-pressed="false"><kbd>2</kbd> Task graph</button>
@@ -233,6 +233,7 @@
           <div id="filetree">
             <div id="changes-tree"></div>
             <div id="workspace-tree" hidden></div>
+            <div id="sandbox-tree" hidden></div>
           </div>
         </div>
       </aside>
@@ -275,7 +276,7 @@
   <div class="keybar" id="dashboard-keys">
     <span class="subtext"><kbd>↑↓</kbd> move</span>
     <button type="button" class="button" id="enter-key"><kbd>Enter</kbd> <span>Attach</span></button>
-    <button type="button" class="button" id="fresh-key"><kbd>e</kbd> Fresh</button>
+    <button type="button" class="button" id="fresh-key" hidden><kbd>e</kbd> Fresh</button>
     <button type="button" class="button" id="new-instance"><kbd>n</kbd> new instance</button>
     <button type="button" class="button" id="proposal-button"><kbd>?</kbd> help</button>
   </div>
@@ -328,7 +329,7 @@
       <dt><a href="https://pkg.go.dev/github.com/charmbracelet/x/vt">Charm x/vt</a></dt>
       <dd>Candidate for the child screen buffer. Emulate sbx’s cursor, colors, alternate screen, and terminal replies inside the pane so the tab strip stays visible.</dd>
       <dt><a href="https://github.com/sinelaw/fresh">Fresh</a></dt>
-      <dd>Launch the editor with <code>fresh .</code> through Bubble Tea’s terminal handoff. Restore the selected workspace view when the editor exits.</dd>
+      <dd>Use interactive <code>sbx exec</code> on the owning host to run <code>fresh .</code> in the selected sandbox’s guest workspace. Offer the binding when that sandbox is running and Fresh is available there. Restore task details when the editor exits.</dd>
     </dl>
     <h3>Interrupt and exit</h3>
     <p class="subtext">Proveo intercepts <kbd>Ctrl+C</kbd> before forwarding input to the visible child. It closes the dashboard-owned sbx client, restores the original terminal, and exits with status 130. Scheduled runs and existing sandboxes continue independently.</p>
@@ -500,6 +501,12 @@
     ["defs", [["README.md", "Definitions use the effective working directory for project-scoped defaults."]]],
     ["README.md", "Proveo runs coding agents in Docker Sandboxes.\nBrowse proposals under _spec/."],
   ]
+  const sandboxFileSamples = {
+    "opencode-f91c25": [
+      ["README.md", "Parallel clone isolation\n\nCheck that two agents launched from the same directory can edit the same path independently."],
+      ["e2e", [["clone_isolation_test.go", "first := runAgent(workspace, newInstance())\nsecond := runAgent(workspace, newInstance())\nassertSeparateClones(first, second)\nassertSeparateChanges(first, second)"]]],
+    ],
+  }
 
   const $ = (id) => document.getElementById(id)
   const ui = { view: "queue", task: tasks[0], sidebar: "changes", editing: false, editorFile: null, editorSidebar: "files", patch: false }
@@ -761,7 +768,7 @@
 
   function renderWork() {
     const [title, heading, clock] = views[ui.view]
-    $("view-title").textContent = ui.editing ? "$ fresh ." : title
+    if (!ui.editing) $("view-title").textContent = title
     $("work-heading").textContent = heading
     for (const control of document.querySelectorAll("[data-view]")) {
       control.setAttribute("aria-pressed", String(control.dataset.view === ui.view))
@@ -877,20 +884,22 @@
     return graph
   }
 
-  function tree(entries, parent = "", changes = false) {
+  function tree(entries, parent = "", source = "files") {
+    const changes = source === "changes"
     const list = node("ul", "tree")
     for (const [name, value] of entries) {
       const path = parent ? parent + "/" + name : name
       const item = node("li")
       if (Array.isArray(value)) {
         const group = node("details")
-        group.open = changes || path.startsWith("_spec")
-        group.append(node("summary", "", name), tree(value, path, changes))
+        group.open = source !== "files" || path.startsWith("_spec")
+        group.append(node("summary", "", name), tree(value, path, source))
         item.append(group)
       } else {
         const entry = changes ? value : {name, path, value}
-        if (!changes) filesByPath.set(path, entry)
-        const file = button(changes ? "" : name, () => selectFile(entry), changes ? "file change-file" : "file")
+        if (source === "files") filesByPath.set(path, entry)
+        const open = () => setEditor(entry, source)
+        const file = button(changes ? "" : name, open, changes ? "file change-file" : "file")
         if (changes) {
           const mark = node("span", "change-status", entry.status)
           mark.dataset.status = entry.status
@@ -898,7 +907,7 @@
         }
         file.dataset.path = path
         file.title = path
-        bindEnter(file, "Open file", () => selectFile(entry))
+        bindEnter(file, "Open file", open)
         item.append(file)
       }
       list.append(item)
@@ -933,7 +942,7 @@
     const count = changes.length + (changes.length === 1 ? " file" : " files")
     pane.replaceChildren(
       node("p", "change-source", "Carried · " + count + "\n" + sampleBase + "…" + revision),
-      tree(changeEntries(changes, revision), "", true),
+      tree(changeEntries(changes, revision), "", "changes"),
     )
   }
 
@@ -942,38 +951,57 @@
   }
 
   function renderSidebar() {
-    const changes = sidebarMode() === "changes"
-    $("files-heading").textContent = changes ? "Changes" : "Files"
-    $("workspace-tree").hidden = changes
+    const mode = sidebarMode()
+    const changes = mode === "changes"
+    const sandbox = mode === "sandbox"
+    $("files-heading").textContent = sandbox ? "Sandbox files" : changes ? "Changes" : "Files"
+    $("workspace-tree").hidden = mode !== "files"
     $("changes-tree").hidden = !changes
+    $("sandbox-tree").hidden = !sandbox
+    $("sidebar-swap").hidden = sandbox
     $("sidebar-swap").replaceChildren(node("kbd", "", changes ? "f" : "d"), changes ? " Files" : " Changes")
   }
 
   function setSidebar(mode) {
+    if (sidebarMode() === "sandbox") return
     if (ui.editing) ui.editorSidebar = mode
     else ui.sidebar = mode
     renderSidebar()
     if (ui.editing) renderInspector()
   }
 
-  function selectFile(file) {
-    setEditor(true, file)
+  function selectedSandboxFiles() {
+    return ui.task.state === "active" ? sandboxFileSamples[ui.task.instance] : undefined
   }
 
-  function setEditor(open, file = null) {
+  function openSandboxFresh() {
+    const files = selectedSandboxFiles()
+    if (ui.editing || !files) return
+    const pane = $("sandbox-tree")
+    pane.replaceChildren(tree(files, "", "sandbox"))
+    pane.querySelector(".file")?.click()
+  }
+
+  function setEditor(file = null, source = "files") {
+    const open = Boolean(file)
+    const wasSandbox = sidebarMode() === "sandbox"
+    const sandbox = open && source === "sandbox"
     ui.editing = open
     ui.patch = false
-    if (open) {
-      ui.editorFile = file ?? filesByPath.get("README.md")
-      ui.editorSidebar = file?.status ? "changes" : "files"
-    }
+    ui.editorFile = file
+    ui.editorSidebar = source
     $("proveo").dataset.mode = open ? "editor" : "dashboard"
     $("terminal-shell").dataset.mode = $("proveo").dataset.mode
-    $("view-title").textContent = open ? (file?.status ? "Review file" : "$ fresh .") : views[ui.view][0]
+    let title = views[ui.view][0]
+    if (sandbox) title = "Fresh · " + taskSandboxName(ui.task)
+    else if (open) title = file.status ? "Review file" : "File preview"
+    $("view-title").textContent = title
+    $("workspace-path").hidden = sandbox
+    $("workspace-note").hidden = sandbox
     renderSidebar()
     renderInspector()
     if (open) $("detail-heading").focus()
-    else $("fresh-key").focus()
+    else $(wasSandbox && !$("fresh-key").hidden ? "fresh-key" : "sidebar-swap").focus()
   }
 
   function editorLines(file) {
@@ -1038,6 +1066,11 @@
     const label = task ? [task.id, task.slug].join("-").toLowerCase() : "adhoc"
     const room = 32 - agent.length - suffix.length - 2
     return [agent, label.slice(0, room).replace(/-+$/, ""), suffix].join("-")
+  }
+
+  function taskSandboxName(task) {
+    if (task.instance === "New instance" || task.instance === "Archived") return ""
+    return sandboxName(agentTarget(task.agent), task, task.instance.slice(-6))
   }
 
   function showNewInstance() {
@@ -1177,6 +1210,7 @@
 
   function renderInspector() {
     renderSandboxUsage()
+    $("fresh-key").hidden = !selectedSandboxFiles()
     const detail = $("detail")
     const file = ui.editing ? ui.editorFile : null
     for (const item of $("filetree").querySelectorAll(".file")) {
@@ -1187,7 +1221,9 @@
     $("patch-key").lastElementChild.textContent = ui.patch ? "File" : "Diff"
     if (ui.editing) {
       $("detail-heading").textContent = file.path
-      $("detail-context").textContent = !file.status ? "Fresh preview" : ui.patch ? "Git diff" : file.status === "D" ? "Base " + sampleBase : "Tip " + file.tip
+      let context = ui.editorSidebar === "sandbox" ? "Sample sandbox" : "Host workspace"
+      if (file.status) context = ui.patch ? "Git diff" : file.status === "D" ? "Base " + sampleBase : "Tip " + file.tip
+      $("detail-context").textContent = context
       detail.replaceChildren(ui.patch ? patchView(file) : editorLines(file))
       return
     }
@@ -1203,15 +1239,14 @@
       fact("Branch", task.branch),
       fact("Instance", task.instance),
     )
-    if (task.instance !== "New instance" && task.instance !== "Archived") {
-      facts.append(fact("Sandbox", sandboxName(agentTarget(task.agent), task, task.instance.slice(-6))))
-    }
+    const sandbox = taskSandboxName(task)
+    if (sandbox) facts.append(fact("Sandbox", sandbox))
     if (task.pr) facts.append(fact("PR", task.pr))
     const demand = taskDemand[task.id]
     if (demand) facts.append(fact("Requested", demand.cpu + " CPU · " + demand.ram + " GiB RAM · " + demand.disk + " GiB disk"))
     if (task.plan) {
       facts.append(fact("Plan", button(task.plan, () => {
-        selectFile(filesByPath.get(task.plan))
+        setEditor(filesByPath.get(task.plan))
         $("detail-heading").focus()
       }, "file-link")))
     }
@@ -1386,7 +1421,7 @@
     }
     if (event.key === "Escape" && ui.editing) {
       event.preventDefault()
-      setEditor(false)
+      setEditor()
       return
     }
     if (ui.editing) {
@@ -1414,8 +1449,8 @@
     ]) points.append(node("li", "", text))
     showDialog("Workspace instance proposal", points, link("Read the lifecycle spec ↗", "workspace-instances.puml"))
   })
-  $("fresh-key").addEventListener("click", () => setEditor(true))
-  $("editor-back").addEventListener("click", () => setEditor(false))
+  $("fresh-key").addEventListener("click", openSandboxFresh)
+  $("editor-back").addEventListener("click", () => setEditor())
   $("new-instance").addEventListener("click", showNewInstance)
   $("capacity-key").addEventListener("click", showCapacity)
   $("enter-key").addEventListener("click", () => enterAction())

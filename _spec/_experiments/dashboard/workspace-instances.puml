@@ -171,9 +171,13 @@
 ' Enter on a file opens the editor pane across the center and right.
 ' Keep the tree visible. Read changed files from the recorded tip and
 ' deleted files from the base. Toggle between the file and its patch.
-' Switch to Files for the effective pwd. Offer a handoff to Fresh or
-' the configured editor for explicit local edits.
-' Use Fresh's file explorer and editor with the current workspace path.
+' Switch to Files to browse the effective host pwd.
+' Offer e (Fresh) for the selected task when its sandbox is running and
+' Fresh is available in the guest's workspace. Resolve the sandbox's
+' recorded identity and guest workdir. Launch Fresh with interactive sbx
+' exec on the owning host as the run user. Restore task details when it exits.
+' Hide the binding when the sandbox or editor is unavailable. The HTML
+' preview uses a distinct read-only file tree for the running sample.
 ' Fresh's worktree-based Orchestrator stays outside this design.
 ' Capacity and prerequisite changes admit queued tasks. Calendar jobs can
 ' submit work for overnight runs. Review connects agent, ticket, spec,
@@ -202,6 +206,8 @@
 ' Resize a terminal with a live child. Compare its embedded cursor,
 ' colors and input handling with stock sbx. Verify switch preserves both
 ' views and Ctrl+C exits the dashboard with the host terminal restored.
+' Verify Fresh targets the selected live sandbox when two share a pwd.
+' Stop a sandbox and verify its Fresh binding disappears.
 ' [Unverified] Portable native checkpoint restore across every harness.
 ' Upstream: https://docs.docker.com/ai/sandboxes/usage/#interactive-mode
 '           https://docs.docker.com/ai/sandboxes/usage/#reconnect-and-name-sandboxes
