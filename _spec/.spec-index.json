@@ -1506,6 +1506,26 @@
       "fingerprint": null
     },
     {
+      "spec": "_spec/internal/sbx/instance-lifecycle.puml",
+      "covers": [
+        "defs/README.md",
+        "internal/run/run.go",
+        "internal/workspace/mount.go",
+        "internal/sbx/run.go",
+        "internal/sbx/list.go",
+        "internal/backend/sandbox/sandbox.go",
+        "internal/backend/sandbox/launch_receipt.go",
+        "internal/backend/sandbox/teardown.go",
+        "internal/backend/sandbox/claude_mcp.go",
+        "internal/backend/sandbox/opencode_engine.go",
+        "internal/backend/sandbox/browser.go",
+        "internal/backend/sandbox/verbs.go",
+        "cmd/proveo/clean.go",
+        "cmd/proveo/verbs.go"
+      ],
+      "fingerprint": null
+    },
+    {
       "spec": "_spec/internal/sbx/kit-lifecycle.puml",
       "covers": [
         "internal/backend/sandbox/sandbox.go",

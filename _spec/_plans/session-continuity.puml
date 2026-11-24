@@ -19,6 +19,7 @@ skinparam noteTextAlignment left
 '   exception 1, the retained engine .. _spec/defs/opencode/engine-local-history.puml
 '   exception 2, the live bind ........ _spec/defs/hermes/hermes-persistence.puml
 '   keep, retire, re-attach ........... _spec/internal/sbx/kit-lifecycle.puml
+'   current instance ownership ....... _spec/internal/sbx/instance-lifecycle.puml
 '   a reused clone, the experiment .... _spec/_experiments/reusable-clone.puml
 '   Kit storage for dependency trees .. _spec/_plans/sbx-dep-tree-isolation.puml
 '   host-mount@1 for package caches ... _spec/_experiments/package-caches.puml
@@ -290,9 +291,10 @@ skinparam noteTextAlignment left
 ' Layout, after claude-sessions 1.1.0 (per name, never one shared dir):
 '   ~/.proveo/history/<harness>/<sandbox name>/{projects,todos,…}
 '   The sandbox name already encodes (target, workspace):
-'   proveo-<target>-<sha256(workspace)[:4]> (sbx.SandboxName). A worktree
-'   clone keys on its repository root (sandboxKey), so sibling worktrees share
-'   one dir, which `claude --resume` across worktrees (D5) needs.
+'   proveo-<target>-<sha256(workspace)[:4 bytes]> (sbx.SandboxName). A linked
+'   worktree clone keys on the linked worktree root (sandboxKey), so sibling
+'   worktrees get separate dirs. Resume across worktrees (D5) would need a
+'   history scope shared across those names.
 '   Unlike the mixin, sessions/ is never linked (S2).
 '   [Inference] A 4-byte hash collides rarely; a marker file holding the
 '   workspace path would detect it.
@@ -380,20 +382,18 @@ skinparam noteTextAlignment left
 ' workspaces, so the per-name split costs it the most.
 '
 ' ── OPEN QUESTIONS ─────────────────────────────────────────────────────────
-' Q1 TWO RUNS ON ONE WORKSPACE. One name per (harness, workspace), so a second
-'    run re-attaches to the first's live sandbox. The launch path has no
-'    liveness guard and no run lock (sync check). [Unverified] Today the
-'    first teardown may remove the VM the second still uses (F13). sbx's
-'    pattern is parallel sessions in one sandbox (the git and claude-code
-'    docs, sbx#775). P1 removes the `sbx rm` on a clean end. Still open: a
-'    teardown must not stop or retire a sandbox another session holds. S2
-'    makes sessions/ VM-local, which is what parallel sessions in one VM need.
-' Q2 proveo clean AND DISK. Kept sandboxes accumulate, one per (harness,
-'    workspace), and `proveo clean` lists none of them. `proveo clean
-'    --homes` removes ~/.proveo without checking for running sandboxes (F15);
-'    after P2 that deletes live history. v0.53.0's `sbx df` reports
-'    managed-volume use. A host ENOSPC flips kept guests read-only, with no
-'    in-place fix.
+' Q1 TWO RUNS ON ONE WORKSPACE. Ordinary runs share a name per (target,
+'    workspace). The current launch path lacks a general owner lock. Claude
+'    Code requires a stopped VM for reuse. Named browser profiles enforce
+'    a host lease. See instance-lifecycle.puml for the current rules and
+'    race windows. P1 removes `sbx rm` on a clean end. Stop and retire still
+'    need an ownership rule. In-VM parallel sessions share the VM lifecycle.
+' Q2 proveo clean AND DISK. Keeping a sandbox per target and workspace
+'    increases disk use. `proveo clean` sweeps host artifacts and pins the
+'    run directories recorded by named browser profiles. `proveo clean
+'    --homes` removes ~/.proveo without checking for running sandboxes (F15).
+'    Under P2 that can delete live history. v0.53.0's `sbx df` reports
+'    managed-volume use. A host ENOSPC can flip kept guests read-only.
 ' Q3 LOCKS ACROSS VMs (sbx#775, kit-spec#171). Neither flock nor fcntl crosses
 '    VMs. Exposed: hermes's state.db over the bind; claude's
 '    projects/<root key>/memory/*.md when two VMs share a repository; codex's

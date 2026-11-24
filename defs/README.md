@@ -2,6 +2,12 @@
 
 This directory contains Docker image definitions used by Proveo. A definition may be a coding harness, an experimental harness, or a non-harness utility image.
 
+## Working Directory Principle
+
+Every definition uses the effective working directory (`pwd`) as the default context for project-scoped behavior. Respect the workspace Proveo resolves from the invocation directory or an explicit `--input` or `--scope`. Entrypoints and wrappers preserve that directory when handing off to the agent or tool. In a linked-worktree clone, use the worktree Proveo prepares inside the guest.
+
+Declare explicit paths for build and installation steps, harness home, durable state, and managed tools. Treat image `WORKDIR` values as image defaults. Keep workspace identity and sandbox lifecycle in the shared runner. See the [sandbox instance lifecycle](../_spec/internal/sbx/instance-lifecycle.puml).
+
 ## Coding Harness Contract
 
 A mature coding harness definition under `defs/<name>/` should expose, where applicable:

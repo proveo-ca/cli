@@ -1,0 +1,147 @@
+@startuml SandboxInstanceLifecycle
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: how the working directory selects a sandbox and where launch, reuse, teardown, and cleanup need ownership
+' covers: defs/README.md
+' covers: internal/run/run.go
+' covers: internal/workspace/mount.go
+' covers: internal/sbx/run.go
+' covers: internal/sbx/list.go
+' covers: internal/backend/sandbox/sandbox.go
+' covers: internal/backend/sandbox/launch_receipt.go
+' covers: internal/backend/sandbox/teardown.go
+' covers: internal/backend/sandbox/claude_mcp.go
+' covers: internal/backend/sandbox/opencode_engine.go
+' covers: internal/backend/sandbox/browser.go
+' covers: internal/backend/sandbox/verbs.go
+' covers: cmd/proveo/clean.go
+' covers: cmd/proveo/verbs.go
+' See kit-lifecycle.puml for receipts and retirement and clone-workspace.puml for Git carry.
+' See _spec/_plans/session-continuity.puml for the proposed retention change.
+'
+' DESIGN INTENT
+' One ordinary name per target and workspace gives a retry a place to find
+' the previous VM, its create-time settings, and any work it still holds.
+' Proveo writes a new run ID, kit, and transcript for each invocation.
+' It can therefore remove a VM after recovering its work and reuse the same
+' name later. Docker sbx keeps its sandbox after the agent exits and supports
+' several same-workspace VMs through distinct names. Proveo's ordinary CLI
+' derives the name and has no user-supplied sandbox-name flag.
+' Sources: https://docs.docker.com/ai/sandboxes/usage/#reconnect-and-name-sandboxes
+'          https://docs.docker.com/ai/sandboxes/workflows/git/#clone-mode
+'          https://github.com/docker/sbx-releases/issues/775#issuecomment-6445241506
+'
+' WORKSPACE IDENTITY AND PARALLEL RUNS
+' The invocation directory supplies the default. --input and --scope can
+' change the effective workspace. The ordinary name combines the target
+' with the first four bytes of SHA-256 of the primary workspace path.
+' A linked-worktree clone keys on the linked worktree root and uses the main
+' checkout as sbx's clone source. The seed recreates the worktree at its own
+' path inside the guest and selects its ref. Sibling worktrees therefore
+' produce distinct names. A dry run with real sibling worktrees confirmed
+' both names, the shared clone source and each guest path and ref.
+' Changing branches in the same folder keeps the name. A normal kept clone
+' follows the host ref at creation and the receipt does not track its new
+' host tip. A changed linked-worktree ref can mark the kit or env stale.
+' Different targets in one directory have different names. The browser
+' add-on gives an unnamed browser run a run-specific name and a named
+' profile a name derived from target, workspace and profile. A named
+' profile has a host lease, checks its recorded sandbox ID when present,
+' and rejects reuse unless the sandbox is stopped, created or exited.
+' Worktrees are the ordinary same-target path to parallel runs with distinct
+' checkout paths. Separate clone VMs isolate their main checkouts. Direct
+' mode binds host paths. Both modes can still share writable home or extra
+' mounts, Git metadata or host ports. Hermes shares its durable home across
+' workspaces. In-guest worktrees isolate files while sharing the VM's fate.
+'
+' STALE, KEPT, AND ORPHANED
+' Stale means the current create settings differ from the receipt, or the
+' receipt is missing. It does not mean idle or old. The comparison covers
+' agent, image, kit, clone mode, mounts and env. It does not directly compare
+' publish rules, CPU or memory. A matching receipt leads to name-only
+' reattachment with the new agent command and the old VM settings.
+' A headed stale run asks before replacement. An unattended run retires a
+' stopped sandbox and generally reuses a running one with a warning. Claude
+' Code refuses live reuse. A persistent browser profile refuses settings
+' drift. Retirement carries recoverable work and state before removal.
+' Git and state recovery may start a stopped VM when they invoke sbx exec.
+' Ordinary success lifts clone work and output, saves state, and removes the
+' VM. Failures or incomplete carry, save or removal can leave it behind.
+' OpenCode keeps its engine for SQLite history. A named browser profile
+' stops and keeps its VM for the profile data.
+' [Inference] An unnamed OpenCode browser run can retain a fresh engine on
+' every clean exit. Its next invocation chooses a different name, and the
+' normal OpenCode retention path clears the kept-result entry.
+' A failed create or a killed host process can leave an sbx VM without a
+' kept-result entry. An ordinary successful removal can leave its receipt.
+' The launch path compares receipts only when it believes a VM exists.
+' `sbx ls` is the VM inventory. `proveo rm` lists recorded kept results.
+' `proveo rm <name>` carries work and state first and requires `--stop` for
+' a running VM. `proveo clean` reclaims host artifacts and reconciles the
+' results index. Its `--tools` check consults sbx liveness; it never sweeps
+' sbx VMs. Clean protects run directories by their process PID and pins
+' those recorded by named profiles. An ordinary kept VM can still depend
+' on its old run directory, for example for a staged clone env or home files.
+'
+' RUNTIME JUDGMENT
+' The stable name keeps resume discoverable and carry-before-remove protects
+' guest work. The name alone cannot establish who owns the VM. Ordinary
+' launches can overlap between lookup, receipt write, create and teardown.
+' A launch can write the intended receipt before creation succeeds. Ordinary
+' receipts have no sandbox ID binding. A failed listing can look like an
+' existing but stopped VM because Exists and Running default differently.
+' [Inference] Two callers can overwrite the receipt or race to create the
+' name. If both attach, one can retire or remove a VM while the other uses
+' it. A stopped-only check has the same gap before the next attach. A keep
+' decision preserves a VM even when clean may reclaim its backing paths.
+' [Inference] A 32-bit name suffix can collide. Treat the resolved workspace
+' path and sbx ID as ownership evidence before reusing or mutating a name.
+' Recommended boundary: one owning Proveo invocation per ordinary sandbox
+' name. Extend the named-profile host lease to cover lookup through teardown
+' and explicit removal. Require reliable inventory before mutation and bind
+' the receipt to the created sandbox ID. Protect run directories referenced
+' by existing VMs. This fits the pwd default without a session registry.
+' Direct sbx sessions bypass a Proveo lease. A running VM without a Proveo
+' owner needs an explicit recovery path before another run takes it over.
+' If kept VMs become the default, the lease still gates stop and retire.
+' Keep project-scoped defaults in defs/README.md. Build paths, agent home,
+' durable state and managed tools keep their own explicit scope.
+'
+' Verification: CLI --print with one repository and two linked worktrees;
+' launch_receipt_test.go, worktree_clone_test.go, browser_test.go,
+' teardown_end_test.go, verbs_test.go and clean_run_state_test.go.
+' [Unverified] Live sbx scheduling and race reproduction on this checkout.
+
+title sbx instance lifecycle and workspace ownership
+
+actor Operator as OP
+participant "proveo run" as RUN
+participant "launch receipt" as RECEIPT
+participant "sbx" as SBX
+
+OP -> RUN : launch from the chosen directory
+RUN -> RUN : resolve workspace and sandbox name
+RUN -> SBX : look up name and status
+RUN -> RECEIPT : compare create settings for a kept VM
+break launch refused by policy or operator
+  RUN --> OP : report the refusal
+end
+alt fresh name or approved retirement
+  opt retiring a previous VM
+    RUN -> SBX : carry work and state, then remove
+  end
+  RUN -> RECEIPT : record intended create settings
+  RUN -> SBX : create with the rendered kit
+else reuse allowed
+  RUN -> RUN : keep the stored VM settings
+end
+RUN -> SBX : run by name with the agent command
+SBX --> RUN : agent exits or launch is stopped
+RUN -> SBX : carry clone work, output and state
+alt ordinary clean end
+  RUN -> SBX : remove VM by name
+else named browser profile
+  RUN -> SBX : stop the VM and retain profile data
+else retained VM or recovery needed
+  RUN --> OP : report why the VM stays
+end
+@enduml
