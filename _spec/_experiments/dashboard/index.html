@@ -74,10 +74,6 @@
   .workbar h1 { font-weight: bold; }
   .path { overflow-wrap: anywhere; }
   .layout-picker { margin-left: auto; }
-  .metrics { border-bottom: 1px solid var(--line); display: flex; gap: 4px 18px; flex-wrap: wrap; padding: 5px 10px; }
-  .metric { display: flex; gap: .6ch; align-items: baseline; color: var(--muted); }
-  .metric strong { color: var(--text); }
-  .metric:first-child strong { color: var(--brand); }
   .capacity-bar { display: flex; gap: 8px; align-items: center; padding: 4px 10px; border-bottom: 1px solid var(--line); }
   .grid { display: grid; flex: 1; grid-template-columns: minmax(170px, .58fr) minmax(0, 2fr) minmax(280px, 1.04fr); min-height: 540px; }
   .panel { min-width: 0; }
@@ -157,7 +153,7 @@
   .patch-added { color: var(--brand); }
   .patch-removed { color: var(--attention); }
   #proveo[data-mode="editor"] .grid { grid-template-columns: minmax(170px, .58fr) minmax(0, 3.04fr); }
-  #proveo[data-mode="editor"] :is(.task-panel, .metrics, .layout-picker, .capacity-bar),
+  #proveo[data-mode="editor"] :is(.task-panel, .layout-picker, .capacity-bar),
   #terminal-shell:not([data-mode="editor"]) #editor-keys,
   #terminal-shell[data-mode="editor"] #dashboard-keys,
   #terminal-shell[data-tab="sbx"] :is(#dashboard-keys, #editor-keys, #workspace-note),
@@ -212,7 +208,6 @@
         <button type="button" data-view="schedule" aria-pressed="false"><kbd>3</kbd> Schedule</button>
       </div>
     </div>
-    <div class="metrics" id="metrics" aria-label="Workspace summary"></div>
     <div class="capacity-bar">
       <button type="button" class="button" id="capacity-key"><kbd>c</kbd> Host capacity</button>
       <span class="subtext" id="capacity-summary"></span>
@@ -505,15 +500,7 @@
     return element
   }
 
-  function metric(label, count) {
-    const display = node("div", "metric")
-    display.append(node("strong", "", String(count)), node("span", "", label))
-    return display
-  }
-
-  function renderMetrics() {
-    $("metrics").replaceChildren(...queueGroups.map(([label, states]) =>
-      metric(label, tasks.filter(({state}) => states.includes(state)).length)))
+  function renderCapacity() {
     const free = available()
     $("capacity-summary").textContent = free
       ? "Sample available · CPU " + free.cpu + " cores · RAM " + free.ram + " GiB · Disk " + free.disk + " GiB"
@@ -591,7 +578,7 @@
 
   function renderQueueEvent() {
     admitQueue()
-    renderMetrics()
+    renderCapacity()
     renderWork()
     renderInspector()
   }
@@ -1327,7 +1314,7 @@
   renderChanges()
   renderSidebar()
   admitQueue()
-  renderMetrics()
+  renderCapacity()
   renderWork()
   renderInspector()
 </script>
