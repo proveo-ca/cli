@@ -155,8 +155,12 @@ func gatherCleanInventory(deep bool) (clean.Inventory, error) {
 	inv := gatherLegacyDocker()
 
 	pinned := sandbox.BrowserProfileRuns()
+	instances, err := sandbox.InstanceRuns(run.StateDir())
+	if err != nil {
+		return inv, err
+	}
 	for _, sid := range stateSessions() {
-		if pinned[sid] {
+		if pinned[sid] || instances[sid] {
 			continue
 		}
 		inv.StateDirs = append(inv.StateDirs, sid)

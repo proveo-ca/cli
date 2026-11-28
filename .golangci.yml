@@ -13,6 +13,8 @@ run:
 linters:
   # Default set: errcheck, govet, ineffassign, staticcheck, unused
   default: standard
+  enable:
+    - forbidigo
   settings:
     errcheck:
       # CLI / test noise: status lines and best-effort Close are intentional.
@@ -22,6 +24,30 @@ linters:
         - fmt.Fprintln
         - (*os.File).Close
         - (io.Closer).Close
+    forbidigo:
+      # One identity: colour comes from ui.Theme and ui.Styles (_spec/_conventions/tui-design-language.puml).
+      forbid:
+        - pattern: ^lipgloss\.Color$
+          msg: paint a ui.Tone through ui.Theme or ui.Styles
+        - pattern: ^ui\.Identity
+          msg: the identity palette is layer 0; paint a ui.Tone
+  exclusions:
+    rules:
+      - path: ^internal/ui/
+        linters: [forbidigo]
+      - path: _test\.go$
+        linters: [forbidigo]
+      # colour ban allow-list, mirrored by colourAllowList in internal/contract/tui_identity_test.go
+      - path: ^cmd/proveo/help\.go$
+        linters: [forbidigo]
+      - path: ^internal/choiceui/dialog_run\.go$
+        linters: [forbidigo]
+      - path: ^internal/dashboard/highlight\.go$
+        linters: [forbidigo]
+      - path: ^internal/dashboard/items\.go$
+        linters: [forbidigo]
+      - path: ^internal/dashboard/view\.go$
+        linters: [forbidigo]
 
 formatters:
   enable:

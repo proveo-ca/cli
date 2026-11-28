@@ -117,57 +117,47 @@ func (p *probeMCP) guestURL() string {
 	return fmt.Sprintf("http://host.docker.internal:%d/mcp", p.port)
 }
 
-// mcpClientPy speaks streamable HTTP: initialize, initialized, tools/list, then tools/call when argv[3] is "call".
-const mcpClientPy = `import json, sys, urllib.request
-url, token, want_call = sys.argv[1], sys.argv[2], sys.argv[3] == "call"
-sid = None
-def rpc(i, method, params=None):
-    global sid
-    body = {"jsonrpc": "2.0", "method": method}
-    if i is not None:
-        body["id"] = i
-    if params is not None:
-        body["params"] = params
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json, text/event-stream")
-    if token:
-        req.add_header("Authorization", "Bearer " + token)
-    if sid:
-        req.add_header("Mcp-Session-Id", sid)
-    with urllib.request.urlopen(req, timeout=60) as r:
-        sid = r.headers.get("Mcp-Session-Id") or sid
-        raw = r.read().decode()
-    if i is None:
-        return None
-    if raw.lstrip().startswith("{"):
-        return json.loads(raw)
-    for line in raw.splitlines():
-        if line.startswith("data:"):
-            m = json.loads(line[5:])
-            if m.get("id") == i:
-                return m
-    raise SystemExit("no response to %s: %r" % (method, raw[:400]))
-init = rpc(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "proveo-e2e", "version": "1"}})
-print("SERVER=" + json.dumps(init.get("result", {}).get("serverInfo")))
-rpc(None, "notifications/initialized")
-tools = [t["name"] for t in rpc(2, "tools/list", {})["result"]["tools"]]
-print("TOOLS=" + ",".join(tools))
-if want_call:
-    name = next((t for t in tools if t.endswith("` + probeTool + `")), None)
-    if not name:
-        raise SystemExit("no ` + probeTool + ` among " + ",".join(tools))
-    res = rpc(3, "tools/call", {"name": name, "arguments": {}})
-    print("CALL=" + "".join(c.get("text", "") for c in res["result"]["content"]))
+const mcpClientJS = `const [url, token, mode] = process.argv.slice(2);
+let session;
+async function rpc(id, method, params) {
+  const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
+  if (token) headers.Authorization = "Bearer " + token;
+  if (session) headers["Mcp-Session-Id"] = session;
+  const response = await fetch(url, { method: "POST", headers,
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+    signal: AbortSignal.timeout(60000) });
+  if (!response.ok) throw Error(method + ": HTTP " + response.status);
+  session = response.headers.get("Mcp-Session-Id") || session;
+  const raw = await response.text();
+  if (id === undefined) return;
+  if (raw.trimStart().startsWith("{")) return JSON.parse(raw);
+  for (const line of raw.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    const item = JSON.parse(line.slice(5));
+    if (item.id === id) return item;
+  }
+  throw Error("no response to " + method + ": " + raw.slice(0, 400));
+}
+const init = await rpc(1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "proveo-e2e", version: "1" } });
+console.log("SERVER=" + JSON.stringify(init.result?.serverInfo ?? null));
+await rpc(undefined, "notifications/initialized");
+const tools = (await rpc(2, "tools/list", {})).result.tools.map(tool => tool.name);
+console.log("TOOLS=" + tools.join(","));
+if (mode === "call") {
+  const name = tools.find(tool => tool.endsWith("` + probeTool + `"));
+  if (!name) throw Error("probe tool unavailable: " + tools.join(","));
+  const result = await rpc(3, "tools/call", { name, arguments: {} });
+  console.log("CALL=" + result.result.content.map(item => item.text || "").join(""));
+}
 `
 
-// mcpClientScript is a bash line that runs mcpClientPy against url ($-expansions allowed) with token.
+// mcpClientScript is a bash line that runs mcpClientJS against url ($-expansions allowed) with token.
 func mcpClientScript(url, token string, call bool) string {
 	mode := "list"
 	if call {
 		mode = "call"
 	}
-	return fmt.Sprintf("python3 - %s %s %s <<'PY'\n%sPY\n", url, token, mode, mcpClientPy)
+	return fmt.Sprintf("node --input-type=module - %s %s %s <<'JS'\n%sJS\n", url, token, mode, mcpClientJS)
 }
 
 // agentExec runs script in sandbox name as the agent user, bounded by d.
@@ -368,8 +358,8 @@ func makeTempMounts(t *testing.T, create []string) {
 
 // TestTheProbeMCPServerAnswersTheSandboxClient runs the in-sandbox client against the probe on the host.
 func TestTheProbeMCPServerAnswersTheSandboxClient(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not on PATH")
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not on PATH")
 	}
 	p := startProbeMCP(t)
 	url := fmt.Sprintf("http://127.0.0.1:%d/mcp", p.port)

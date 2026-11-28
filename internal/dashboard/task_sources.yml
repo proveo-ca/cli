@@ -1,0 +1,33 @@
+# SPEC: _spec/internal/dashboard/task-picker.puml
+# proveo's default task sources; dashboard.yml tasks.sources replaces them.
+sources:
+  - name: Plans
+    kind: plans
+    dir: _spec/_plans
+    depth: 1
+    extensions: [.puml, .md]
+    hide_status: [implemented, done, deferred, superseded, retired]
+    branch: "{{slug}}"
+    prompt: >-
+      Implement the plan in {{path}} ({{title}}).
+      Read it first, then follow the repository's AGENTS.md.
+
+  - name: Pull requests
+    kind: github
+    search: "author:@me"
+    stacks: true
+    branch: "{{branch}}"
+    prompt: |-
+      Continue {{title}}:
+      {{prs}}
+      Resolve what blocks each merge ({{blockers}}), keep every branch on the one below it, and push.
+      Follow the repository's AGENTS.md.
+
+  - name: Linear
+    kind: linear
+    token_var: LINEAR_API_KEY
+    hide_states: [completed, canceled]
+    branch: "{{id}}"
+    prompt: >-
+      Work on {{id}} "{{title}}" ({{url}}), {{status}} in Linear.
+      Read the issue, then follow the repository's AGENTS.md.

@@ -242,11 +242,11 @@ func ccConfig(s *imagetest.Suite, img ccImages) {
 
 	s.Contains("[standalone] hasCompletedOnboarding=true", image, "cat /home/claude/.claude.json", `"hasCompletedOnboarding": true`)
 	s.Matches("[standalone] mcpServers is empty", image,
-		`python3 -c "import json; c=json.load(open('/home/claude/.claude.json')); print(len(c['projects']['/workspace']['mcpServers']))"`, "^0$")
+		`jq -r '.projects["/workspace"].mcpServers | length' /home/claude/.claude.json`, "^0$")
 	s.Success("[standalone] ~/.claude/settings.local.json exists", image, "test -f /home/claude/.claude/settings.local.json")
 	s.Success("[standalone] /app/.claude/settings.local.json exists", image, "test -f /app/.claude/settings.local.json")
 	s.Success("[standalone] settings.local.json is valid JSON", image,
-		`python3 -c "import json; json.load(open('/home/claude/.claude/settings.local.json'))"`)
+		`jq empty /home/claude/.claude/settings.local.json`)
 
 	s.Success("[standalone] every subagent in the claudecode roster is baked in", image, `set -eu
    roster="$(jq -r ".claudecode[]" /opt/proveo/subagents/_roster.json)"

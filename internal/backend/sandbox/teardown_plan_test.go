@@ -274,7 +274,7 @@ func TestATerminalGetsALiveLinePerStepAndNoStartLines(t *testing.T) {
 		t.Errorf("a terminal received a start line as well as the live line:\n%q", screen)
 	}
 	erased := strings.LastIndex(screen, "\r\x1b[K")
-	if erased < 0 || strings.Contains(screen[erased:], "step ") || !strings.HasSuffix(screen, "sb\x1b[38;2;138;138;138m — removed\x1b[0m\n") {
+	if erased < 0 || strings.Contains(screen[erased:], "step ") || !strings.HasSuffix(screen, "sb"+ui.ANSI(ui.ColorMuted)+" — removed\x1b[0m\n") {
 		t.Errorf("teardown left its live line on the terminal, or did not close on the removal: %q", screen[max(0, len(screen)-120):])
 	}
 }

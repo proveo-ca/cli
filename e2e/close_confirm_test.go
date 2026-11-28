@@ -52,8 +52,9 @@ func TestHeadedCtrlCAsksBeforeRemoving(t *testing.T) {
 
 func headedCtrlCAsksBeforeRemoving(t *testing.T, target, filter, key string) {
 	requireTmux(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
 	}
 	binDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(binDir, "sbx"), []byte(fakeSbx(sbx.MinVersion)), 0o755); err != nil {
@@ -82,7 +83,10 @@ func headedCtrlCAsksBeforeRemoving(t *testing.T, target, filter, key string) {
 		"PROVEO_WIZARD=off",
 		"PROVEO_STDIN_FILTER="+filter,
 		"PROVEO_CLOSE_TEST_LOG="+calls,
+		"FIXTURE_RAW_CLOSE_EXE="+exe,
+		"PROVEO_CLOSE_TEST_WORK="+work,
 		"PROVEO_HOME="+home,
+		"PROVEO_STATE_ROOT="+t.TempDir(),
 		"PROVEO_MOUNT_GH_CONFIG=0",
 		"PATH="+os.Getenv("PATH"),
 		proveoBin, "run", target,
@@ -110,7 +114,7 @@ func headedCtrlCAsksBeforeRemoving(t *testing.T, target, filter, key string) {
 		"Stay",
 		"Remove",
 		"Interrupt agent",
-		"enter press",
+		"↵ press",
 	} {
 		if !strings.Contains(screen, want) {
 			t.Errorf("confirm modal missing %q:\n%s", want, screen)
@@ -155,6 +159,7 @@ func fakeSbx(version string) string {
 
 const fakeSbxScript = `#!/bin/sh
 [ -z "${PROVEO_CLOSE_TEST_LOG:-}" ] || printf '%s\n' "$*" >> "$PROVEO_CLOSE_TEST_LOG"
+instance="${PROVEO_CLOSE_TEST_LOG}.vm"
 case "$1" in
   version)
     if [ "$2" = "--json" ]; then
@@ -163,16 +168,32 @@ case "$1" in
       printf '%s\n' 'sbx version: vVERSION deadbeef'
     fi
     ;;
+  create)
+    shift
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --name) shift; name=$1 ;;
+        */sbx/kit/proveo-*) agent=${1##*/} ;;
+      esac
+      shift
+    done
+    printf '%s %s\n' "$name" "$agent" > "$instance"
+    ;;
+  ls)
+    if [ -r "$instance" ]; then
+      read -r name agent < "$instance"
+      if [ "$2" = "--json" ]; then
+        printf '[{"name":"%s","agent":"%s","id":"vm-test","status":"stopped","workspaces":["%s"]}]\n' "$name" "$agent" "$PROVEO_CLOSE_TEST_WORK"
+      else
+        printf 'SANDBOX AGENT STATUS\n%s %s stopped\n' "$name" "$agent"
+      fi
+    elif [ "$2" = "--json" ]; then
+      printf '[]\n'
+    fi
+    ;;
+  rm) rm -f "$instance" ;;
   run)
-    exec python3 -u -c '
-import sys, tty
-tty.setraw(sys.stdin.fileno())
-print("SBX_HEADED_READY", flush=True)
-while True:
-    b = sys.stdin.buffer.read(1)
-    if not b: break
-    print("KEY:%02x" % b[0], flush=True)
-'
+    exec env FIXTURE_RAW_CLOSE=SBX_HEADED_READY "$FIXTURE_RAW_CLOSE_EXE" -test.run='^TestLiveRawKeysHelper$'
     ;;
 esac
 exit 0

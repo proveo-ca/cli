@@ -24,8 +24,28 @@
 ' covers: internal/contract/config_sync_test.go
 ' covers: internal/contract/tool_sync_test.go
 ' covers: internal/contract/state_sync_test.go
+' covers: internal/backend/sandbox/history.go
+' covers: internal/proveohome/history*.go
+' covers: internal/run/instances.go
+' covers: e2e/dashboard_history_sbx_test.go
 ' see: _spec/_plans/session-continuity.puml (decision 1, the direction)
 ' see: _spec/internal/sbx/vendored-kit-deltas.puml (DELTA 3)
+'
+' INSTANCE CHECKPOINTS
+' Managed teardown calls the existing state-save path before recording
+' a host-owned checkpoint for Codex and Claude Code. The checkpoint
+' admits complete JSON events carrying the instance cwd and native ID.
+' Stage and checksum the transcript before publishing it and advancing
+' head. A failed save keeps the last good head and retains a surviving VM.
+' An isolated run attempts a periodic save every two minutes. Git carry
+' records a separate outcome and supplies the commit for rebuilt resume.
+' An exact ID selects that checkpoint; --continue uses the instance head.
+' Read-only print mode selects the ID without restoring the archive.
+' Raw sbx removal, full disks, permissions and abrupt crashes can prevent
+' a final save. A raw stop has no managed exit guarantee.
+' Cursor and Hermes portable restore remain unqualified. OpenCode has
+' its own engine history contract and independent delivery branch.
+' The 1:1 direction discussed below was superseded by instance-lifecycle.
 '
 ' ── DECIDED 2026-11-14: CONTINUITY FOLLOWS SBX; THE STOPGAP ENDS THE LEAK ─
 ' The owner's three decisions, taken after the stopgap below was built:

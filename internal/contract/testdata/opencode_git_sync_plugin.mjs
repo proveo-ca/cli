@@ -9,8 +9,9 @@ import { test } from "node:test"
 import vm from "node:vm"
 
 const source = await readFile(new URL("../../../packages/lib/hooks/proveo-git-sync-turn.js", import.meta.url), "utf8")
+const activitySource = await readFile(new URL("../../../packages/lib/hooks/proveo-activity.js", import.meta.url), "utf8")
 
-async function load(spawnImpl, env = {}, kill = () => {}) {
+async function load(spawnImpl, env = {}, kill = () => {}, src = source) {
   const errors = []
   const context = vm.createContext({
     process: { env, kill },
@@ -18,7 +19,7 @@ async function load(spawnImpl, env = {}, kill = () => {}) {
     setTimeout,
     console: { error: (...args) => errors.push(args.map(String).join(" ")) },
   })
-  const module = new vm.SourceTextModule(source, { context })
+  const module = new vm.SourceTextModule(src, { context })
   await module.link((name) => {
     const exports = name === "node:child_process" ? { spawn: spawnImpl } : { isAbsolute }
     return new vm.SyntheticModule(Object.keys(exports), function () {
@@ -234,5 +235,52 @@ printf '%s\\n' "$PWD" "$GIT_TERMINAL_PROMPT" "$PROVEO_GIT_SYNC_DIALECT" > comple
     await cleanup()
     await rm(directory, { recursive: true, force: true })
   }
+  assert.deepEqual(errors, [])
+})
+
+test("OpenCode v2 execution events end a turn the way session.idle did", async () => {
+  const stream = feed()
+  const { calls, stub } = children()
+  const { plugin, errors } = await load(stub)
+  const cleanup = plugin.setup({ event: stream })
+  const run = (type) => ({ type, data: { sessionID: "v2" }, location: { directory: "/v2" } })
+  stream.push(run("session.execution.started"))
+  stream.push(run("session.execution.succeeded"))
+  stream.push(run("session.execution.succeeded"))
+  await until(() => stream.received === 3 && calls.length === 1)
+  assert.equal(calls[0].options.cwd, "/v2")
+  calls[0].child.emit("close", 0)
+  stream.push(run("session.execution.started"))
+  stream.push(run("session.execution.interrupted"))
+  await until(() => calls.length === 2)
+  calls[1].child.emit("close", 0)
+  await cleanup()
+  assert.deepEqual(errors, [])
+})
+
+test("the activity plugin marks busy while any session executes, then idle", async () => {
+  const stream = feed()
+  const { calls, stub } = children()
+  const { plugin, errors } = await load(stub, {}, () => {}, activitySource)
+  assert.equal(plugin.id, "proveo-activity")
+  const cleanup = plugin.setup({ event: stream })
+  const ev = (type, sessionID) => ({ type, data: { sessionID } })
+  stream.push(ev("session.execution.started", "a"))
+  stream.push(ev("session.execution.started", "b"))
+  stream.push(ev("session.text.delta", "a"))
+  stream.push(ev("session.execution.succeeded", "a"))
+  stream.push(ev("session.execution.failed", "b"))
+  stream.push(status("c", "busy"))
+  stream.push(status("c", "idle"))
+  await until(() => stream.received === 7)
+  assert.deepEqual(calls.map((c) => Array.from(c.args)), [
+    ["activity", "opencode", "busy"],
+    ["activity", "opencode", "idle"],
+    ["activity", "opencode", "busy"],
+    ["activity", "opencode", "idle"],
+  ])
+  assert.equal(calls[0].command, "/usr/local/bin/proveo-entrypoint")
+  assert.equal(calls[0].options.stdio, "ignore")
+  await cleanup()
   assert.deepEqual(errors, [])
 })

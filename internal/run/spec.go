@@ -84,6 +84,10 @@ type ChoiceSpec struct {
 
 // BackendSpec is which backend won, and the add-ons that decision enables.
 type BackendSpec struct {
+	Instance                     *sandbox.Instance
+	InstanceWork, InstanceBundle string
+	RestoreTip                   string
+
 	Clone        bool
 	CloneOff     string
 	CloneSource  workspace.WorktreeSource // set when a linked worktree clones through its main worktree

@@ -1,0 +1,419 @@
+@startuml WorkspaceInstances
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: define independent sandbox instances and the task dashboard for one working directory
+' covers: cmd/proveo/main.go
+' covers: go.mod
+' covers: internal/ui/ui.go
+' covers: internal/choiceui/screen.go
+' covers: internal/ptyproxy/ptyproxy.go
+' covers: internal/run/run.go
+' covers: internal/sbx/run.go
+' covers: internal/backend/sandbox/sandbox.go
+' covers: internal/backend/sandbox/teardown.go
+' covers: internal/backend/sandbox/opencode_engine.go
+' covers: internal/backend/sandbox/agent_home.go
+' covers: internal/proveohome/proveohome.go
+' covers: internal/schedule/runner.go
+' covers: internal/results/results.go
+' covers: cmd/proveo/dashboard.go
+' covers: internal/dashboard/**
+' covers: internal/choiceui/attach_confirm.go
+' covers: internal/schedule/dashboard_job.go
+' covers: internal/schedule/phase.go
+' covers: internal/run/queue.go
+' covers: internal/run/queue_test.go
+' covers: cmd/proveo/queue_run.go
+' covers: cmd/proveo/queue_run_test.go
+' covers: internal/schedule/attended_test.go
+' covers: e2e/dashboard_native_tmux_test.go
+' covers: e2e/dashboard_sbx_tmux_test.go
+' status: implemented. The HTML prototype that chose the layout (index.html,
+' served by vite) was retired 2026-11-28 once the decisions were taken; the
+' native Go dashboard implements Review queue with lower-right task details.
+' Task graph, Schedule and alternate details are keyboard-selectable.
+' Stock sbx parity and Fresh still need an authenticated guest run.
+' Join scheduled tasks by stable job keys or explicit instance IDs.
+' Ad hoc titles can repeat and do not establish task ownership.
+' New scheduled instances mount a private per-attempt handoff directory
+' for report.md so sibling jobs never consume each other's reports.
+' Current lifecycle: _spec/internal/sbx/instance-lifecycle.puml
+' Current state transfer: _spec/internal/sbx/state-sync.puml
+' Earlier retention direction: _spec/_plans/session-continuity.puml
+' Resource admission: _spec/internal/schedule/resource-queue.puml
+' Delivery order and verification: _spec/_plans/dashboard-delivery.puml
+'
+' IDENTITY AND ISOLATION
+' Keep canonical effective pwd as the workspace key, with explicit input and
+' scope taking precedence. List any number of logical instances under that
+' workspace, subject to machine capacity and scheduling limits. Generate an
+' immutable instance ID for each new instance. Store target, optional label,
+' optional task reference and selected Git base alongside it. Name the VM
+' agent-task-shortid, at most 32 ASCII characters in total. Use a ticket key
+' or slug for the task and adhoc when absent. Reserve the agent and suffix
+' before truncating the task slug. Allocate a different suffix if a name
+' already exists. Keep the allocated name when the title changes, and bind
+' the instance record to the daemon-reported VM ID. Discover new Proveo VMs
+' from their records and use the proveo- prefix for legacy discovery.
+' Example: codex-prv-284-history-83f91a.
+' Every launch creates a separate attempt ID. A task can own several instances.
+' Sample CLI: proveo run codex --new --task PRV-284; proveo run codex --instance ID.
+' One host lease per instance covers restore through final save and removal.
+' Different instances run concurrently. One native session has one writer.
+' Git work uses one private sbx clone per instance from a recorded commit.
+' Check out the recorded base inside the guest and give it its own branch.
+' Resolve the Git source separately from the agent cwd. Preserve any scope
+' restrictions when preparing the guest checkout.
+' Fetch the base by ref or stage a Git bundle when the ref is unavailable.
+' Carry results under per-attempt refs. Keep host edits in the host checkout.
+' Use an explicit snapshot when the operator wants uncommitted input.
+' Seed isolated writes from a snapshot for a non-Git directory. Export
+' results under the attempt ID.
+' Shared writable direct mode permits one writer over overlapping host paths.
+' Reject a second writer or require a private copy. Distinct VMs can still
+' share dependencies through read-only mounts and contend for host ports.
+' CHOSEN BRANCH (2026-11-27): an instance records WorkBranch when its run passed
+' --branch; Branch() then names it instead of proveo/<name>, and allocation
+' fetches it from origin and starts from its tip when origin has it. A proveo/*
+' branch's upstream is itself in the checkout, so it stays local.
+' LINKED SHARES (2026-11-27, chosen "Always writable"): an escaping symlink the
+' workspace plan mounts, such as the monorepo's _spec -> ~/Syncd/pluvo/_spec,
+' keeps the workspace's mode in an isolated instance instead of being forced
+' read-only; the seed demands _spec writable, so the forced mode made every new
+' instance exit 1 ("_spec is read-only, so edits cannot reach the host"). Parallel
+' instances may edit the same spec file; Syncd keeps conflict copies. A run with
+' --read-only-shares (reviews) still mounts them read-only (instanceMounts).
+'
+' RESUME AND RETENTION
+' Save instance records and a host index under the existing state root.
+' Resume identifies the instance and the exact harness-native session ID.
+' Restore the selected state and Git ref into a clean guest before launch.
+' Each instance records its last verified native session. An explicit
+' native session ID can select an earlier session in that instance.
+' Reuse a matching VM only when its ID and launch receipt match and it has
+' no live owner. A disposable VM can resume the same logical instance.
+' Keep the current single-instance shortcut where one candidate exists.
+' With several candidates, --continue opens a picker, or reports required
+' selection in noninteractive use. Scheduled jobs pin an instance or ask
+' for a new one. Migrate a legacy workspace key into one default instance.
+' Use only a trusted listing when binding that record to an existing VM.
+'
+' HISTORY ON MANAGED EXIT
+' Record the attempt before launch. After any managed agent exit, including
+' a failed attempt or requested stop, try to publish its native session
+' checkpoint and result. Git carry and history save have their own status.
+' Export per instance into private staging. Verify manifest and payload,
+' then fsync and atomically publish an immutable checkpoint on the host.
+' Update the instance head after publication. Retry is idempotent by
+' attempt and checkpoint ID. An older attempt cannot replace a newer head.
+' Periodic safe checkpoints reduce loss on host crash, forced kill or VM
+' deletion. A failed final save leaves the last good checkpoint and keeps
+' the VM for recovery when it still exists. Show retry needed or missing.
+' Disk full, guest unreachability and permission errors can block an export.
+' Preserving history and carrying work are independent. Remove the VM only
+' after both have succeeded or the operator explicitly discards the residue.
+' Raw sbx stop or removal can bypass the managed exit path. Reconcile the
+' daemon inventory and try to recover surviving VMs. Raw sbx removal
+' before a checkpoint can destroy the only copy. Unmanaged sandboxes have
+' no Proveo session contract. Deduplicate repeated exports on retry.
+'
+' HARNESS EXPORT CONTRACTS
+' Claude Code: carry this instance's projects and verified native session
+' records. sessions/ contains live process registrations. Keep it and
+' daemon locks, sockets and status files in the guest.
+' Codex: persist rollout JSONL and verify native resume from the host index.
+' Probe whether the pinned version needs SQLite metadata restored as well.
+' Cursor: verify its pinned native chat export and resume format before
+' offering resume from a rebuilt VM. Show transcript availability separately.
+' OpenCode: existing replacement exports the engine database as a SQLite
+' backup. OpenCode v2 mixes credentials and history in that database. Use
+' native session export/import for portable resume. A local v2.4.1 probe
+' exported a session as JSON, imported it into a blank store at another
+' directory, and found it by the original ID. The sanitized export redacted
+' the title. Test message and child-session round trips in sbx before
+' replacing retained engines. Keep full resume archives private and use
+' redacted evidence for review. The session list filters by project, so
+' check for the native ID before treating an empty list as data loss.
+' Hermes: current durable HERMES_HOME is shared. Parallel copies need a
+' per-instance home so state.db and gateway sockets have a single owner.
+' Decide separately how personal memory can travel between instances.
+' Across all harnesses, validate native IDs, paths and restore version.
+' Keep credentials, auth stores and live process state out of the archive.
+'
+' DASHBOARD AND HANDOFF
+' Bare proveo on an interactive terminal opens Proveo and sbx tabs. Keep
+' help available via --help and on noninteractive invocation. Show the
+' effective pwd next to the tabs and keep the switch hint visible. Run
+' stock sbx in a PTY sized to its content pane. The multiplexer handles
+' Ctrl+G then Tab switches views. Ctrl+C in Proveo opens the shared
+' confirmation card with Cancel selected. Exit closes the dashboard.
+' Ctrl+C in the sbx view exits directly.
+' View switches keep the outer dimensions and the running child.
+' Match the left-pane column count after observing the child divider.
+' Before a divider is visible, use 30 percent of the available columns.
+' Scroll within each pane. Resize
+' the child PTY on actual terminal resize.
+' Bubble Tea v2 owns the model, input and outer alternate screen. Lip Gloss
+' v2 composes the panes using the existing internal/ui identity roles.
+' Bubbles v2 key and help draw the bottom key bar from the active bindings.
+' Follow the sbx footer pattern with a bright key and a muted action.
+' Show ↵ Attach in the dashboard footer and ↵ Open file for file rows.
+' Use cyan for the shortcut and muted text for the action.
+' Mark selection with a cyan cursor and a subtle tint. Keep status colors
+' visible. Put the HTML preview's layout picker, task detail options,
+' and implementation guide below the terminal frame. Separate task groups
+' and panes with rules. Keep task rows compact and graph nodes unboxed.
+' Reuse creack/pty and x/term primitives on Unix. Evaluate Charm x/vt for
+' the child screen buffer, alternate screen, cursor, and terminal replies.
+' The native Go dashboard pins x/vt with Ultraviolet and ANSI.
+' A local probe exercised alternate-screen entry, restore and resizing.
+' [Unverified] Native sbx behavior under the embedded emulator.
+' Keep native output within the pane and route its replies to the child.
+' Windows needs a ConPTY adapter. The existing ptyproxy Windows path is a
+' stub. Show the embedded sbx view when a platform has an adapter.
+' A confirmed exit and an external SIGINT take the same shutdown path. Close
+' the dashboard-owned sbx client with a bounded wait, restore terminal
+' state, and exit with status 130. Keep running sandboxes and scheduled jobs.
+' TASK DETAILS, MEASURED AND FIXED 2026-11-25 (macOS, sbx v0.54.0):
+'   usage ..... the probe pinned -u agent -w <computed guest path> and ran only
+'               for instances with a Workdir and Host, so a discovered sandbox
+'               always read "—". Now: sbx exec SANDBOX -- sh -c probe, no user
+'               or workdir, behind verifiedGuest (sbx ls says running) so a
+'               stopped VM never restarts; CPU cores busy of nproc, RAM used of
+'               MemTotal, disk, /proc/uptime. A discovered sandbox is Guest with
+'               the host's name and its first sbx ls workspace as Workdir.
+'               sbx inspect and sbx ls report no usage (checked).
+'   files ..... Files listed the host checkout. Now the task's sandbox:
+'               guest git ls-files (find outside git), else git ls-tree of the
+'               carried tip, else of the base. Changes read the guest's diff
+'               against the base plus untracked files, or its git status.
+'               Guest git runs with GIT_OPTIONAL_LOCKS=0: the agent works there.
+'   base ...... Changes are a PR's view: the diff from where the branch left its
+'               base, uncommitted work and untracked files included, the way
+'               `git diff origin/dev...HEAD` reads (never HEAD..origin/dev, which
+'               adds what landed on dev since). The base is, in order: the PR's
+'               baseRefName from gh; else the candidate with the fewest commits
+'               since its merge base among the host repo's origin/HEAD and
+'               origin/dev, develop, main, master, trunk, skipping origin/<own
+'               branch>; else the recorded launch commit. A PR found later
+'               re-reads the changes against its base.
+'               MEASURED 2026-11-25: inside an sbx clone origin is GitHub but
+'               origin/HEAD names the task's own branch (rs-ashby-tipalti), so
+'               the clone's default is never trusted; origin/dev was 11 commits
+'               back, origin/main 55. The dashboard read 33 files vs origin/dev;
+'               gh pr view 3949 reported baseRefName dev and 33 changedFiles.
+'   PR ........ gh pr list --head <branch> --state all (fork PRs dropped, open
+'               first), once per working branch; every branch keeps its PR, so a
+'               stacked pair shows both. No commit lookup: gh api .../commits/
+'               <sha>/pulls named PRs that merely contain a shared commit.
+'   work ...... the branches come from where the agent works, not from the
+'               mount: sbx exec starts in the workspace, so the probe cds to /
+'               first or it counts itself. It reads /proc/*/cwd, ranks the git
+'               top levels of claude, codex, opencode, cursor-agent and hermes
+'               processes first, the rest by process count, and lists each
+'               top's nested worktrees after it; the mount is the fallback. The
+'               carried proveo/<instance> branch is asked last.
+'               MEASURED 2026-11-25, five running sandboxes: 1b3fcb7f claude in
+'               worktrees/dev on rs-cloud-accounts-ui (#3975) with nested
+'               .claude/worktrees/rs-cloud-revoke-reach (#3974), its mount on
+'               rs-ashby-tipalti (#3949, another sandbox's PR) holding only the
+'               probe; 9995ea77 worktrees/hotfix rs-projector (#3976);
+'               36915573 worktrees/main rs-teamwork (#3937); 8abaedd2 monorepo
+'               rs-ashby-tipalti (#3949). The usage probe carries this read, so
+'               every running sandbox is sampled in turn on a 2 s tick: the
+'               selected one when its sample is 5 s old, else the next one
+'               whose sample is 15 s old, else none.
+'   activity .. the same probe reads each agent's own state and proveo's hook
+'               markers; idle and waiting agents move to Attention required.
+'               See _spec/packages/lib/agent-activity.puml.
+'               No gh or no auth shows "install gh for PR status" or
+'               "gh auth login for PR status", as Claude Code's footer does.
+'               Cached a minute per task, branch and tip. MEASURED: PR #3949
+'               found for a discovered monorepo sandbox through its guest branch.
+'               Sources: Claude Code CHANGELOG 2.1.20, 2.1.145, 2.1.248, 2.1.251,
+'               2.1.326 and code.claude.com/docs/en/interactive-mode#pr-review-status;
+'               Codex codex-rs/tui/src/branch_summary.rs (gh pr view, then the
+'               head commit's pulls); OpenCode shows the branch only;
+'               cli.github.com/manual/gh_pr_list.
+'   PR scan ... the PR's title, body, head branch and files name the work.
+'               Linear: linear.app links, closing words (Fixes, Closes, Resolves,
+'               Part of, Related to, Refs), the title, a user/abc-123 branch,
+'               then bare IDs in prose ("Requested in CONN-116 and CONN-114"),
+'               look-alikes such as UTF-8 and SHA-256 dropped. The first is
+'               fetched from Linear when LINEAR_API_KEY is set. Plan: the body's
+'               "Plan: <link or path>" line, which AGENTS.md now asks every PR
+'               description to end with; else a _spec/_plans path or link; else
+'               a changed _spec/_plans file. Any .md is a plan. A discovered
+'               sandbox takes its PR's title. Every card's PR is read one at a
+'               time and cached a minute. MEASURED: PR #3949 gave its title,
+'               CONN-116 and CONN-114.
+'   ticket .... a sandbox name like proveo-claudecode-36915573 read as ticket
+'               CLAUDECODE-36915573; a ticket label now needs a real ticket.
+' Restore the start termios with an input flush (TCSAFLUSH), not a plain set.
+' MEASURED 2026-11-25 on macOS: Ctrl+C on the sbx tab quit with terminal
+' replies still queued, the canonical restore set PENDIN, and the shell would
+' retype them; TestNativeDashboardTabsOnTmux saw it as stty drift.
+' If the sbx client exits independently, show its status in Proveo. Never
+' start a fallback shell in the sbx pane.
+' Proveo joins agent, Git and task data. Discover running sandboxes that
+' report effective pwd as their primary workspace. A discovered row has
+' no Proveo owner, task, or attach action until a separate record links it.
+' Local plans and explicit ticket URLs remain valid task sources.
+' The host dashboard reads Linear GraphQL using LINEAR_API_KEY.
+' A ticket URL or key selects its issue. A key in a branch or task name
+' links only after the API confirms the issue. The existing scheduler and result store
+' supply attempt outcomes, time budget, reports and carried refs.
+' Task details pairs the Git provider and task source in its heading.
+' Lead task details with CPU utilization, RAM in use, and disk in use for
+' the selected attempt's sandbox. Show the last observed sample after
+' exit. Show placeholders for absent samples and distinguish requested
+' resources from measured usage.
+' Read the selected running sandbox on selection and every 5s on the
+' Proveo tab. The same probe discovers Fresh while details are closed.
+' Resolve its recorded sbx ID on the owning host.
+' Bound reads to one in flight and discard replies for an earlier selection.
+' The sbx inventory reader verifies local VM identity. The live probe uses
+' ps, /proc/meminfo and df in the recorded guest workdir as user agent.
+' Live guest verification of those measurements is pending.
+' The HTML preview polls sample telemetry.
+' Show ticket, branch, instance, sandbox, and PR above the prompt.
+' Clip the task-source description to three rows with an ellipsis. Show
+' the latest observed branch push as a local date and time in smaller,
+' muted text. Keep run controls outside the scrolling task details.
+' End task details with the initial prompt. Show the current phase in
+' the queue row.
+' Fit complete visual rows into the prompt preview. Mark overflow and
+' allow the reader to scroll the prompt.
+' New instance hands the terminal to `proveo run --queue`: the same harness
+' list (running tasks left out), scope page and choice card as `proveo run`.
+' DECIDED 2026-11-25 by the Executor: same card, queued, then attach.
+' The card's answers reach the settings cache, and the scheduled run replays
+' them under --yes; flags the operator typed, and the scope, ride as job Args.
+' The job is mode attended: no budget, no report stop, an opening prompt only
+' if one was given. It waits up to 20s for admission, then attaches; Ctrl+B d
+' returns to the dashboard. Still queued, it says why and hands back.
+' Prompt-first overnight work stays with schedule.yml and the CLI.
+' A task can supply a prompt template. Review the chosen target, sandbox
+' name, and prompt before launch. Store the submitted prompt with the
+' instance's first attempt. Task details displays that snapshot even if
+' the task or prompt file is edited later. Deliver the prompt through the
+' runner's input path.
+' The left pane defaults to Changes for the selected task. Record its
+' Git base and the exact feature-branch tip carried for the selected
+' attempt. Group paths from git diff --name-status -z -M <base> <tip>.
+' Use a slightly smaller type size in the HTML file tree to preserve
+' more of each path within its column.
+' Existing clone teardown snapshots dirty work and applies its carry to
+' refs/proveo/<run-id>/<branch>. Keep the last carried revision visible
+' during a live run, with its age. Report when no snapshot has arrived.
+' Retain referenced Git objects for as long as their reviews are visible.
+' Enter on a live scheduled task opens a confirmation using the post-exit
+' dialog style. Name the agent session and its task in the body.
+' Offer Cancel as the default and Attach to invoke
+' proveo attach <job>. Report when no job is live.
+' Return to the same dashboard view when the child client detaches.
+' Preserve selection, focus, and scroll. The HTML demo models direct
+' attach and detaches with Ctrl+B then d. The agent keeps running.
+' An existing tmux client uses its prefix then L to switch back after
+' proveo attach switches its session. Nested read-only attach and zellij
+' use the sequences documented in proveo attach --help.
+' Enter on a file opens the editor pane across the center and right.
+' Keep the tree visible. Read changed files from the recorded tip and
+' deleted files from the base. Read both sides whole and colour them: p file
+' or diff, u unified, i side by side, [ ] previous or next file; see
+' dashboard-terminal-design.puml (preview).
+' Mark deleted files in Changes with Proveo's red D and a struck-through
+' filename.
+' Preserve filename extensions and identifier suffixes when clipping.
+' Keep the full values available and show the opened file's full path.
+' Use f for Files in the effective host pwd and g for carried Changes.
+' Show the highlighted key first in f See files and g See changes.
+' Offer e (Fresh) for the selected task when its sandbox is running and
+' Fresh is available in the guest's workspace. Resolve the sandbox's
+' recorded identity and guest workdir. Launch Fresh with interactive sbx
+' exec on the owning host as the run user. Restore task details when it exits.
+' Hide the binding when the sandbox or editor is unavailable. The HTML
+' preview uses a distinct read-only file tree for the running sample.
+' Fresh's worktree-based Orchestrator stays outside this design.
+' Disk capacity and prerequisite changes admit queued tasks. Calendar jobs can
+' submit work for overnight runs. Review connects agent, ticket, spec,
+' evidence, ref and session.
+' Task stages: spec -> verification -> spec -> live verification (repeat)
+' -> upgrade -> PR -> review -> merge. Review feedback can reopen the loop.
+' Evidence attaches to the exact tested revision. A revision change reopens
+' affected verification. The operator controls posting and merging the PR.
+' View 1 groups Attention required, Working and Queued. Place n new
+' instance in an outlined item below the queued tasks. It opens the
+' same proveo run --queue by shortcut or item activation. View 2 draws
+' prerequisite-to-dependent paths and explicit extra edges. Validate IDs
+' and cycles before dispatch. Order the paths deterministically. Fold
+' long sections into a count such as "3 tasks", with expansion on demand.
+' Measure the terminal width for the path row, preserve visible endpoints,
+' and list blocker IDs separately from cropped nodes. Use vertical scroll.
+' View 3 shows outcomes and in-progress runs. Queued tasks have wait
+' reasons and no promised start time. Align timestamps in a fixed
+' column across sections. Use muted text for routine timestamps.
+' Open on Review queue with task details hidden. Show Changes or Files
+' on the left. Press t on a selected task to show its lower-right details.
+' Skip the details pane in keyboard navigation while closed or empty.
+' Close details if a refresh or view change drops the selected task.
+' Show group labels only when they contain tasks. Keep the New instance
+' card available in the empty queue. Keep view shortcuts in Help.
+' Give the task view and details independent scrolling.
+' Key 4 opens Task detail options for the current view. Choose the
+' left column, an accordion at the selected task, or a lower-right
+' split without opening a closed panel. Show the highlighted t beside
+' the task phase with See details or Hide details.
+' Press t on a different task to select it and open its details.
+' Keep the chosen position across views.
+' Anchor the accordion after the selected
+' queue row, graph chain, or schedule slot. Use the split for a selection
+' without a visible row. Give the split separate scroll regions.
+' Keep Enter on a live task bound to attach in each position. Opening a
+' file uses the shared preview and returning restores the details position.
+'
+' ACCEPTANCE FOR A FUTURE IMPLEMENTATION
+' Launch two instances from the same pwd and target. Verify disjoint Git
+' trees and native history. End them in both orders and resume each by ID
+' in a rebuilt VM. Verify failed export, force-kill, retry, stale IDs and
+' dropped VM behavior. Check that a stopped or stale instance cannot
+' remove another. Check credentials and live process files stay excluded.
+' Exercise schedule budget, review feedback, PR revision changes and a
+' trip through the native sbx tab while scheduled work keeps running.
+' Resize a terminal with a live child. Compare its embedded cursor,
+' colors and input handling with stock sbx. Verify switch preserves both
+' views and confirming exit restores the host terminal.
+' Verify Fresh targets the selected live sandbox when two share a pwd.
+' Stop a sandbox and verify its Fresh binding disappears.
+' [Unverified] Portable native checkpoint restore across every harness.
+' Upstream: https://docs.docker.com/ai/sandboxes/usage/#interactive-mode
+'           https://docs.docker.com/ai/sandboxes/usage/#reconnect-and-name-sandboxes
+'           https://docs.docker.com/ai/sandboxes/workflows/git/#clone-mode
+'           https://github.com/sinelaw/fresh#feature-overview
+
+title Proposed instance lifecycle for one working directory
+
+actor Operator as OP
+participant "proveo run or schedule" as PROVEO
+database "host instance index and checkpoints" as HOST
+participant "sbx instance" as VM
+
+OP -> PROVEO : choose task, instance or new instance
+PROVEO -> HOST : resolve pwd and acquire instance lease
+PROVEO -> VM : create private clone or reuse verified VM
+HOST -> VM : restore selected native checkpoint and Git ref
+PROVEO -> VM : start agent with exact native session ID when resuming
+opt periodic checkpoint available
+  VM -> HOST : publish immutable checkpoint for this attempt
+end
+VM --> PROVEO : managed agent exits
+PROVEO -> VM : collect Git result and session checkpoint
+alt verified checkpoint published
+  PROVEO -> HOST : advance instance checkpoint and record outcome
+  opt Git work and outputs are safe
+    PROVEO -> VM : stop or remove per instance policy
+  end
+else export failed or VM unavailable
+  PROVEO -> HOST : record recovery status and last good checkpoint
+end
+PROVEO --> OP : show evidence and resume choices
+@enduml

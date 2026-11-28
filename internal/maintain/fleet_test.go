@@ -79,9 +79,13 @@ func TestSelectTakesANameOrAll(t *testing.T) {
 	if got, err := Select(reg, " hermes "); err != nil || names(got) != "hermes" {
 		t.Errorf("Select(hermes) = %q, %v; want hermes", names(got), err)
 	}
+	if got, err := Select(reg, "opencode, base  opencode"); err != nil || names(got) != "base opencode" {
+		t.Errorf("Select(opencode, base opencode) = %q, %v; want each once, in registry order", names(got), err)
+	}
 	for _, c := range []struct{ arg, want string }{
 		{"", "no target given; pass a target name or all (targets: base, hermes, opencode)"},
 		{"nope", `unknown target "nope" — use 'all' or one of: base, hermes, opencode`},
+		{"hermes all nope", `unknown target "nope" — use 'all' or one of: base, hermes, opencode`},
 	} {
 		got, err := Select(reg, c.arg)
 		if err == nil || err.Error() != c.want || got != nil {

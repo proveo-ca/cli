@@ -1,103 +1,80 @@
-#!/usr/bin/env python3
-# SPEC: _spec/defs/opencode/engine-local-history.puml, _spec/defs/opencode/native-v2-integration.puml
+#!/usr/bin/env node
+// SPEC: _spec/defs/opencode/engine-local-history.puml, _spec/defs/opencode/native-v2-integration.puml
 
-import contextlib
-import json
-import os
-from pathlib import Path
-import shutil
-import signal
-import subprocess
-import sys
-import tempfile
+const { spawn } = require("node:child_process")
+const { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs")
+const { constants, homedir, tmpdir } = require("node:os")
+const { basename, join } = require("node:path")
 
+const valuedFlags = new Set(["--log-level", "--completions", "--server", "--session", "-s", "--prompt"])
+const bareCommands = new Set(["debug", "serve", "service", "acp", "mcp", "plugin", "upgrade", "update", "uninstall", "pair"])
+const diagnostics = new Set(["--version", "-v", "--help", "-h", "--completions"])
 
-def command_words(args):
-    words = []
-    index = 0
-    while index < len(args):
-        arg = args[index]
-        if arg == "--":
-            break
-        if arg in ("--log-level", "--completions", "--server", "--session", "-s", "--prompt"):
-            index += 2
-            continue
-        if arg.startswith("-"):
-            index += 1
-            continue
-        words.append(arg)
-        index += 1
-    return words
+function nativeCommand(binary, args) {
+  const split = args.indexOf("--")
+  const flags = args.slice(0, split < 0 ? args.length : split)
+  let command
+  for (let i = 0; i < flags.length; i++) {
+    if (valuedFlags.has(flags[i])) i++
+    else if (!flags[i].startsWith("-")) {
+      command = flags[i]
+      break
+    }
+  }
+  const add = []
+  if (command === "run" && !args.includes("--auto")) add.push("--auto")
+  if (!bareCommands.has(command) && !args.includes("--standalone") &&
+      !args.some(arg => arg === "--server" || arg.startsWith("--server="))) add.push("--standalone")
+  return [binary, ...flags, ...add, ...(split < 0 ? [] : args.slice(split))]
+}
 
+function diagnostic(args) {
+  const split = args.indexOf("--")
+  return args.slice(0, split < 0 ? args.length : split).some(arg => diagnostics.has(arg))
+}
 
-def diagnostic(args):
-    before_separator = args[:args.index("--")] if "--" in args else args
-    return any(arg in ("--version", "-v", "--help", "-h", "--completions") for arg in before_separator)
+async function throwaway(native, args) {
+  const root = mkdtempSync(join(tmpdir(), "proveo-opencode-throwaway-"))
+  const env = { ...process.env, XDG_DATA_HOME: join(root, "data"), XDG_STATE_HOME: join(root, "state"),
+    OPENCODE_DB: join(root, "data/opencode/opencode.db"), TMPDIR: join(root, "tmp") }
+  const source = env.OPENCODE_CONFIG_DIR || join(env.XDG_CONFIG_HOME || join(env.PROVEO_HOME || env.HOME || homedir(), ".config"), "opencode")
+  env.OPENCODE_CONFIG_DIR = join(root, "config/opencode")
+  let child
+  const handlers = new Map(["SIGINT", "SIGTERM", "SIGHUP"].map(sig => [sig, () => child?.kill(sig)]))
+  try {
+    for (const [sig, handler] of handlers) process.on(sig, handler)
+    for (const dir of [join(root, "data/opencode"), env.TMPDIR, env.OPENCODE_CONFIG_DIR]) {
+      mkdirSync(dir, { recursive: true, mode: 0o700 })
+    }
+    if (existsSync(source)) cpSync(source, env.OPENCODE_CONFIG_DIR, {
+      recursive: true, dereference: true, filter: file => !/^service.*\.json$/.test(basename(file)),
+    })
+    writeFileSync(join(env.OPENCODE_CONFIG_DIR, "service.json"), JSON.stringify({ disabled: true }))
+    child = spawn(native, args, { env, stdio: "inherit" })
+    return await new Promise((resolve, reject) => {
+      child.once("error", reject)
+      child.once("exit", (code, signal) => resolve(code ?? (128 + constants.signals[signal])))
+    })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    for (const [sig, handler] of handlers) process.off(sig, handler)
+  }
+}
 
+async function main() {
+  const [native, ...args] = process.argv.slice(2)
+  if (!native) {
+    console.error("proveo: OpenCode runtime requires the native executable")
+    return 64
+  }
+  try {
+    if (process.env.PROVEO_GIT_SYNC_MSG_INFLIGHT === "1" || diagnostic(args)) return await throwaway(native, args)
+    process.execve(native, nativeCommand(native, args), process.env)
+  } catch (err) {
+    console.error(`proveo: cannot start OpenCode (${native}): ${err.message}`)
+    return 127
+  }
+}
 
-def native_command(binary, args):
-    words = command_words(args)
-    if words[:1] == ["run"] and "--auto" not in args:
-        index = args.index("--") if "--" in args else len(args)
-        args = args[:index] + ["--auto"] + args[index:]
-    state_commands = ("run", "mini", "api", "models", "stats", "reload", "session", "auth")
-    if not words or words[0] in state_commands or words[0] not in (
-        "debug", "serve", "service", "acp", "mcp", "plugin", "upgrade", "update", "uninstall", "pair"
-    ):
-        if "--standalone" not in args and not any(arg == "--server" or arg.startswith("--server=") for arg in args):
-            index = args.index("--") if "--" in args else len(args)
-            args = args[:index] + ["--standalone"] + args[index:]
-    return [binary, *args]
-
-
-def diagnostic_config(env, root):
-    home = Path(env.get("PROVEO_HOME") or env["HOME"])
-    source = Path(env.get("OPENCODE_CONFIG_DIR") or str(Path(env.get("XDG_CONFIG_HOME") or str(home / ".config")) / "opencode"))
-    target = root / "config/opencode"
-    if source.exists():
-        shutil.copytree(source, target, ignore=shutil.ignore_patterns("service*.json"))
-    else:
-        target.mkdir(mode=0o700, parents=True)
-    (target / "service.json").write_text(json.dumps({"disabled": True}))
-    env["OPENCODE_CONFIG_DIR"] = str(target)
-
-
-def throwaway(native, args):
-    root = Path(tempfile.mkdtemp(prefix="proveo-opencode-throwaway-"))
-    try:
-        data = root / "data/opencode"
-        data.mkdir(mode=0o700, parents=True)
-        (root / "tmp").mkdir(mode=0o700)
-        env = dict(os.environ, XDG_DATA_HOME=str(data.parent), XDG_STATE_HOME=str(root / "state"),
-                   OPENCODE_DB=str(data / "opencode.db"), TMPDIR=str(root / "tmp"))
-        diagnostic_config(env, root)
-        child = subprocess.Popen([native, *args], env=env)
-
-        def forward(sig, _):
-            with contextlib.suppress(ProcessLookupError):
-                child.send_signal(sig)
-
-        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            signal.signal(sig, forward)
-        code = child.wait()
-        return 128 - code if code < 0 else code
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def main():
-    if len(sys.argv) < 2:
-        print("proveo: OpenCode runtime requires the native executable", file=sys.stderr)
-        return 64
-    native, args = sys.argv[1], sys.argv[2:]
-    try:
-        if os.environ.get("PROVEO_GIT_SYNC_MSG_INFLIGHT") == "1" or diagnostic(args):
-            return throwaway(native, args)
-        os.execv(native, native_command(native, args))
-    except OSError as error:
-        print(f"proveo: cannot start OpenCode ({native}): {error.strerror or error}", file=sys.stderr)
-        return 127
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+module.exports = { nativeCommand, diagnostic }
+if (require.main === module) main().then(code => { process.exitCode = code })

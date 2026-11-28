@@ -142,6 +142,7 @@ RUN set -e; \
 COPY defs/base/ssh/github_known_hosts /etc/ssh/ssh_known_hosts
 COPY --chmod=0755 packages/lib/hooks/git-sync-turn.sh /opt/proveo/hooks/git-sync-turn.sh
 COPY packages/lib/hooks/proveo-git-sync-turn.js /opt/proveo/hooks/proveo-git-sync-turn.js
+COPY packages/lib/hooks/proveo-activity.js /opt/proveo/hooks/proveo-activity.js
 
 # SPEC: _spec/internal/sbx/sbx-kit-v3.puml (UPSTREAM KITS)
 ENV NPM_CONFIG_AUDIT=false \

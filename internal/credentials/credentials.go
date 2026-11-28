@@ -185,7 +185,7 @@ func AuthBacking(man manifest.Manifest, lookup func(string) string, target, home
 	if v := from(SubscriptionVars(man, lookup)); v != "" {
 		plan = append(plan, v)
 	}
-	for _, rel := range subscriptionLoginFiles[target] {
+	for _, rel := range loginFiles(target) {
 		if homeRoot == "" {
 			continue
 		}
@@ -247,9 +247,9 @@ func AuthWhyUnavailable(man manifest.Manifest, target, homeRoot string) map[stri
 	switch {
 	case len(names) == 0:
 		why[AuthSubscription] = man.Name + " has no plan of its own — it reads provider keys only"
-	case len(subscriptionLoginFiles[target]) > 0:
+	case len(loginFiles(target)) > 0:
 		why[AuthSubscription] = "no " + strings.Join(names, " / ") + " is set, and the proveo home holds " +
-			"no login (" + filepath.Join(homeRoot, subscriptionLoginFiles[target][0]) + ")"
+			"no login (" + filepath.Join(homeRoot, loginFiles(target)[0]) + ")"
 	default:
 		why[AuthSubscription] = "no " + strings.Join(names, " / ") + " is set"
 	}
@@ -315,6 +315,10 @@ var subscriptionLoginFiles = map[string][]string{
 	"codex":      {".codex/auth.json"},
 }
 
+// loginFiles are the login files a target reads from the proveo home: its harness family's, so claudecode-browser
+// and claudecode-solidity find claudecode's login.
+func loginFiles(target string) []string { return subscriptionLoginFiles[HarnessFamily(target)] }
+
 // EffectiveAuthVar resolves an answer to the ONE variable the broker should
 // prefer, or "" when the answer names no variable at all.
 func EffectiveAuthVar(man manifest.Manifest, target, chosen, homeRoot string, lookup func(string) string) string {
@@ -352,7 +356,7 @@ func PersistedLogin(target, homeRoot string) (ok, needsRefresh bool) {
 	if homeRoot == "" {
 		return false, false
 	}
-	for _, rel := range subscriptionLoginFiles[target] {
+	for _, rel := range loginFiles(target) {
 		if usable, refresh := loginUsable(filepath.Join(homeRoot, rel), time.Now()); usable {
 			return true, refresh
 		}
@@ -720,6 +724,10 @@ func StageProjectEnv(src, dir string, strip []string) (string, []string, error) 
 	}
 	return path, dropped, nil
 }
+
+// HostOnlyVars are keys the host reads for itself and no sandbox receives: the staged .env drops them, and the
+// teardown merge keeps the host's own values. LINEAR_API_KEY is a personal token the dashboard reads Linear with.
+var HostOnlyVars = []string{"LINEAR_API_KEY"}
 
 // ProviderLookup reads a variable from the host env, else the env file; a secret reference comes back as written, for sbx to resolve.
 // SPEC: _spec/internal/sbx/credential-resolution.puml (R11)

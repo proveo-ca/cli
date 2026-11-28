@@ -13,12 +13,23 @@ skinparam noteTextAlignment left
 ' covers: cmd/proveo/running.go
 ' covers: cmd/proveo/running_test.go
 ' covers: e2e/schedule_test.go
+' covers: e2e/dashboard_tmux_test.go (TestDashboardAttachBaselineOnTmux, TestDashboardRunsThreeTasksFromOneDirectoryOnTmux)
+' covers: internal/schedule/queue.go
+' covers: e2e/dashboard_admission_test.go
+' Target jobs accept `instance: ID` or `new: true` with an optional `task:`.
+' mode: attended (proveo run --queue, the dashboard's n) is an operator's own
+' session: a non-empty prompt is typed once, plain; there is no budget, wrap-up
+' or report stop; the session closing records done. MEASURED 2026-11-25: the
+' dispatcher Released each watcher without reaping it, so a job cycling through
+' disk waits left one zombie watcher per retry; startReaped waits instead.
+' Forward the selector to proveo run and keep workdir as the workspace key.
 ' covers: internal/run/choices.go (resolveAddonFlags), internal/run/params.go (AddonsSet, Yes)
 ' covers: internal/backend/sandbox/stop_signal_test.go
 '   the screen vocabulary these lines use ...... _spec/internal/ui/output-vocabulary.puml
 '   NO TTY (A QUESTION INIT COULD NOT ASK) ..... _spec/cmd/proveo/init-sbx-bootstrap.puml
 '   R3 HAND-OFF FAILURE ........................ _spec/cmd/proveo/init-sbx-bootstrap.puml
 '   R3's QUIT .................................. _spec/cmd/proveo/init-preflight-and-result.puml
+'   PAUSE / RESUME, WEEK GRID, EDITS ....... _spec/internal/dashboard/schedule-manager.puml
 '
 ' ── THE TMUX DRIVER LIVES HERE (DECIDED 2026-11-15) ────────────────────────
 ' DECIDED 2026-11-15 (owner: "the 8 uncontested"; codebase-compression.puml
@@ -337,7 +348,11 @@ skinparam noteTextAlignment left
 ' run and harness pickers alike. A clean detach prints nothing: tmux says
 ' "[detached …]" itself.
 '   plain terminal       tmux attach [-r] -t proveo-sched-<job>
-'   inside tmux          switch-client -t …  (tmux refuses a nested attach)
+'   inside tmux          switch-client -c <origin> -t <task>
+'                        Identify the origin from the pane's session.
+'                        Refuse ambiguous shared sessions.
+'                        Use the prefix then L to return to the previous
+'                        session. The defaults are Ctrl-b L.
 '   inside tmux + -r     TMUX= tmux attach -r -t …  — a nested client, detach
 '                        with prefix prefix d. `switch-client -r` TOGGLES
 '                        read-only on the operator's own client, which then

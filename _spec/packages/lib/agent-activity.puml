@@ -1,0 +1,114 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: tell a busy agent from one running background work, waiting on the operator, or idle
+' covers: internal/activity/activity.go
+' covers: internal/activity/activity_test.go
+' covers: cmd/proveo-entrypoint/activity.go
+' covers: cmd/proveo-entrypoint/main.go
+' covers: packages/lib/hooks/proveo-activity.js
+' covers: packages/lib/hooks/proveo-git-sync-turn.js
+' covers: packages/lib/entrypoint-lib.sh
+' covers: defs/codex/managed/requirements.toml
+' covers: defs/cursor/defaults/hooks.json
+' covers: defs/base/Dockerfile
+' covers: defs/opencode/Dockerfile
+' covers: internal/envreg/envreg.go
+' covers: internal/dashboard/sandbox_reads.go
+' covers: internal/dashboard/guest.go
+' covers: internal/dashboard/items.go
+' covers: internal/dashboard/activity_test.go
+' covers: internal/contract/agent_activity_test.go
+' covers: internal/contract/git_sync_turn_test.go
+' covers: internal/contract/testdata/opencode_git_sync_plugin.mjs
+'
+' "some agents are idle in their sessions - but seems to need research on how
+' to adequately assess in all defs/ whenever the agent is no longer -thinking-
+' nor has any subagent processes running (no running inference)".
+' Chosen 2026-11-25: "Hook marker + native", over native-only, a Claude/Codex
+' first step, and OSC codes read in the host ptyproxy. "Prefer go over node":
+' the marker writer and the Claude settings merge are proveo-entrypoint
+' subcommands; the node -e merge and its PROVEO_HOOKS_FILE/PROVEO_HOOK_CMD
+' variables are gone. OpenCode loads only JS plugins, so its plugin maps events
+' and spawns the Go writer.
+'
+' MEASURED 2026-11-25, five running sandboxes, read-only:
+'   Claude Code 2.1.330 keeps ~/.claude/sessions/<pid>.json with status busy,
+'   idle, waiting or shell (idle with background tasks) and statusUpdatedAt.
+'   1b3fcb7f read shell: turn ended 17:52:39.099, status 17:52:39.114, two bash
+'   children alive 1d21h. 36915573, 8abaedd2, 9995ea77 read idle.
+'   Codex 0.172 rollout logs end each turn with task_complete or turn_aborted.
+'   Every sandbox runs dev servers and shells for days: process counts mislead.
+'   steerPrefix in internal/schedule/runner.go is a fixed map, not a detector.
+'
+' Known gaps the read order absorbs (issue numbers from the research run):
+'   Claude Code: Esc fires no hook (#105187); PreToolUse continue:false and
+'   "Prompt is too long" end a turn without Stop (#104533, #104951).
+'   Codex: a turn ending on an API error fires no Stop (#54884); helper threads
+'   duplicate Stop (#56795). OpenCode v2 never emits session.idle or
+'   session.status (anomalyco/opencode#55358, verified): completion arrives as
+'   session.execution.succeeded|failed|interrupted, so git-sync's plugin now
+'   treats those as idle too. [Unverified] v2 events carry data.sessionID as v1
+'   did. Cursor: background subagentStop never fires (#166681). Hermes installs
+'   no turn hook here: its HOOK.yaml hooks do not run in the CLI; it reads
+'   Unknown until a plugin hook lands.
+'   https://code.claude.com/docs/en/hooks
+'   https://learn.chatgpt.com/docs/hooks
+'   https://opencode.ai/docs/server
+'   https://cursor.com/docs/agent/hooks
+'   https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks
+title Agent activity — hook markers beside each agent's own state, read in one probe
+
+package "guest (per sandbox)" as GUEST {
+  component "Claude Code\nUserPromptSubmit busy\nStop idle · Notification waiting" as CC <<app>>
+  component "Codex (managed)\nUserPromptSubmit busy\nStop idle" as CX <<app>>
+  component "Cursor (/etc)\nbeforeSubmitPrompt busy\nstop idle" as CU <<app>>
+  component "OpenCode plugin\nsession.execution.*\nsession.status (v1)" as OC <<app>>
+  component "proveo-entrypoint activity\nwalks past sh/bash to the agent pid\nStop background_tasks → background" as MARK <<host>>
+  database "/dev/shm/proveo-activity/<pid>.json\n{harness, pid, state, since}" as SHM <<db>>
+  database "~/.claude/sessions/<pid>.json\n~/.codex/sessions/**/rollout-*.jsonl" as NATIVE <<db>>
+}
+
+package "host" as HOST {
+  component "dashboard probe\nusage + activity + work\none sbx exec" as PROBE <<host>>
+  component "activity.Resolve\nnative over marker per harness\nwaiting > busy > background > idle\ndead only → exited · none → unknown" as RESOLVE <<app>>
+  component "card\nWorking · Background work\nWaiting for you · Idle 12m" as CARD <<app>>
+}
+
+CC ARROW_MAIN MARK
+CX ARROW_MAIN MARK
+CU ARROW_MAIN MARK
+OC ARROW_MAIN MARK : spawn
+MARK ARROW_MAIN SHM
+SHM ARROW_MAIN PROBE
+NATIVE ARROW_MAIN PROBE
+PROBE ARROW_MAIN RESOLVE
+RESOLVE ARROW_MAIN CARD
+
+note right of MARK
+  **A marker never holds the turn.**
+  Each hook has a 5 s timeout, exits 0
+  and prints nothing Claude Code would
+  add to the prompt; Cursor's busy hook
+  prints {"continue":true}.
+end note
+
+note right of SHM
+  **/dev/shm empties when the VM stops.**
+  A marker cannot outlive its sandbox,
+  and a dead pid reads as exited.
+end note
+
+note bottom of RESOLVE
+  **An agent's own state beats a marker.**
+  Esc fires no hook, so a busy marker
+  can go stale while Claude Code's own
+  status already says idle.
+end note
+
+note bottom of CARD
+  **Idle and waiting need the operator.**
+  They move to Attention required with
+  their age. No signal stays Running:
+  unknown never claims idle.
+end note
+@enduml

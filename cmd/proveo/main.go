@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,10 @@ func main() {
 // reraised stop ends proveo by its signal.
 // SPEC: _spec/internal/backend/exit-code.puml
 func exitWith(err error) {
+	if errors.Is(err, sandbox.ErrDiskWait) {
+		ui.Warnf("%v", err)
+		os.Exit(sandbox.DiskWaitExit)
+	}
 	code, ok := exitCode(err)
 	if !ok {
 		ui.Failf("%v", err)
@@ -131,6 +136,9 @@ func rootCmd() *cobra.Command {
 			if flagInit {
 				return doInit(initOptions{})
 			}
+			if stdioInteractive(cmd) {
+				return openDashboard(cmd)
+			}
 			return cmd.Help()
 		},
 	}
@@ -192,8 +200,10 @@ func doList(w io.Writer) error {
 // runFlags are the flags shared by `proveo run` and each harness alias.
 type runFlags struct {
 	credentials, localModel, model, input, output, scope, dataDir, imageOverride, resumeID, browserProfile string
-	printOnly, contSession, listSessions, cloneMode, yes                                                   bool
+	printOnly, contSession, listSessions, cloneMode, yes, readOnlyShares                                   bool
 	addons                                                                                                 []string
+	newInstance, queue                                                                                     bool
+	instance, task, promptFile, branch, ticket                                                             string
 }
 
 func (f *runFlags) bind(cmd *cobra.Command) {
@@ -211,12 +221,30 @@ func (f *runFlags) bind(cmd *cobra.Command) {
 			"the checkout is never written, host-built dependency trees never cross, and the agent's commits are fetched back "+
 			"at teardown under refs/proveo/<sid>/ — `--clone=false` edits the mounted checkout directly")
 	cmd.Flags().StringVar(&f.resumeID, "resume", "", "resume a prior agent session by id (harness-specific)")
+	cmd.Flags().BoolVar(&f.readOnlyShares, "read-only-shares", false, "accept linked shares such as _spec mounted read-only: a review run reads them and edits nothing")
+	_ = cmd.Flags().MarkHidden("read-only-shares")
 	cmd.Flags().BoolVar(&f.contSession, "continue", false, "continue the most recent session for this workspace")
 	cmd.Flags().BoolVar(&f.listSessions, "ls", false, "list resumable sessions (cursor/claude/codex) and exit into the tool picker")
 	cmd.Flags().BoolVar(&f.printOnly, "print", false, "write the sbx kit and print the sbx command instead of executing")
 	cmd.Flags().StringVar(&f.browserProfile, "browser-profile", "", "use this named isolated browser profile in the sandbox")
 	cmd.Flags().StringArrayVar(&f.addons, "addon", nil, "interface add-on to enable without the choice form (repeatable): browser, chrome, desktop, android")
 	cmd.Flags().BoolVar(&f.yes, "yes", false, "accept the remembered and flagged choices without drawing the choice form (unattended runs)")
+	cmd.Flags().BoolVar(&f.newInstance, "new", false, "create an independent instance in this workspace")
+	cmd.Flags().StringVar(&f.instance, "instance", "", "select a Proveo instance by ID")
+	cmd.Flags().StringVar(&f.task, "task", "", "task label for a new instance")
+	cmd.Flags().BoolVar(&f.queue, "queue", false, "submit the run to the dashboard queue and attach once admitted (a new instance)")
+	cmd.Flags().StringVar(&f.promptFile, "prompt-file", "", "the queued run's opening prompt, read from this file (with --queue)")
+	_ = cmd.Flags().MarkHidden("prompt-file")
+	cmd.Flags().StringVar(&f.ticket, "ticket", "", "what the queued run works on: a plan path, or an issue or pull request URL (with --queue)")
+	_ = cmd.Flags().MarkHidden("ticket")
+	cmd.Flags().StringVar(&f.branch, "branch", "", "the working branch a new instance takes (with --new or --queue); a branch origin has starts from its tip")
+	cmd.MarkFlagsMutuallyExclusive("new", "instance")
+	cmd.MarkFlagsMutuallyExclusive("new", "resume")
+	cmd.MarkFlagsMutuallyExclusive("new", "continue")
+	cmd.MarkFlagsMutuallyExclusive("new", "ls")
+	for _, other := range []string{"instance", "resume", "continue", "ls", "print", "yes"} {
+		cmd.MarkFlagsMutuallyExclusive("queue", other)
+	}
 }
 
 // prompts is a terminal with no unattended flag, so a picker may open.
@@ -245,12 +273,43 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 	if !run.ValidCredentials(f.credentials) {
 		return fmt.Errorf("invalid --credentials %q (%s)", f.credentials, strings.Join(run.CredentialModes(), "|"))
 	}
-	resumeArgs, err := proveohome.ResumeArgs(target, f.resumeID, f.contSession, f.listSessions)
-	if err != nil {
+	if f.queue {
+		f.newInstance = true
+	}
+	if f.task != "" && !f.newInstance {
+		return fmt.Errorf("--task requires --new")
+	}
+	if f.branch != "" {
+		if !f.newInstance {
+			return fmt.Errorf("--branch requires --new")
+		}
+		if err := sandbox.ValidBranch(f.branch); err != nil {
+			return err
+		}
+	}
+	if f.ticket != "" && !f.queue {
+		return fmt.Errorf("--ticket requires --queue")
+	}
+	var prompt string
+	if f.promptFile != "" {
+		if !f.queue {
+			return fmt.Errorf("--prompt-file requires --queue")
+		}
+		b, err := os.ReadFile(f.promptFile)
+		if err != nil {
+			return err
+		}
+		prompt = strings.TrimSpace(string(b))
+	}
+	if _, err := proveohome.ResumeArgs(target, f.resumeID, f.contSession, f.listSessions); err != nil {
 		return err
 	}
-	if len(resumeArgs) > 0 {
-		extra = append(append([]string{}, resumeArgs...), extra...)
+	if f.hostsInTmux() {
+		args := os.Args[1:]
+		if !slices.Contains(args, target) {
+			args = append(args, target)
+		}
+		return hostInTmux(target, args)
 	}
 	return run.Do(run.Params{
 		Target: target, Image: image, ImageSet: f.imageOverride != "", Credentials: f.credentials,
@@ -258,8 +317,12 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 		CredsSet:       credsSet, LocalModel: f.localModel, Model: f.model,
 		Input: f.input, Output: f.output, Scope: f.scope, DataDir: f.dataDir,
 		PrintOnly: f.printOnly, Extra: extra,
+		Queue: f.queue, Prompt: prompt, Branch: f.branch, Ticket: f.ticket,
+		NewInstance: f.newInstance, Instance: f.instance, Task: f.task,
+		ResumeID: f.resumeID, Continue: f.contSession, ListSessions: f.listSessions,
 		Clone: f.cloneMode, CloneSet: cmd.Flags().Changed("clone"),
-		Addons: f.addons, AddonsSet: cmd.Flags().Changed("addon"), Yes: f.yes,
+		ReadOnlyShares: f.readOnlyShares,
+		Addons:         f.addons, AddonsSet: cmd.Flags().Changed("addon"), Yes: f.yes,
 	}, runDeps())
 }
 
@@ -297,6 +360,9 @@ func (f *runFlags) chooseTarget(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 	tasks := runningOrNone()
+	if f.queue {
+		tasks = nil
+	}
 	if !f.prompts(cmd) {
 		if stdioInteractive(cmd) {
 			return "", fmt.Errorf("no target given (see `proveo ls`)")
@@ -455,8 +521,9 @@ func sortedKeys(m map[string]string) []string {
 
 func runDeps() run.Deps {
 	return run.Deps{
-		ManifestFor: manifestForTarget,
-		PickProject: func(ask run.ScopeAsk) (string, bool) { return pickProject(ask, os.Stdin, os.Stderr) },
+		ManifestFor:  manifestForTarget,
+		PickProject:  func(ask run.ScopeAsk) (string, bool) { return pickProject(ask, os.Stdin, os.Stderr) },
+		PickInstance: func(labels []string) (int, error) { return pickIndex("instance> ", labels) },
 		PromptEnv: func(target string, missing []manifest.EnvVar) map[string]string {
 			return promptEnv(target, missing, os.Stdin, os.Stderr, termSecret)
 		},
@@ -466,5 +533,6 @@ func runDeps() run.Deps {
 		ProvisionConfirm: provisionConfirm,
 		PreflightImages:  preflightImages,
 		EnsureDesktop:    ensureDesktop,
+		Queue:            queueRun,
 	}
 }

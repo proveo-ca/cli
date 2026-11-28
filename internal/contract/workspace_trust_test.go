@@ -13,16 +13,14 @@ import (
 func TestWorkspaceTrustMergesUpstreamsFlagsIntoTheRestoredClaudeJSON(t *testing.T) {
 	t.Parallel()
 	bash := bashOrSkip(t)
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node not on PATH")
-	}
+	bin := buildEntrypoint(t)
 	home := t.TempDir()
 	restored := `{"mcpServers":{"serena":{"command":"serena"}},"projects":{"/w":{"allowedTools":["Bash"]}}}`
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(restored), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(bash, "-c", `source "$1/packages/lib/entrypoint-lib.sh"; accept_workspace_trust /w`, "bash", repoRoot(t))
-	cmd.Env = append(os.Environ(), "HOME="+home, "PROVEO_HOME=")
+	cmd.Env = append(os.Environ(), "HOME="+home, "PROVEO_HOME=", "PATH="+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("accept_workspace_trust: %v\n%s", err, out)
 	}
@@ -33,14 +31,15 @@ func TestWorkspaceTrustMergesUpstreamsFlagsIntoTheRestoredClaudeJSON(t *testing.
 	var j struct {
 		Bypass     bool                      `json:"bypassPermissionsModeAccepted"`
 		Onboarded  bool                      `json:"hasCompletedOnboarding"`
+		Nudged     bool                      `json:"hasSeenAutoDefaultNudge"`
 		MCPServers map[string]any            `json:"mcpServers"`
 		Projects   map[string]map[string]any `json:"projects"`
 	}
 	if err := json.Unmarshal(b, &j); err != nil {
 		t.Fatalf("~/.claude.json is not JSON: %v\n%s", err, b)
 	}
-	if !j.Bypass || !j.Onboarded {
-		t.Errorf("flags = bypass %v onboarded %v; upstream's skipped hook set both", j.Bypass, j.Onboarded)
+	if !j.Bypass || !j.Onboarded || !j.Nudged {
+		t.Errorf("flags = bypass %v onboarded %v nudged %v; upstream's skipped hook set the first two, and the auto-mode nudge holds a headless start", j.Bypass, j.Onboarded, j.Nudged)
 	}
 	for _, d := range []string{"/", "/w"} {
 		if j.Projects[d]["hasTrustDialogAccepted"] != true {

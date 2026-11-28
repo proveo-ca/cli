@@ -459,7 +459,7 @@ func TestInitCtrlCAsksBeforeItQuitsAndSkipIsAButton(t *testing.T) {
 	r.page(t, 1)
 	r.keys(t, "Escape")
 	screen := r.wait(t, "Quit init?")
-	if !strings.Contains(screen, "Answers on page 1/4 are not saved.") || !strings.Contains(screen, "←→ choose · enter press · esc stay · ctrl+c quit") {
+	if !strings.Contains(screen, "Answers on page 1/4 are not saved.") || !strings.Contains(screen, "←→ choose · ↵ press · esc stay · ctrl+c quit") {
 		t.Errorf("Esc on page 1 does not ask about page 1:\n%s", screen)
 	}
 	r.keys(t, "Enter")

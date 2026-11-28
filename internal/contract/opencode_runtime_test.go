@@ -11,10 +11,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 func TestOpenCodeNativeGitSyncPluginLifecycle(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("node unavailable")

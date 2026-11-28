@@ -208,7 +208,7 @@ func TestPythonEnvironmentIsProvisioned(t *testing.T) {
 	out, err := rootLibProbe(t, img, dir, `ensure_python_env /w
 [ -n "$VIRTUAL_ENV" ] || { echo "NO_VIRTUAL_ENV"; exit 1; }
 case "$VIRTUAL_ENV" in /w/*) echo "ENV_INSIDE_WORKSPACE"; exit 1 ;; esac
-python -c 'import requests' 2>/dev/null || { echo "DEP_UNIMPORTABLE"; exit 1; }
+python /w/app.py 2>/dev/null || { echo "DEP_UNIMPORTABLE"; exit 1; }
 echo "PYENV_OK"`)
 
 	if err != nil || !strings.Contains(out, "PYENV_OK") {
@@ -270,7 +270,7 @@ func TestPythonEnvironmentIsProvisionedForNestedProject(t *testing.T) {
 ensure_python_env /w
 [ -n "$VIRTUAL_ENV" ] || { echo "NO_VIRTUAL_ENV"; exit 1; }
 case "$VIRTUAL_ENV" in /w/*) echo "ENV_INSIDE_WORKSPACE"; exit 1 ;; esac
-python -c 'import requests' 2>/dev/null || { echo "DEP_UNIMPORTABLE"; exit 1; }
+python /w/apps/svc/app.py 2>/dev/null || { echo "DEP_UNIMPORTABLE"; exit 1; }
 echo "NESTED_OK"`)
 
 	if err != nil || !strings.Contains(out, "NESTED_OK") {

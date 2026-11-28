@@ -1,0 +1,67 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: every proveo run hosts its agent in one host tmux session that any terminal can attach to and watch
+' covers: cmd/proveo/run_tmux.go
+' covers: cmd/proveo/run_tmux_test.go
+' covers: cmd/proveo/main.go
+' covers: cmd/proveo/schedule.go
+' covers: internal/backend/sandbox/launch_receipt.go
+' covers: internal/backend/sandbox/kit_roundtrip_test.go
+' covers: internal/dashboard/data.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/handoff_test.go
+' covers: internal/envreg/envreg.go
+' covers: e2e/main_test.go
+'
+' "Attaching to a running image expects to attach specifically to the agent
+' process e.g. claudecode, codex, opencode, etc. Similar to how proveo attach
+' works on scheduled tasks." Chosen 2026-11-26: "Host tmux, like jobs", then
+' "What is so different between a headless attachable job vs this? ... it
+' should be 1 agent session only that the user can attach into and watch".
+' Nothing differs but where the agent's terminal lives: a job's lived in a
+' tmux session; an interactive run's lived in the tab that started it, so
+' nothing else could join. Now both live in tmux.
+'
+' HOW: an interactive `proveo run` (both ends a terminal, tmux on PATH, not
+' --print, --queue or --ls) that is not already in a session reruns its own
+' command inside a new host tmux session proveo-run-<target>-<6 hex>, then
+' attaches this terminal (inside tmux it switches the client). The session gets
+' this terminal's environment through a 0600 file it sources and deletes, since
+' tmux sessions inherit the server's environment, not the caller's. The run
+' inside records the session beside its sandbox receipt (<name>.session), so
+' the dashboard marks that sandbox's card live and ↵ attaches to the session,
+' and `proveo attach proveo-run-…` joins it. When the agent ends, the session
+' holds its last screen until Enter (an hour at most) and hands the exit status
+' back to the terminal that started it. Detaching leaves the agent running.
+' Jobs set PROVEO_SCHEDULE_JOB and the hosted run PROVEO_RUN_SESSION, so neither
+' hosts again. PROVEO_RUN_TMUX=off keeps the agent in this tab; the e2e suite
+' sets it, as it drives runs through its own ptys and tmux sessions.
+title Run sessions — one tmux session per agent, any terminal attaches
+
+participant "terminal\n`proveo run claudecode`" as TAB <<host>>
+participant "host tmux\nproveo-run-claudecode-6d6a06" as TMUX <<async>>
+participant "inner `proveo run`\nPROVEO_RUN_SESSION set" as RUN <<app>>
+participant "dashboard ↵ /\n`proveo attach`" as DASH <<app>>
+
+TAB -> TMUX : new-session (same argv,\nthis terminal's env)
+TMUX -> RUN : runs
+RUN -> RUN : records <sandbox>.session
+TAB -> TMUX : attach (watch, type)
+DASH -> TMUX : attach the same session
+RUN --> TMUX : agent ends → last screen\nuntil Enter, exit status
+TMUX --> TAB : status back to the shell
+
+note over TAB
+  **One agent, one session, many viewers.**
+  The tab that started the run is only
+  its first viewer; detaching leaves the
+  agent running for the next.
+end note
+
+note over RUN
+  **The run never hosts twice.**
+  PROVEO_RUN_SESSION and
+  PROVEO_SCHEDULE_JOB mark a run already
+  inside a session.
+end note
+@enduml

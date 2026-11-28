@@ -15,6 +15,7 @@ skinparam noteTextAlignment left
 ' covers: internal/sbx/list.go (Listed.Ports)
 ' covers: internal/choiceui/blocked_run.go
 ' covers: internal/choiceui/blocked_run.go
+' Workspace identity, concurrent launches and cleanup ownership: _spec/internal/sbx/instance-lifecycle.puml
 '
 ' ── A KEPT SANDBOX MUST NOT SILENTLY OVERRIDE THIS RUN (2026-09-27) ─────────
 ' Re-attach passes the name only, so a kept sandbox runs with the Kit, image

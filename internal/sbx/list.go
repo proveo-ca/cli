@@ -3,6 +3,7 @@ package sbx
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 )
 
@@ -21,6 +22,7 @@ type ListedPort struct {
 	HostIP      string `json:"host_ip"`
 	HostPort    int    `json:"host_port"`
 	SandboxPort int    `json:"sandbox_port"`
+	Protocol    string `json:"protocol"`
 }
 
 // Running reports whether the sandbox is up.
@@ -43,7 +45,7 @@ func List() (rows []Listed, ok bool) {
 // ParseListing reads `sbx ls --json`: a bare array since sbx 0.48, {"sandboxes": [...]} before it.
 func ParseListing(out []byte) ([]Listed, error) {
 	var bare []Listed
-	if err := json.Unmarshal(out, &bare); err == nil {
+	if err := json.Unmarshal(out, &bare); err == nil && bare != nil {
 		return bare, nil
 	}
 	var wrapped struct {
@@ -51,6 +53,9 @@ func ParseListing(out []byte) ([]Listed, error) {
 	}
 	if err := json.Unmarshal(out, &wrapped); err != nil {
 		return nil, err
+	}
+	if wrapped.Sandboxes == nil {
+		return nil, errors.New("sbx inventory has no sandbox array")
 	}
 	return wrapped.Sandboxes, nil
 }

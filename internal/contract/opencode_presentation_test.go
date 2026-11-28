@@ -3,8 +3,6 @@ package contract_test
 
 import (
 	"encoding/json"
-	"os/exec"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"testing"
@@ -26,20 +24,5 @@ func TestOpenCodePresentationDockerPreferences(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Docker presentation/YOLO preferences = %v, want %v", got, want)
-	}
-}
-
-func TestOpenCodePresentationNativeRunArguments(t *testing.T) {
-	t.Parallel()
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 is unavailable")
-	}
-	cmd := exec.Command(python, "-B", "-m", "unittest", "-v", "test_opencode_runtime.NativeCommandAutoTests")
-	cmd.Dir = filepath.Join(repoRoot(t), "packages/lib")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("native run auto-injection contract: %v\n%s", err, out)
-	} else {
-		t.Logf("%s", out)
 	}
 }

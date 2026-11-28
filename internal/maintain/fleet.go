@@ -9,9 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/proveo-ca/proveo/internal/manifest"
 	"github.com/proveo-ca/proveo/internal/ui"
@@ -245,21 +247,23 @@ func targetNames(reg []Target) string {
 	return strings.Join(ns, ", ")
 }
 
-// Select returns every target for all, else the one target named arg.
+// Select returns every target for all, else the targets arg names, split on spaces or commas, in registry order.
 func Select(reg []Target, arg string) ([]Target, error) {
-	arg = strings.TrimSpace(arg)
-	switch arg {
-	case "all":
-		return reg, nil
-	case "":
+	names := strings.FieldsFunc(arg, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+	if len(names) == 0 {
 		return nil, fmt.Errorf("no target given; pass a target name or all (targets: %s)", targetNames(reg))
 	}
-	for _, t := range reg {
-		if t.Name == arg {
-			return []Target{t}, nil
+	want := map[string]bool{}
+	for _, n := range names {
+		if n != "all" && !slices.ContainsFunc(reg, func(t Target) bool { return t.Name == n }) {
+			return nil, fmt.Errorf("unknown target %q — use 'all' or one of: %s", n, targetNames(reg))
 		}
+		want[n] = true
 	}
-	return nil, fmt.Errorf("unknown target %q — use 'all' or one of: %s", arg, targetNames(reg))
+	if want["all"] {
+		return reg, nil
+	}
+	return slices.DeleteFunc(slices.Clone(reg), func(t Target) bool { return !want[t.Name] }), nil
 }
 
 func fileExists(p string) bool {

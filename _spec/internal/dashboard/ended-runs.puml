@@ -1,0 +1,94 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: an ended run's card under Attention required offers follow up, retry and clean up, never a dead end
+' covers: internal/dashboard/ended.go
+' covers: internal/dashboard/ended_test.go
+' covers: internal/dashboard/cards.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/view.go
+' covers: internal/dashboard/data.go
+' covers: internal/dashboard/prref_test.go
+' covers: internal/choiceui/attach_confirm.go
+' covers: internal/backend/sandbox/instances.go
+' covers: internal/backend/sandbox/instances_test.go
+' covers: internal/schedule/dashboard_job.go
+' covers: internal/schedule/dashboard_job_test.go
+' covers: cmd/proveo/schedule.go
+'
+' "cards like this are a dead-end; enter to attach shows it failed and nothing
+' to attach, but no action is possible to either retry or cleanup" (2026-11-26,
+' on Review #3995: Ready for review · not running · ↵ follow up). Earlier:
+' "Task cards in the Attention Required should only be attachable." An ended
+' run is an Attention card with no live session and no working guest
+' (endedRun). Its card now leads with what is left:
+'   ↵ follow up . the run left an instance: a confirm, then the terminal goes to
+'                 `proveo run <agent> --instance <id> --continue`, plus
+'                 --read-only-shares for a review. The run restores the
+'                 instance's last history checkpoint (claudecode, codex) or
+'                 the harness's native --continue, and hosts itself in a tmux
+'                 session (run-session.puml), so the card turns live: ↵ attaches.
+'   r retry ..... the job's last outcome is failed or not-ready:
+'                 `proveo schedule retry <job>` puts it back in the queue.
+'   x clean up .. a job the dashboard made, or an instance no job owns: a
+'                 danger confirm naming what goes, then the hidden
+'                 `proveo schedule drop <job|instance>`.
+' Without an instance, ↵ opens a notice listing r, x and t instead.
+' KEPT GUEST (2026-11-27, "it falsely believes claudecode-browser-fe-8680c47174 is in
+' another terminal"): a job whose run recorded its end (an Outcome) with its
+' sandbox still up is ended too: the guest is a kept sandbox, not an agent in
+' another terminal. Only a running guest with no job or no recorded end keeps
+' the "live in another terminal" notice. MEASURED: job claudecode-browser-
+' 93769f5decca failed in 43 s (its image lacked proveo-host-cdp) and kept its
+' sandbox running, which the old rule read as a live agent.
+' REFUSED SEED (2026-11-27, claudecode-feat-integ-87c69e8816): a sandbox whose seed
+' refused the agent (/dev/shm/proveo-seed-refused) kept running after its job was
+' gone, so its lone-instance card read Working with nothing to attach. The
+' guest probe now reports the refusal: the card says "Seed refused: <why>", the
+' activity is Exited, so the run is ended; follow up stays off (mounts are fixed
+' at creation, the same sandbox refuses again) and ↵ says to start a new
+' instance; x clean up passes --stop, which `proveo schedule drop` now takes for a
+' lone instance whose sandbox still runs.
+' REPORT FIRST (2026-11-26, run-reports.puml): when the run left a report, ↵
+' reads it and follow up moves to s; the card reads ↵ report  s follow up.
+' DROP: refuses a job whose tmux session lives and an instance whose follow-up
+' session lives; removes the kept sandbox (its work comes home first; a job's
+' with --stop, an instance's never), the instance record and mounts, the queue
+' entry and the job snapshot. Logs and refs/proveo/ commits stay. A review's PR
+' is a ghost again while the operator's review is still requested.
+' drop-review is drop limited to review jobs; failed reviews use it unasked.
+' MEASURED 2026-11-26: Review #3995 (job claudecode-3aa1c559496f) ended done; its
+' sandbox was gone from sbx ls, its instance e9cb29effa7dbb76afc4 kept two
+' history checkpoints, so follow up resumes that conversation.
+' JUDGEMENT: retry and clean up run without the terminal; follow up needs it.
+' Jobs from the schedule file never offer clean up: the file owns them.
+title Ended runs — follow up, retry or clean up
+
+state "Attention required\nended run · not running" as ENDED
+state "Follow up card\nproveo run … --continue" as CONFIRM
+state "Running\nproveo-run-<agent>-<hex>\n↵ attaches" as LIVE
+state "Queued\nschedule retry" as QUEUED
+state "Clean up card\nnames what goes" as CLEAN
+state "Gone\nghost again for a review" as GONE
+
+ENDED --> CONFIRM : ↵ · s with a report (has instance)
+CONFIRM --> LIVE : Follow up
+ENDED --> QUEUED : r (failed · not-ready)
+ENDED --> CLEAN : x (dashboard job · lone instance)
+CLEAN --> GONE : Clean up
+CONFIRM --> ENDED : Cancel · Esc
+CLEAN --> ENDED : Cancel · Esc
+
+note right of ENDED
+  **Every Attention card has a way out.**
+  Attach when live; otherwise follow
+  up, retry or clean up, each named
+  on the card and in the footer.
+end note
+
+note right of CLEAN
+  **Clean up asks first.**
+  Cancel is selected; the card lists
+  the sandbox, instance and job that
+  go, and the logs that stay.
+end note
+@enduml

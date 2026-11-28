@@ -7,11 +7,13 @@ import (
 	"bytes"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/proveo-ca/proveo/internal/opencodehistory"
+	"github.com/proveo-ca/proveo/internal/testx"
 
 	"github.com/proveo-ca/proveo/internal/sbx"
 	"github.com/proveo-ca/proveo/internal/ui"
@@ -28,9 +30,10 @@ type fakeEngine struct {
 
 func newFakeEngine(t *testing.T, exists bool) fakeEngine {
 	t.Helper()
-	py, err := exec.LookPath("python3")
+	testx.SQLiteNode(t)
+	exe, err := os.Executable()
 	if err != nil {
-		t.Skip("python3 is unavailable")
+		t.Fatal(err)
 	}
 	root := t.TempDir()
 	f := fakeEngine{calls: filepath.Join(root, "calls"), state: filepath.Join(root, "state"), guest: filepath.Join(root, "guest")}
@@ -52,11 +55,11 @@ case "$1" in
   rm) rm -f "$S/exists" ;;
   cp) echo 'sbx cp: the history import must not stage files' >&2; exit 1 ;;
   exec) shift; I=; while [ "$1" != "--" ]; do [ "$1" = -i ] && I=1; shift; done; shift
-    [ "$1" = python3 ] || exit 0
+    [ "$1" = proveo-entrypoint ] && [ "$2" = opencode-history ] || exit 0
     [ -e "$S/exec-fails" ] && { echo 'sbx: exec failed' >&2; exit 1; }
     [ -s "$S/mutate" ] && echo grown >> "$(cat "$S/mutate")"
     [ -n "$I" ] || exec </dev/null
-    exec env -u XDG_DATA_HOME -u OPENCODE_DB HOME="$G/home" TMPDIR="$G/tmp" '` + py + `' -I -c "$4" ;;
+    exec env -u XDG_DATA_HOME -u OPENCODE_DB HOME="$G/home" TMPDIR="$G/tmp" FIXTURE_HISTORY_MODE="$3" '` + exe + `' -test.run '^TestOpenCodeHistoryEntrypointHelper$' ;;
 esac
 `
 	bin := filepath.Join(root, "bin")
@@ -101,38 +104,26 @@ func (f fakeEngine) guestDB() string {
 	return filepath.Join(f.guest, "home", ".local", "share", "opencode", "opencode.db")
 }
 
-// writeDB writes a WAL-mode database at path holding one session, id.
+func TestOpenCodeHistoryEntrypointHelper(t *testing.T) {
+	if mode := os.Getenv("FIXTURE_HISTORY_MODE"); mode != "" {
+		os.Exit(opencodehistory.Run(mode, os.Stdin, os.Stdout, os.Stderr, os.Getenv))
+	}
+}
+
 func writeDB(t *testing.T, path, id string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	script := `import os, sqlite3, sys
-con = sqlite3.connect(sys.argv[1])
-con.execute("PRAGMA journal_mode=WAL")
-con.execute("PRAGMA wal_autocheckpoint=0")
-con.execute("CREATE TABLE session (id TEXT)")
-con.execute("INSERT INTO session VALUES (?)", (sys.argv[2],))
-con.commit()
-os._exit(0)`
-	if out, err := exec.Command("python3", "-I", "-c", script, path, id).CombinedOutput(); err != nil {
-		t.Fatalf("write %s: %v\n%s", path, err, out)
-	}
+	testx.WriteWALDatabase(t, path, id)
 }
 
-// sessionsIn reads every session id in the database at path; "" when it holds none.
 func sessionsIn(t *testing.T, path string) string {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
 		return ""
 	}
-	out, err := exec.Command("python3", "-I", "-c",
-		`import sqlite3, sys; print(",".join(r[0] for r in sqlite3.connect(sys.argv[1]).execute("SELECT id FROM session ORDER BY id")))`,
-		path).CombinedOutput()
-	if err != nil {
-		t.Fatalf("read %s: %v\n%s", path, err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return testx.SQLiteSessions(t, path)
 }
 
 // snapshotTree is every regular file under root with its bytes.
@@ -165,7 +156,7 @@ func TestAnExistingEngineKeepsItsOwnHistory(t *testing.T) {
 	if launch.KitDir != "" || launch.Name != ocEngine {
 		t.Errorf("launch = %+v, want sbx.Reattach of the engine", launch)
 	}
-	if log := f.log(); strings.Contains(log, "create") || strings.Contains(log, "cp ") || strings.Contains(log, "python3") {
+	if log := f.log(); strings.Contains(log, "create") || strings.Contains(log, "cp ") || strings.Contains(log, "opencode-history") {
 		t.Errorf("an existing engine was created or imported into again:\n%s", log)
 	}
 }
@@ -386,7 +377,7 @@ func TestOpenCodeCreationDefersCredentialsUntilHistoryIsReady(t *testing.T) {
 		t.Fatal("engine was not stopped before the credential-enabled boot")
 	}
 	log := f.log()
-	create, imported, ready, stop := strings.Index(log, sbx.OpenCodeHistoryGateEnv), strings.Index(log, sbx.OpenCodeImportScript), strings.Index(log, sbx.OpenCodeHistoryReadyScript), strings.Index(log, "stop "+ocEngine)
+	create, imported, ready, stop := strings.Index(log, sbx.OpenCodeHistoryGateEnv), strings.Index(log, "opencode-history import"), strings.Index(log, "opencode-history ready"), strings.Index(log, "stop "+ocEngine)
 	if create < 0 || imported <= create || ready <= imported || stop <= ready {
 		t.Fatalf("wrong preparation order: %s", log)
 	}

@@ -612,7 +612,7 @@ func TestTheChecklistKeyLineNamesWhatEnterDoes(t *testing.T) {
 		t.Errorf("the drawn key line differs from %q:\n%s", want, strings.Join(drawn, "\n"))
 	}
 	q := quitGate{}.open(80, 24, pageThree().Step.Leave, GlyphsNerd)
-	if got := joinHint(q.ask.keyParts()); got != "←→ choose · enter press · esc stay · ctrl+c quit" {
+	if got := joinHint(q.ask.keyParts()); got != "←→ choose · ↵ press · esc stay · ctrl+c quit" {
 		t.Errorf("the quit dialog's key line reads %q", got)
 	}
 }
@@ -803,18 +803,20 @@ func TestEscOnPageOneAsksWhenTheFormIsAChecklist(t *testing.T) {
 // its band cleared between the walls.
 func TestTheQuitDialogDrawsOverTheDimmedForm(t *testing.T) {
 	t.Parallel()
+	const dialogWidth = 50
 	for _, c := range []struct {
 		w, h, x0, y0 int
 	}{
-		{80, 24, 13, 6},
-		{120, 36, 33, 7},
+		{80, 24, 15, 6},
+		{120, 36, 35, 7},
 	} {
 		lines := checklistFrame(t, checklistCase{form: pageThree, cursor: 2, quit: true}, c.w, c.h)
 		cw := cardWidth(c.w)
-		if col(lines[c.y0], "╭") != c.x0 || col(lines[c.y0], "╮") != c.x0+53 {
-			t.Errorf("%dx%d: the box's top row is %q, want ╭ at %d and ╮ at %d", c.w, c.h, lines[c.y0], c.x0, c.x0+53)
+		rightEdge := c.x0 + dialogWidth - 1
+		if col(lines[c.y0], "╭") != c.x0 || col(lines[c.y0], "╮") != rightEdge {
+			t.Errorf("%dx%d: the box's top row is %q, want ╭ at %d and ╮ at %d", c.w, c.h, lines[c.y0], c.x0, rightEdge)
 		}
-		if left, right := c.x0-1, cw-2-(c.x0+53); left != right {
+		if left, right := c.x0-1, cw-2-rightEdge; left != right {
 			t.Errorf("%dx%d: the box sits %d columns from the left wall and %d from the right", c.w, c.h, left, right)
 		}
 		if !strings.Contains(lines[1], "Store agent credentials") || !strings.Contains(lines[1], "page 3/4") {
@@ -830,7 +832,7 @@ func TestTheQuitDialogDrawsOverTheDimmedForm(t *testing.T) {
 				t.Errorf("%dx%d row %d: the band keeps the walls: %q", c.w, c.h, y, lines[y])
 				continue
 			}
-			if strings.TrimSpace(string(r[1:c.x0])) != "" || strings.TrimSpace(string(r[c.x0+54:cw-1])) != "" {
+			if strings.TrimSpace(string(r[1:c.x0])) != "" || strings.TrimSpace(string(r[rightEdge+1:cw-1])) != "" {
 				t.Errorf("%dx%d row %d: the band must clear beside the box: %q", c.w, c.h, y, lines[y])
 			}
 		}

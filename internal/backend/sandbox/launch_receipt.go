@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/proveo-ca/proveo/internal/proveohome"
 	"github.com/proveo-ca/proveo/internal/sbx"
@@ -37,6 +38,10 @@ type launchReceipt struct {
 	BrowserProfile   string `json:"browserProfile,omitempty"`
 	BrowserSandboxID string `json:"browserSandboxId,omitempty"`
 	BrowserRun       string `json:"browserRun,omitempty"`
+	InstanceID       string `json:"instanceId,omitempty"`
+	VMID             string `json:"vmId,omitempty"`
+	Run              string `json:"run,omitempty"`
+	Source           string `json:"source,omitempty"`
 }
 
 // noReceipt is the change a sandbox with no receipt reports.
@@ -68,6 +73,7 @@ func receiptOf(cfg sbx.RunConfig, image string, kitYAML []byte, sid, imageID str
 		Clone: cfg.Clone, Env: map[string]string{},
 		CPUs: cfg.CPUs, Memory: cfg.Memory,
 		KitDir: cfg.KitDir, Publish: append([]string{}, cfg.Publish...),
+		Run: sid, Source: FirstHost(cfg.Mounts),
 	}
 	for _, m := range cfg.Mounts {
 		r.Mounts = append(r.Mounts, fmt.Sprintf("%s:%s:%v", norm(m.Host), m.Container, m.ReadOnly))
@@ -241,6 +247,11 @@ func sandboxClone(in Input, name string) (bool, error) {
 // the sandbox while either stays only in it. It reports each step as that step starts.
 // SPEC: _spec/internal/sbx/state-sync.puml
 func retireSandbox(in Input, cfg sbx.RunConfig, report func(string, ...any)) error {
+	if in.Instance != nil {
+		if err := in.Instance.checkVM(); err != nil {
+			return err
+		}
+	}
 	report("carrying its work home from %s", cfg.Name)
 	in.Sid += "-retired"
 	in.CloneKnown = false
@@ -267,6 +278,11 @@ func retireSandbox(in Input, cfg sbx.RunConfig, report func(string, ...any)) err
 		carried.Item(Item{Warn: true, Text: "resume state — not saved", Detail: []string{failure(err, out)}})
 		return fmt.Errorf("%s — %s kept; %s", keptUnsaved, cfg.Name, retireUnsavedFix(cfg.Name, sbx.Running(cfg.Name)))
 	}
+	if in.Instance != nil {
+		if _, err := checkpointInstance(in.ctx(), in, agentWorkdir(in, cfg.Mounts), time.Time{}); err != nil {
+			return errors.Join(err, recordHistoryFailure(in, err))
+		}
+	}
 	stateHome := StateHome(cfg.Env)
 	if was := readReceipt(cfg.Name); Harness(in) == "claudecode" && was != nil &&
 		stateHome != "" && was.Env[sbx.StateHomeVar] == digest(stateHome) && was.Env[proveohome.ConfigFilesRootVar] != "" {
@@ -286,6 +302,9 @@ func retireSandbox(in Input, cfg sbx.RunConfig, report func(string, ...any)) err
 
 // removeRetired removes a retired sandbox and its records, bounded by guestExecDeadline.
 func removeRetired(cfg sbx.RunConfig, report func(string, ...any)) error {
+	if err := checkReceiptVM(cfg.Name); err != nil {
+		return err
+	}
 	report("sbx rm --force %s — deleting it and its session", cfg.Name)
 	if out, err := guestRun(sbx.RemoveArgs(cfg.Name)...); err != nil && !sbx.NotFound(out) {
 		return fmt.Errorf("remove stale %s: %w: %s — check `sbx ls`, then `sbx rm --force %s` once sbx answers", cfg.Name, err, strings.TrimSpace(out), cfg.Name)
@@ -321,4 +340,36 @@ var confirmUnansweredRemoval = func(name string, refs []string, history bool) bo
 	}
 	yes, _ := askUnansweredRemoval(name, sbx.MirrorRefs(name), refs, history)
 	return yes
+}
+
+// RunSessionVar names the host tmux session a `proveo run` hosts its agent in.
+const RunSessionVar = "PROVEO_RUN_SESSION"
+
+func sessionPath(name string) string {
+	if p := receiptPath(name); p != "" {
+		return strings.TrimSuffix(p, filepath.Ext(p)) + ".session"
+	}
+	return ""
+}
+
+// recordSession notes which host tmux session this run's agent lives in, for the dashboard and `proveo attach`.
+func recordSession(name string) {
+	sess, p := os.Getenv(RunSessionVar), sessionPath(name)
+	if sess == "" || p == "" {
+		return
+	}
+	_ = os.WriteFile(p, []byte(sess+"\n"), 0o600)
+}
+
+// SessionOf is the host tmux session the last `proveo run` of sandbox name hosted its agent in.
+func SessionOf(name string) string {
+	p := sessionPath(name)
+	if p == "" {
+		return ""
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }

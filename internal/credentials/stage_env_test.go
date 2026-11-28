@@ -34,3 +34,25 @@ func TestStageProjectEnvDropsOnlyTheBrokeredKeys(t *testing.T) {
 		t.Errorf("forward mode drops nothing, got %v", kept)
 	}
 }
+
+func TestAHostOnlyKeyNeverEntersTheSandboxAndSurvivesTheMergeHome(t *testing.T) {
+	t.Parallel()
+	src := filepath.Join(t.TempDir(), ".env")
+	host := "DB_URL=postgres://x\nLINEAR_API_KEY=lin_api_host\n"
+	if err := os.WriteFile(src, []byte(host), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, dropped, err := StageProjectEnv(src, filepath.Join(t.TempDir(), "project-env"), HostOnlyVars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := os.ReadFile(path)
+	if string(base) != "DB_URL=postgres://x\n" || !slices.Equal(dropped, []string{"LINEAR_API_KEY"}) {
+		t.Fatalf("staged %q, dropped %v", base, dropped)
+	}
+	edited := string(base) + "LINEAR_API_KEY=lin_api_agent\nFEATURE=on\n"
+	m := MergeProjectEnv([]byte(host), base, []byte(edited), HostOnlyVars)
+	if got := string(m.Body); got != host+"FEATURE=on\n" || !slices.Contains(m.Refused, "LINEAR_API_KEY") {
+		t.Errorf("merged %q, refused %v; the host keeps its own token and refuses the agent's", got, m.Refused)
+	}
+}

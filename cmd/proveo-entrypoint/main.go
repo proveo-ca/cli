@@ -1,4 +1,4 @@
-// SPEC: _spec/cmd/proveo-entrypoint/prep-process-boundary.puml, _spec/internal/sbx/host-android-adb.puml, _spec/cmd/proveo-entrypoint/prep-sequence.puml, _spec/_paradigms/harness-paradigms.puml
+// SPEC: _spec/cmd/proveo-entrypoint/prep-process-boundary.puml, _spec/packages/lib/agent-activity.puml, _spec/internal/sbx/host-android-adb.puml, _spec/cmd/proveo-entrypoint/prep-sequence.puml, _spec/_paradigms/harness-paradigms.puml
 package main
 
 import (
@@ -11,10 +11,11 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/adbmirror"
 	"github.com/proveo-ca/proveo/internal/entrypoint"
+	"github.com/proveo-ca/proveo/internal/opencodehistory"
 	"github.com/proveo-ca/proveo/internal/verify"
 )
 
-const usage = "usage: proveo-entrypoint prep | proveo-entrypoint verify [dir] | proveo-entrypoint adb-mirror | proveo-entrypoint browser"
+const usage = "usage: proveo-entrypoint prep | proveo-entrypoint verify [dir] | proveo-entrypoint adb-mirror | proveo-entrypoint browser | proveo-entrypoint activity <harness> <state> | proveo-entrypoint claude-hook <settings> <event> <timeout> <matcher> <command>"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -28,6 +29,31 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	}
+
+	if os.Args[1] == "activity" {
+		runActivity(os.Args[2:])
+		return
+	}
+
+	if os.Args[1] == "claude-trust" {
+		if err := runClaudeTrust(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "proveo-entrypoint claude-trust:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if os.Args[1] == "claude-hook" {
+		if err := runClaudeHook(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "proveo-entrypoint claude-hook:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if os.Args[1] == "opencode-history" && len(os.Args) == 3 {
+		os.Exit(opencodehistory.Run(os.Args[2], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
 	}
 
 	if os.Args[1] == "verify" {

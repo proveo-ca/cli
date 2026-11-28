@@ -4,6 +4,9 @@
 ' covers: README.md
 ' covers: _spec/_assets/hero.gif
 ' covers: _spec/_assets/readme-topology.svg
+' covers: _spec/_assets/dashboard.gif
+' covers: internal/dashboard/readme_media_test.go
+' covers: cmd/proveo/schedule_test.go (TestTheREADMEScheduleSampleLoadsAndItsVerbsExist)
 '
 ' ── RENDER (DECIDED 2026-11-17) ─────────────────────────────────────────────
 ' GitHub renders no PlantUML, so the README embeds this file's SVG:
@@ -26,6 +29,28 @@
 ' Render ANSI cells with pyte and Pillow using DejaVu Sans Mono and Noto Sans
 ' Symbols 2. Export the frames with ffmpeg at 12 fps and a 256-color palette.
 ' HISTORY: the earlier recording ended in the devices picker.
+'
+' ── README SECTIONS (DECIDED 2026-11-28) ────────────────────────────────────
+' "Show the running task dashboard in a first section, the second section is
+' simple run, the 3rd section scheduling". CHOSEN: "Fixture recording": the
+' operator's live dashboard shows private PRs, Linear issues and personal jobs.
+' NOT CHOSEN: recording the live dashboard on proveo's own repo (global state
+' leaks in); static PNGs (no motion).
+' "In the readme, only show dashboard, not graph nor schedule" (2026-11-28): the
+' GIF stays on view 1, and schedule.gif and its view-3 paragraph left the
+' Scheduling section, which keeps the schedule.yml sample and the CLI verbs.
+' ── dashboard.gif (DRAWN 2026-11-28) ─────────────────────────────────────────
+'   PROVEO_README_MEDIA=_spec/_assets go test ./internal/dashboard -run TestREADMEMedia
+' The test scripts keys into the real dashboard model over fixture data (an
+' acme repo, a review request, a waiting agent, a report, a failed run, the
+' picker's three sources) and runs none of the reads it asks for. Each View()
+' goes through x/vt into cells; Fira Code (PROVEO_README_FONT, _BOLD,
+' _FALLBACK: Menlo, Apple Symbols) draws the text, and box and block
+' runes are drawn as geometry so frames join. A caption strip names each step.
+' ffmpeg (concat with per-frame holds, palettegen 128, no dither) and gifsicle
+' -O3 pack it: 15 frames, 330 KiB. No pyte, no Pillow, no VHS:
+' the host had neither VHS nor ttyd, and the model needs no terminal.
+' The README's schedule sample must load and name real verbs: a cmd test reads it.
 
 left to right direction
 skinparam nodesep 40

@@ -1,0 +1,114 @@
+@startuml ResourceQueue
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: resource admission and durable ownership of queued agent attempts
+' covers: cmd/proveo/schedule.go
+' covers: internal/schedule/schedule.go
+' covers: internal/schedule/runner.go
+' covers: internal/sbx/limits.go
+' covers: internal/sbx/host_memory.go
+' covers: internal/sbx/host_disk_unix.go
+' covers: internal/sbx/host_disk_other.go
+' covers: _spec/internal/schedule/resource_queue.qnt
+' covers: cmd/proveo/admission.go
+' covers: internal/backend/sandbox/admission.go
+' covers: internal/backend/sandbox/admission_test.go
+' covers: internal/schedule/queue*.go
+' covers: internal/sbx/capacity.go
+' covers: e2e/dashboard_admission_test.go
+' status: Go admission and the durable queue are implemented.
+' Quint also models disk allocation reflection; the Go ledger
+' charges outstanding reservations conservatively until live qualification.
+' Related capacity model: _spec/_paradigms/resource_management.puml
+' Workspace and graph: _spec/internal/dashboard/workspace-instances.puml
+'
+' HOST CAPACITY
+' Sample on the sbx host. Show CPU and system RAM as telemetry.
+' Read Linux MemTotal and MemAvailable. On macOS pair hw.memsize with
+' vm_stat headroom. Reuse host_memory.go's parsers.
+' Record discrete VRAM as a separate per-device inference budget.
+' Treat an integrated or unified GPU's shared allocations as usage of
+' the same system RAM pool.
+' With samples of 32 GiB system RAM and 16 GiB dedicated VRAM, verify
+' the RAM total is 32 GiB. Verify a unified host reports a single RAM pool.
+' Apply sbx launch limits separately from the queue's disk reservation.
+' Read the reservation size on the owning host with
+' sbx settings get sandbox.disk.dockerVolume. Read the structured value
+' with --json and normalize it to bytes for accounting using sbx units.
+' Display the configured size in its original units. Record the value
+' with the reservation so a settings change applies to new launches.
+' Use Unix Statfs for the daemon store and retained-artifact paths.
+' The smaller free-space sample bounds admission. The daemon store sample
+' drives its displayed occupied space. A same-filesystem pair has
+' the same free-space limit. PROVEO_SBX_STORAGE names a custom store.
+' Subtract all reservations from the configured disk pool. Subtract
+' reservations pending in the measurements from available filesystem
+' space. Admit against the smaller result. Confirm whether a reservation
+' is reflected before excluding it from the second subtraction.
+' Track disk per filesystem. A missing, stale, or unreconciled disk
+' sample or unreadable reservation size pauses new admissions.
+' Resample when disk capacity changes.
+' Show segmented host capacity bars above the task views. Use one segment
+' per 2 CPU cores, 8 GiB of RAM, or 64 GiB of disk. Show occupied capacity
+' over the total, with totals in muted text. Fill partial segments in
+' proportion. Include pending reservations in the disk bar.
+' Show unknown occupancy when a sample is absent. Keep totals visible.
+' The HTML prototype (retired 2026-11-28, decisions taken) used a 512 GiB
+' disk with 180 GiB of initial headroom and a 32g sandbox.disk.dockerVolume.
+'
+' ADMISSION AND LIVENESS
+' Serialize the disk reservation across Proveo queues on the same host.
+' Record a durable disk lease before launching a job. Reconcile known VMs
+' and job identities on restart. Hold leases through startup, execution,
+' and result carry. An unreachable client retains its lease until
+' inventory confirms the actual VM outcome.
+' Release startup reservations on a verified no-start. Charge disk
+' that remains to a fresh filesystem sample before admitting further
+' writes. Refresh the disk sample when a reflected lease ends.
+' Consider ready jobs in insertion order and take the oldest whose disk
+' reservation fits. Expose wait reasons and age.
+' Calendar and manual submissions persist prompt snapshots before start.
+' The dispatcher samples every 5s while work remains. On shutdown it
+' releases its worker lock before checking for newly submitted work.
+' An installed calendar service restarts dispatch on its next tick.
+' Queue items become ready through submission and prerequisite completion.
+' A calendar hook can enqueue an item. It never bypasses admission.
+' Runtime time limits and probe freshness still use clocks.
+' Insufficient disk space and unmet prerequisites keep a task queued.
+' Invalid dependency graphs or unsatisfiable requests require attention.
+' Keep workflow phase separate from admission state.
+'
+' QUINT EVALUATION
+' resource_queue.qnt models two jobs, disk headroom, and which leases
+' the sample reflects. Use Quint in verification
+' to check that legal transitions respect the policy pool, keep reflected
+' leases attached to held work, and honor prerequisites before admission.
+' The scenarios cover disk pressure, unavailable samples, exact capacity,
+' pending and reflected reservations, carry, resample, and prerequisites.
+' Eight Quint scenarios passed. Apalache checked all three invariants
+' through 12 transitions without a violation.
+' Keep the live scheduler in Go. The model abstracts OS readings, fsync,
+' lifecycle discovery and simultaneous processes. Cover those boundaries
+' with Go adapter tests and live sbx verification.
+' Command: npx --yes @informalsystems/quint@0.34.0 test resource_queue.qnt
+' Source: https://quint.sh/docs/getting-started
+
+title Resource-driven task admission
+
+state "Queued\nwait for prerequisites or disk" as Queued
+state "Reserved\nhold configured disk before launch" as Reserved
+state "Running\nhold through execution" as Running
+state "Settling\nhold through outcome and Git carry" as Settling
+state "Attention required\nreview, failure or invalid request" as Attention
+state "Complete\naccepted work" as Complete
+
+[*] --> Queued : submit
+Queued --> Reserved : prerequisites cleared and disk fits
+Queued --> Attention : invalid graph or request
+Reserved --> Running : VM and agent started
+Reserved --> Attention : launch failed and no VM holds lease
+Running --> Settling : agent stopped or outcome recovered
+Settling --> Attention : results published or operator input needed
+Attention --> Queued : operator requeues
+Attention --> Complete : work accepted
+Complete --> [*]
+@enduml

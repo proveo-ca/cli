@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/proveo-ca/proveo/internal/cdn/release"
 	"github.com/proveo-ca/proveo/internal/maintain"
 	"github.com/proveo-ca/proveo/internal/ui"
 )
 
-const usage = "usage: fleet [-tag=<tag>] [-no-cache] [-print] [-cli [-cli-version=<vX.Y.Z>] [-yes]] build|deploy|test [<target>|all]"
+const usage = "usage: fleet [-tag=<tag>] [-no-cache] [-print] [-cli [-cli-version=<vX.Y.Z>] [-yes]] build|deploy|test [<target>...|all]"
 
 func main() {
 	cwd, err := os.Getwd()
@@ -43,7 +44,7 @@ func run(args []string, getenv func(string) string, cwd string, stdout, stderr i
 		return 2
 	}
 	rest := fs.Args()
-	if len(rest) == 0 || len(rest) > 2 || (rest[0] != "build" && rest[0] != "deploy" && rest[0] != "test") ||
+	if len(rest) == 0 || (rest[0] != "build" && rest[0] != "deploy" && rest[0] != "test") ||
 		(len(rest) == 1 && !*cli && rest[0] != "test") || (*cli && rest[0] == "test") {
 		fmt.Fprintln(stderr, usage)
 		return 2
@@ -55,7 +56,7 @@ func run(args []string, getenv func(string) string, cwd string, stdout, stderr i
 			return 2
 		}
 	}
-	if rest[0] == "test" && (len(rest) == 1 || rest[1] == "all") {
+	if rest[0] == "test" && (len(rest) == 1 || len(rest) == 2 && rest[1] == "all") {
 		if err := maintain.RunImageGate(*printOnly, stdout); err != nil {
 			pr.Failf("%v", err)
 			return 1
@@ -76,7 +77,7 @@ func run(args []string, getenv func(string) string, cwd string, stdout, stderr i
 		pr.Failf("%v", err)
 		return 1
 	}
-	if err := maintain.Fleet(rest[0], rest[1], *tag, *noCache, *printOnly, defs, stdout); err != nil {
+	if err := maintain.Fleet(rest[0], strings.Join(rest[1:], " "), *tag, *noCache, *printOnly, defs, stdout); err != nil {
 		pr.Failf("%v", err)
 		return 1
 	}

@@ -1,0 +1,7 @@
+@startuml DiskAdmission
+title PLANNED — Verify disk admission
+start
+:Read the configured sandbox disk size;
+:Check the reservation fits before launch;
+stop
+@enduml

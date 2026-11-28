@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -43,19 +44,38 @@ func RemoveKept(name, resultsDir string, report func(string, ...any), stop bool,
 			return notRemoved(name, err, err.Error())
 		}
 		defer release()
+	} else {
+		release, err := instanceLease(name)
+		if err != nil {
+			return notRemoved(name, err, err.Error())
+		}
+		defer release()
+	}
+	i, err := readInstance(filepath.Dir(resultsDir), name)
+	if err != nil {
+		return notRemoved(name, err, err.Error())
+	}
+	if was := readReceipt(name); i == nil && was != nil && was.InstanceID != "" {
+		err := fmt.Errorf("sandbox %s has a managed receipt but no instance record in this state directory", name)
+		return notRemoved(name, err, err.Error())
 	}
 	rows, err := trustedListing()
 	if err != nil {
 		return notRemoved(name, err, "sbx gave no listing of its sandboxes", "`proveo rm "+name+"` tries again once `sbx ls` answers")
 	}
-	i := slices.IndexFunc(rows, func(r sbx.Listed) bool { return r.Name == name })
-	if i < 0 {
+	index := slices.IndexFunc(rows, func(r sbx.Listed) bool { return r.Name == name })
+	if index < 0 {
 		if named {
 			_ = os.Remove(receiptPath(name))
 		}
 		return forgetKept(name, resultsDir)
 	}
-	row := rows[i]
+	row := rows[index]
+	if i != nil {
+		if err := i.checkVM(); err != nil {
+			return notRemoved(name, err, err.Error())
+		}
+	}
 	if named && !slices.Contains(deleteProfile, true) {
 		return notRemoved(name, fmt.Errorf("%s holds a named browser profile", name), "`"+profileDeletion(name)+"` deletes the sandbox and its profile")
 	}
@@ -71,6 +91,19 @@ func RemoveKept(name, resultsDir string, report func(string, ...any), stop bool,
 		}
 	}
 	in, cfg := keptInput(row, resultsDir)
+	in.Instance = i
+	if i.Isolated() {
+		in.HomeRoot, in.RepoRoot = i.Home(in.HomeRoot), i.Repo
+		if r := readReceipt(row.Name); r != nil && r.Source != "" {
+			in.InstanceCloneRoot = r.Source
+		} else if len(row.Workspaces) > 0 {
+			in.InstanceCloneRoot = strings.TrimSuffix(row.Workspaces[0], ":ro")
+		}
+		if rel, ok := nestedRel(i.Repo, i.Workspace); ok {
+			in.ScopeRel = rel
+		}
+		in.InstanceWork = i.worktree()
+	}
 	carried := NewBlock(func() {})
 	if in.RepoRoot != "" && sbx.Gone(name) {
 		return forgetKept(name, resultsDir)
@@ -83,7 +116,18 @@ func RemoveKept(name, resultsDir string, report func(string, ...any), stop bool,
 	if err := saveKept(name, carried); err != nil {
 		return notRemoved(name, fmt.Errorf("%w — %s kept", err, name), "`proveo rm "+name+"` tries again; "+unsavedDelete(name))
 	}
+	if i != nil {
+		if _, err := checkpointInstance(in.ctx(), in, agentWorkdir(in, cfg.Mounts), time.Time{}); err != nil {
+			err = errors.Join(err, recordHistoryFailure(in, err))
+			return notRemoved(name, err, err.Error())
+		}
+	}
 	report("sbx rm --force %s", name)
+	if i != nil {
+		if err := i.checkVM(); err != nil {
+			return notRemoved(name, err, err.Error())
+		}
+	}
 	if out, err := guestRun(sbx.RemoveArgs(name)...); err != nil && !sbx.NotFound(out) {
 		return notRemoved(name, fmt.Errorf("remove %s: %w: %s", name, err, strings.TrimSpace(out)),
 			"sbx rm: "+failure(err, out), "check `sbx ls`, then `proveo rm "+name+"` again")

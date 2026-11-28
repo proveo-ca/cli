@@ -100,7 +100,7 @@ func writePrivateRecord(path string, body []byte) error {
 	}
 	defer func() { _ = os.Remove(f.Name()) }()
 	_, writeErr := f.Write(body)
-	if err := errors.Join(writeErr, f.Close()); err != nil {
+	if err := errors.Join(writeErr, f.Sync(), f.Close()); err != nil {
 		return err
 	}
 	return os.Rename(f.Name(), path)

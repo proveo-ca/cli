@@ -1,0 +1,331 @@
+@startuml DashboardTerminalDesign
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+skinparam noteTextAlignment left
+' purpose: how the proveo dashboard spends terminal cells — item density borrowed from sbx, width and height breakpoints, and a readable change tree
+' covers: internal/dashboard/layout.go
+' covers: internal/dashboard/items.go
+' covers: internal/dashboard/filetree.go
+' covers: internal/dashboard/view.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/layout_test.go
+' covers: internal/dashboard/filetree_test.go
+' covers: e2e/dashboard_breakpoints_tmux_test.go
+' covers: internal/dashboard/popover.go
+' covers: internal/dashboard/popover_test.go
+' covers: internal/dashboard/cards.go
+' covers: internal/dashboard/highlight.go
+' covers: internal/dashboard/highlight_test.go
+' covers: internal/dashboard/handoff.go
+' covers: internal/dashboard/handoff_test.go
+' covers: internal/dashboard/ports.go
+' covers: internal/dashboard/ports_test.go
+'   the plan this upgrades ............ _spec/_plans/dashboard-delivery.puml (D6)
+'   the runtime it renders ............ _spec/internal/dashboard/workspace-instances.puml
+'   the chosen layout ................ 1 Review queue, lower-right split (HTML prototype retired 2026-11-28)
+'   the design language it speaks ..... _spec/_conventions/tui-design-language.puml (glyph tiers, sbx's OWN TUI)
+'   the folder picker it does not reuse _spec/internal/choiceui/scope-tree.puml
+' Notes are capped at 5 lines x 50 columns; one idea per anchor.
+' status: IMPLEMENTED 2026-11-24. Live sbx parity stays with D7.
+'
+' ── DECIDED 2026-11-25 (the Executor) ───────────────────────────────────────
+' "The task details should always be a popover approach, no scroll": t opens a
+' rounded card over the task pane, under the selected task or above it when
+' the rows below run out. It is sized to its content: title and status, meta,
+' sandbox, usage are kept; branch and PR, changes, push, ticket, excerpt and at
+' most three prompt lines drop from the bottom to fit. It never scrolls. This
+' supersedes the lower-right split, the accordion and the left pane, and the 4
+' key that cycled them. Esc closes the card first.
+' "proveo's scroll should only be the task list panes": arrows and the wheel move
+' through tasks; f or g moves focus to the file tree, whose footer leads with
+' Esc back to tasks; Tab swaps tasks and tree. Only an open file preview
+' scrolls besides them. JUDGEMENT: a preview longer than its pane still needs
+' its own scroll; ask before turning it into a card.
+' "diff AND code highlighting must be attached": the preview is read-only
+' review (internal/dashboard/highlight.go). One sbx exec reads both sides in
+' full, the file at the merge base (its old name after a rename) and the
+' sandbox's copy, each capped at 128 KB; carried tasks read the merge base
+' and the tip. chroma v2 colours each whole file, so a line inside /* */
+' keeps the comment tone a patch hunk would lose; go-udiff lines the two up
+' with three lines of context. "Let the code highlighting go beyond proveo's
+' color palette; the only exception": code takes a chroma style, default
+' catppuccin-mocha, PROVEO_CODE_THEME names another; foreground only, so the
+' pane keeps its background; +/- gutters stay identity green and red.
+' Keys while a file has focus: n next file, p previous file, d file or diff
+' ("`n` should become next file perhaps `p` previous file, `d` toggle diff"),
+' u unified, i side by side; [ ] stay as aliases and step from the tree too.
+' n means new instance everywhere else. Steps follow tree order, up is
+' previous and down is next, opening folders on the way and keeping the mode.
+' The title
+' names the mode and "7 of 24". The left tree stays review-only: "I want the
+' left pane file-tree to be review only purposes". Fresh (e) is the one
+' editing path and hangs off the task, not the tree.
+' Chosen 2026-11-25 over Fresh hand-off and delta: "chroma, both sides read",
+' toggle key. Licences: chroma MIT, go-udiff BSD-3; Fresh GPL-3.0 stays a
+' guest tool; Crush diffview FSL-1.1 not copied.
+'   https://github.com/alecthomas/chroma
+'   https://github.com/aymanbagabas/go-udiff
+'   https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_DiffRenderers.md
+'   https://getfresh.dev/docs/features/git
+' "Add a loading indicator when attach-detaching around from tasks/sbx items"
+' (internal/dashboard/handoff.go): attach and Fresh hand the terminal over
+' behind a card on the alternate screen ("Attaching to <task>", the sandbox,
+' Ctrl+B d detaches back here). The program draws over it; tmux's detach
+' restores the shell's own screen, and the dashboard returns with "Back from
+' <task>" in the footer. In the sbx tab a frame blank for 250 ms gets "Starting
+' sbx" (first start) or "Waiting for sbx" (between its list and an agent) with
+' a spinner on the repaint tick. proveo draws only over an empty frame, never
+' over sbx's own output. MEASURED: sbx drew its list within 0.5 s here.
+' "show a loading card for the file-tree left pane when loading/buffering":
+' a read the operator caused (task change, f, g, a new PR base) shows a
+' spinner card after 150 ms when the pane is empty ("Reading changes · 23s",
+' from the sandbox, "sandbox busy · CPU 13.9/14 cores") and a header spinner
+' over rows it refreshes; the 5 s poll refreshes quietly and never restarts a
+' read still running. MEASURED 2026-11-25: 1b3fcb7f ran a typecheck and next
+' dev at load 109; git merge-base took 13 s and the diff 17 s, so the old 6 s
+' guest timeout killed every read and the pane said "No changes". Tree and
+' preview reads now get a minute; a failed read says why in the pane, not the
+' footer, since the footer's keys matter more.
+' "the running task cards must have `p` for the bound `sbx` ports. Display in
+' a pop-up" (2026-11-26): p on a card whose sandbox runs opens a notice card of
+' sbx ls's published ports: http://host:port → sandbox port/proto, "listening"
+' when a host-side dial answers in 300 ms, and the devports tool and file that
+' serves that sandbox port. It opens at once with "checking…" while the probe
+' and the repo scan run. Card actions fit their width: two spaces, then f files
+' drops first. MEASURED: sbx ls --json gives host_ip, host_port, sandbox_port,
+' protocol (tcp4); a codex sandbox listed ports null.
+' "Make the pane selection more explicit; a cyan border on the left/right panes
+' that highlight wherever the user is currently focused at. Let tab switch
+' between panes" (2026-11-26): each pane is a rounded frame whose top edge
+' carries its title; the focused pane's frame is brand (cyan), the other the
+' rule grey. Tab moves between the tree and the right pane (the tasks, or the
+' open file); in a single pane it swaps which one shows. The old │ divider
+' column is now the one-cell gap between the frames, so it still lines up with
+' sbx's divider. A frame costs one row and four columns; tree messages wrap.
+' "The file i'm currently reading in the file-tree must be highlighted ... add an
+' underline along it on the same cyan color. tab + n should resolve in opening
+' the first file and highlighting it": the file being read keeps the › marker
+' and a bold name underlined in brand cyan whichever pane has focus. n and p
+' from the tree open the file under the cursor, else the first after it, then
+' step; n stays new instance on the task cards.
+
+
+' "the file-tree is still showing the host's files": Files and Changes now read
+' the selected task's sandbox (internal/dashboard/sandbox_reads.go): the running
+' guest over sbx exec, else the carried tip, else the base; never the host
+' checkout. The tree's summary names its source: sandbox, carried <sha> or base.
+' "The item list having only 2 rows seems too bland. I'd like a presentation
+' more akin to a card; similar to the way sbx does it": each task is a rounded
+' card (internal/dashboard/cards.go): the phase as a chip on the top edge, the
+' status glyph and title, a divider, agent · ticket · every PR (#3975 #3974),
+' then "ticket 3d - PR 7h" (Linear createdAt, the oldest PR's createdAt; the
+' task's age when neither is known), then the resources layer: the sandbox and
+' its last sample on two surface-tone rows, then the keys, lit on the selected
+' card only. "In the task items, give the resources its' own layers, and the
+' <ticket age> - <pr age> in a separate row." Cards are 10 rows. Cards
+' flow 1 to 3 abreast by width (38-cell minimum); up and down take the nearest
+' card in the next row, left and right step the order; + n new instance ends
+' the Queued section as an empty card in its last row's free slot, as sbx ends
+' with + New Sandbox. "the new instance card must always show under the Queued
+' section" (2026-11-27): with nothing queued the Queued heading still shows,
+' holding only that card; the Schedule view's heading there reads Waiting for
+' dispatch. Before, it joined whichever section came last. A short terminal
+' draws five-row cards. This supersedes the two-row item.
+' Changes read as the PR will: against the branch's base (vs origin/dev), live
+' from the guest when it runs; see workspace-instances.puml (base).
+' "The separation of the host resources at the top and the content panels
+' isn't clear enough; add a gray muted square around it (similar to sbx
+' header)": host capacity sits in a muted rounded frame, three rows, as sbx
+' frames its title bar; short frames still drop it.
+'
+' ── MEASURED 2026-11-24 (HEAD 8f276ba2, tmux 3.7b, six seeded tasks) ────────
+' sbx card ....... 37x11 cells, about 12 fields: status dot, name, kind badge,
+'                  agent, path, CPU% and cores, RAM, disk, age, state, and the
+'                  stop / exec / remove row with a highlighted mnemonic
+' HTML reference . 2 rows per task, 5 fields: title, ticket, agent, phase and a
+'                  right-aligned status
+' HEAD row ....... 1 row, 2 fields (title, phase); about 33 of 84 columns used
+' HEAD tree ...... 18 changes took 33 rows: every folder open, one cyan for
+'                  A/M/R, a raw "R100" score, no filter and no icons
+' HEAD sizes ..... one fixed 30/70 split from 40x12 to 200x50; at 40x12 every
+'                  file name read "M …" and the footer cut "Ctrl+C qu…"
+' HEAD footer .... a schedule.yml validation error kept only its path at 120
+'                  columns; the cause sat past the right edge
+'
+' ── READING A TMUX PANE (e2e/dashboard_breakpoints_tmux_test.go) ─────────────
+' capture-pane prints a TAB where the renderer moved the cursor with HT over
+' blank cells; expand it to the next 8-column stop, clamped to the last column,
+' or a full-width row measures one cell wider than the pane.
+' Right after resize-window the pane still holds the previous size's frame, so
+' each size polls until its own layout predicate holds instead of sleeping.
+' Escape, Escape, "-" sent in one burst parse as Alt+"-"; send them apart.
+' Nerd codepoints: lazygit's MIT table, pkg/gui/presentation/icons/file_icons.go.
+'
+' ── SIZES THE TIERS ARE CUT FROM ─────────────────────────────────────────────
+' 80x24 ......... VT100 heritage; GNOME presets 80x24 80x43 132x24 132x43
+'                 https://help.gnome.org/gnome-terminal/app-terminal-sizes.html
+' 80x25 ......... legacy Windows console, 0x190050
+'                 https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc738363(v=ws.10)
+' 120x30 ........ Windows Terminal initialCols / initialRows
+'                 https://learn.microsoft.com/en-us/windows/terminal/customize-settings/startup
+' <=84 x >=46 ... lazygit portraitModeAutoMaxWidth / MinHeight
+'                 https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md
+' >=200 ......... lazygit: two 80-column main panels plus a 40-column side
+'                 https://github.com/jesseduffield/lazygit/blob/master/pkg/gui/controllers/helpers/window_arrangement_helper.go
+' 0/80/120 ...... Textual HORIZONTAL_BREAKPOINTS docstring example
+'                 https://textual.textualize.io/api/app/#textual.app.App.HORIZONTAL_BREAKPOINTS
+' 0/60/90/120/160 ftui-layout default tiers
+'                 https://docs.rs/ftui-layout/0.4.1/ftui_layout/struct.Breakpoints.html
+' too small ..... bpytop's too-small screen swallowed q, so exit stays live
+'                 https://lightrun.com/answers/aristocratos-bpytop-not-possible-to-exit-bpytop-in-a-small-terminal
+' short panes ... VS Code panel users report about five visible lines
+'                 https://github.com/anthropics/claude-code/issues/26631
+'
+' ── TREE PRIOR ART ───────────────────────────────────────────────────────────
+' Fresh: compact chains on by default, status priority U>D>A>M>R>?, icons opt-in
+'   https://github.com/sinelaw/fresh/blob/master/docs/features/file-explorer.md
+'   https://github.com/sinelaw/fresh/blob/master/crates/fresh-editor/plugins/git_explorer.ts
+'   https://github.com/sinelaw/fresh/issues/2032 (font detection is infeasible)
+'   https://github.com/sinelaw/fresh/blob/master/crates/fresh-editor/tests/e2e/file_explorer_compact_chain.rs
+' lazygit: Compress(), ` tree/flat, - collapse all, = expand all
+'   https://github.com/jesseduffield/lazygit/blob/master/pkg/gui/filetree/build_tree.go
+' broot: a pattern filters the tree and keeps its shape
+'   https://github.com/Canop/broot/blob/main/website/src/navigation.md
+' Nerd codepoints: lazygit's MIT table
+'   https://github.com/jesseduffield/lazygit/blob/master/pkg/gui/presentation/icons/file_icons.go
+' fzf promises no library API; sahilm/fuzzy would add a module
+'   https://github.com/junegunn/fzf/issues/1010
+' Survey of the candidates (own model, bubbles tree, lipgloss tree, treeview,
+' teacup): research run 2026-11-24, recorded in the session that wrote this.
+title Dashboard terminal design — sbx-dense items, size tiers, a readable change tree
+
+package "ITEM — what one task carries" as ITEMS {
+  component "sbx card\n37x11 · about 12 fields" as SBXCARD <<cloud>>
+  component "HEAD row\n1 row · title + phase" as OLDROW <<error>>
+  component "task card\nphase chip · ● title · status\nagent · ticket · #PRs\nticket age - PR age\nresources band · keys" as ITEM <<app>>
+  component "group rule\nlabel ───────" as GROUP <<app>>
+  component "n new instance\nfull-width outline" as NEWBTN <<app>>
+}
+
+package "TIERS — cut by cells, decided per frame" as TIERS {
+  component "too small\n< 40x10\ncard + Ctrl+C" as TINY <<error>>
+  component "single\n< 60 cols\none pane, Tab swaps" as SINGLE <<app>>
+  component "portrait\n<= 84 cols, >= 46 rows\nChanges above queue" as PORTRAIT <<app>>
+  component "split\n>= 60 cols\nsbx-matched divider" as SPLIT <<host>>
+  component "short\n< 16 rows\nno capacity frame" as SHORT <<async>>
+  component "footer\nquit first · status tail\nkept over hints" as FOOT <<app>>
+}
+
+package "TREE — the Changes and Files pane" as TREE {
+  component "compact chains\ninternal/backend/sandbox" as COMPACT <<app>>
+  component "fold default\nopen when it fits\nelse top level only" as FOLD <<app>>
+  component "/ filter\nterms match the name\nor a folder segment" as FILTER <<app>>
+  component "status colour\nA green · M lime\nD red · R cyan" as COLOUR <<app>>
+  component "folded roll-up\n+3 ~1 -1" as ROLLUP <<app>>
+  component "PROVEO_GLYPHS\nnerd icons · safe ▸▾\nascii +- · none" as GLYPH <<host>>
+}
+
+SBXCARD ARROW_OPTIONAL ITEM : borrow fields\nand the frame
+OLDROW ARROW_ERROR ITEM : replaced
+ITEM ARROW_MAIN GROUP
+GROUP ARROW_MAIN NEWBTN
+TINY ARROW_MAIN SINGLE : widen
+SINGLE ARROW_MAIN SPLIT : 60 cols
+SPLIT ARROW_OPTIONAL PORTRAIT : narrow and tall
+SPLIT ARROW_OPTIONAL SHORT : under 16 rows
+COMPACT ARROW_MAIN FOLD
+FOLD ARROW_MAIN FILTER
+FILTER ARROW_MAIN COLOUR
+COLOUR ARROW_MAIN ROLLUP
+GLYPH ARROW_OPTIONAL COLOUR : marks only
+
+note bottom of ITEM
+  **A task is a card, in sbx's grammar.**
+  The phase rides the top edge, status leads the
+  title, and the keys light only when selected.
+  Cards sit two or three abreast as width allows.
+end note
+
+note right of OLDROW
+  **One row held two fields and little else.**
+  A reviewer could not tell a finished run from a
+  failed one without opening the details first.
+end note
+
+note bottom of GROUP
+  **Recency orders a group, not the job name.**
+  The newest outcome leads Attention required, so
+  overnight work reads in the order it landed.
+end note
+
+note bottom of TINY
+  **Below forty by ten nothing fits, so say so.**
+  The card names the size and the minimum, and
+  Ctrl+C still quits, unlike bpytop's lock-up.
+end note
+
+note bottom of SINGLE
+  **A narrow split starves both panes at once.**
+  Under sixty columns one pane fills the width and
+  Tab swaps it, so a file name stays readable.
+end note
+
+note bottom of PORTRAIT
+  **A tall narrow terminal has rows to spare.**
+  Inside lazygit's portrait bounds the tree stacks
+  over the queue instead of squeezing beside it.
+end note
+
+note bottom of SPLIT
+  **From sixty columns the divider follows sbx.**
+  Matching the stock column keeps the tab switch
+  steady, which the existing tmux checks assert.
+end note
+
+note bottom of SHORT
+  **A VS Code panel can show only a few lines.**
+  Short frames drop the capacity row, and details
+  replace the queue rather than halving it.
+end note
+
+note bottom of FOOT
+  **The status tail outranks low-priority keys.**
+  An error tends to start with a path and end with
+  its cause, so hints drop before the tail does.
+end note
+
+note bottom of COMPACT
+  **A chain of lone folders costs a single row.**
+  The row keys on the deepest path, so the cursor
+  survives when a rebuild absorbs its folder.
+end note
+
+note bottom of FOLD
+  **Open everything only when everything fits.**
+  A carried change set usually fits and reads
+  open; a workspace walk does not and starts shut.
+end note
+
+note bottom of FILTER
+  **The filter keeps the tree shape around hits.**
+  A term matches a file name as a subsequence or a
+  folder segment as a substring, to limit noise.
+end note
+
+note bottom of COLOUR
+  **The letter and the name share one colour.**
+  Folders stay in ink and a compacted parent dims,
+  so colour marks change rather than structure.
+end note
+
+note bottom of ROLLUP
+  **A folded folder still reports what it hides.**
+  A narrow row shortens the name, not the counts,
+  so a delete inside cannot vanish off the edge.
+end note
+
+note bottom of GLYPH
+  **No terminal reports its font, so ask for it.**
+  Nerd codepoints draw only under the declared
+  tier; every other tier stays standard Unicode.
+end note
+@enduml

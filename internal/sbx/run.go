@@ -377,6 +377,15 @@ func GuardedSaveStateArgs(name string) []string {
 	return saveStateArgs(name, "; declare -F _proveo_await_restore >/dev/null || exit "+strconv.Itoa(SaveStateUnguarded))
 }
 
+func SaveSessionArgs(name, target string) []string {
+	scope := ".codex/sessions|.codex/sessions"
+	if strings.HasPrefix(target, "claudecode") {
+		scope = ".claude/projects|.claude/projects"
+	}
+	return []string{"exec", "-w", "/", name, "--", "bash", "-c",
+		". /entrypoint-lib.sh && PROVEO_STATE_DIRS=" + bashQuote(scope) + " proveo_sync_state save"}
+}
+
 func saveStateArgs(name, guard string) []string {
 	return []string{"exec", "-w", "/", name, "--", "bash", "-c",
 		". /entrypoint-lib.sh" + guard +

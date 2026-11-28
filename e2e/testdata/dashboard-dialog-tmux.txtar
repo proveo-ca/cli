@@ -1,0 +1,24 @@
+-- other-selected.txt --
+╭───────────────────────────────────╮
+│ the agent pushed these branches   │
+│                                   │
+│   origin/feat-live                │
+│                                   │
+│   30s with no answer leaves them  │
+├───────────────────────────────────┤
+│   Leave    Fetch ↵                │
+│                                   │
+│ ←→ choose · ↵ press · esc leave   │
+╰───────────────────────────────────╯
+-- safe-default.txt --
+╭───────────────────────────────────╮
+│ the agent pushed these branches   │
+│                                   │
+│   origin/feat-live                │
+│                                   │
+│   30s with no answer leaves them  │
+├───────────────────────────────────┤
+│   Leave ↵    Fetch                │
+│                                   │
+│ ←→ choose · ↵ press · esc leave   │
+╰───────────────────────────────────╯

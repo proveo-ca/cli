@@ -10,11 +10,11 @@ import (
 
 func TestOpenCodeRuntimeFixtures(t *testing.T) {
 	t.Parallel()
-	python, err := exec.LookPath("python3")
+	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("python3 is unavailable")
+		t.Skip("node is unavailable")
 	}
-	cmd := exec.Command(python, "-B", filepath.Join(repoRoot(t), "packages", "lib", "test_opencode_runtime.py"), "-v")
+	cmd := exec.Command(node, "--test", filepath.Join(repoRoot(t), "packages", "lib", "test_opencode_runtime.cjs"))
 	cmd.Dir = t.TempDir()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("OpenCode runtime regression failed: %v\n%s", err, out)

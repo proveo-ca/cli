@@ -30,5 +30,8 @@
 - Never resolve a review thread unless asked for that thread.
 - PR description:
   - `## What`, `## Why`, `## How`, in that order, each ≤ 256 characters including its heading.
-  - Never mention a stack, commit hashes, branch names or file paths.
+  - End with one `Plan: <link or repo path>` line naming the plan the work follows. A plan is any `.md` file, usually under `_spec/_plans/`.
+  - Never mention a stack, commit hashes, branch names or file paths other than the plan.
   - Move logs and known gaps to a ticket, and say where they went.
+
+5. Python is permitted as a toolchain target in E2E fixtures. Implement Proveo runtime code and test drivers without Python scripts or inline Python.

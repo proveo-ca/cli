@@ -365,3 +365,38 @@ func TestLocalModelAnswerNamesNoVariableAndWithholdsThePlan(t *testing.T) {
 		t.Error("a local model run must not carry the plan credential the agent would reach for first")
 	}
 }
+
+func TestAVariantTargetFindsItsHarnessLogin(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	for rel, body := range map[string]string{
+		filepath.Join(".claude", ".credentials.json"): `{"claudeAiOauth":{"accessToken":"live"}}`,
+		filepath.Join(".codex", "auth.json"):          `{"tokens":{"access_token":"live"}}`,
+	} {
+		path := filepath.Join(home, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	man := manifest.Manifest{
+		Name: "claudecode", Subscription: true,
+		Env: []manifest.EnvVar{{Name: "CLAUDE_CODE_OAUTH_TOKEN", Secret: true}},
+	}
+	for _, target := range []string{"claudecode-browser", "claudecode-solidity"} {
+		if got := AvailableAuthVarsIn(man, lookupOf(nil), target, home); !slices.Equal(got, []string{AuthSubscription}) {
+			t.Errorf("%s: available = %v; the browser and solidity images share claudecode's login", target, got)
+		}
+		if b := AuthBacking(man, lookupOf(nil), target, home, ""); !strings.Contains(b[AuthSubscription], ".credentials.json") {
+			t.Errorf("%s: backing = %q", target, b[AuthSubscription])
+		}
+	}
+	if !HasPersistedLogin("codex-browser", home) {
+		t.Error("codex-browser does not find codex's login")
+	}
+	if HasPersistedLogin("opencode-browser", home) {
+		t.Error("a variant of a harness with no login file borrowed another's")
+	}
+}

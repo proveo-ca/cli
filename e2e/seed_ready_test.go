@@ -49,7 +49,7 @@ const (
 const opencodeRegistryProbe = `timeout 90 bash -c '
 set -eu
 probe="$(mktemp -d)"
-port="$(python3 -c "import socket; s=socket.socket(); s.bind((\"127.0.0.1\", 0)); print(s.getsockname()[1]); s.close()")"
+port="$(node -e "const net=require(\"node:net\"); const s=net.createServer(); s.listen(0, \"127.0.0.1\", ()=>{console.log(s.address().port); s.close()});")"
 native=/usr/local/share/npm-global/bin/opencode
 export OPENCODE_PASSWORD=synthetic-registry-probe
 export OPENCODE_DB="$probe/opencode.db" XDG_DATA_HOME="$probe/data" XDG_STATE_HOME="$probe/state"

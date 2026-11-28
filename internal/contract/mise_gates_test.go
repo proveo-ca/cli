@@ -2,11 +2,6 @@
 package contract_test
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,91 +10,28 @@ import (
 
 const raceToggle = "{% if not usage.no_race %}-race {% endif %}"
 
-var baselineName = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
-
-func TestUnitBaselineRowsNameRealTests(t *testing.T) {
-	t.Parallel()
-	list, ok := readMise(t).vars["unit_baseline"]
-	if !ok || list == "" {
-		t.Fatal("mise.toml [vars] has no unit_baseline; drop test --baseline instead of emptying the list")
-	}
-	names := strings.Split(list, "|")
-	if !slices.IsSorted(names) {
-		t.Error("[vars] unit_baseline is not sorted")
-	}
-	if len(slices.Compact(slices.Clone(names))) != len(names) {
-		t.Error("[vars] unit_baseline lists a test twice")
-	}
-	defined := map[string][]string{}
-	for _, name := range names {
-		if !baselineName.MatchString(name) {
-			t.Errorf("[vars] unit_baseline row %q is not a top-level Go test name", name)
-		}
-		defined[name] = nil
-	}
-	root := repoRoot(t)
-	fset := token.NewFileSet()
-	for _, rel := range trackedFiles(t) {
-		if !strings.HasSuffix(rel, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !slices.ContainsFunc(names, func(n string) bool { return strings.Contains(string(src), "func "+n+"(") }) {
-			continue
-		}
-		f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
-		if err != nil {
-			t.Fatalf("%s: %v", rel, err)
-		}
-		for _, decl := range f.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
-				if files, listed := defined[fn.Name.Name]; listed {
-					defined[fn.Name.Name] = append(files, rel)
-				}
-			}
-		}
-	}
-	for _, name := range names {
-		if files := defined[name]; len(files) != 1 {
-			t.Errorf("[vars] unit_baseline row %s is a top-level test in %d tracked files %v, want exactly 1: "+
-				"-skip is unscoped, so the row must name one test", name, len(files), files)
-		}
-	}
-	re, err := regexp.Compile("^(" + list + ")$")
-	if err != nil {
-		t.Fatalf("baseline's -skip pattern does not compile: %v", err)
-	}
-	for _, name := range names {
-		if !re.MatchString(name) || re.MatchString(name+"X") || re.MatchString("X"+name) {
-			t.Errorf("baseline's -skip pattern does not match %s alone", name)
-		}
-	}
-}
-
 // unitRun is the test task's go test line, with each flag's Tera toggle in place.
-const unitRun = "go test " + raceToggle + baselineToggle + "-cover -covermode=atomic" +
+const unitRun = "go test " + raceToggle + "-cover -covermode=atomic" +
 	"{% for a in usage.go_test_args %} {{ a | quote }}{% endfor %} -args -test.gocoverdir={{ config_root | quote }}/cov/unit"
 
-const baselineToggle = "{% if usage.baseline %}-skip={{ ('^(' ~ vars.unit_baseline ~ ')$') | quote }} {% endif %}"
-
-func TestBaselineSkipsExactlyTheListedTests(t *testing.T) {
+func TestUnitLaneRunsEveryTest(t *testing.T) {
 	t.Parallel()
-	task := readMise(t).task(t, "test")
+	cfg := readMise(t)
+	task := cfg.task(t, "test")
 	if cmds := task.cmds(); !slices.Contains(cmds, unitRun) {
-		t.Errorf("test runs %q, want the line %q: --baseline anchors the [vars] list as one quoted word and every arg is quoted", cmds, unitRun)
+		t.Errorf("test runs %q, want the line %q: every arg is quoted and no test is skipped", cmds, unitRun)
 	}
 	usage := task.str("usage")
 	for _, line := range []string{
 		`flag "--no-race" `,
-		`flag "--baseline" `,
 		`arg "[go_test_args]..." var=#true default="./..." `,
 	} {
 		if !strings.Contains(usage, line) {
 			t.Errorf("test's usage lacks %q: packages default to ./... and go test flags pass after --", line)
 		}
+	}
+	if _, ok := cfg.vars["unit_baseline"]; ok || strings.Contains(usage, "--baseline") || strings.Contains(strings.Join(task.cmds(), "\n"), "-skip") {
+		t.Error("the unit baseline is retired: fix a red test, or run its guest-lib half through testx.InLinux")
 	}
 }
 

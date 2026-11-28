@@ -1,4 +1,4 @@
-# SPEC: _spec/packages/lib/git-sync-turn.puml
+# SPEC: _spec/packages/lib/git-sync-turn.puml, _spec/packages/lib/agent-activity.puml
 [features]
 hooks = true
 
@@ -8,3 +8,15 @@ hooks = true
 type = "command"
 command = "bash /opt/proveo/hooks/git-sync-turn.sh"
 timeout = 90
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "/usr/local/bin/proveo-entrypoint activity codex idle"
+timeout = 5
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/usr/local/bin/proveo-entrypoint activity codex busy"
+timeout = 5

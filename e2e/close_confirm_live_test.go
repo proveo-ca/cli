@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -19,13 +20,11 @@ import (
 	"github.com/proveo-ca/proveo/internal/choiceui"
 	"github.com/proveo-ca/proveo/internal/ptyproxy"
 	"github.com/proveo-ca/proveo/internal/schedule"
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 func TestLiveCtrlCConfirmationOnTmux(t *testing.T) {
 	requireTmux(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
-	}
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -99,17 +98,13 @@ func TestLiveCtrlCConfirmationHelper(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "python3", "-u", "-c", `import os, signal, sys, time, tty
-tty.setraw(sys.stdin.fileno())
-if os.environ.get("PROVEO_LIVE_CLOSE_STOP") == "slow":
-    signal.signal(signal.SIGTERM, lambda *_: (time.sleep(3), os._exit(0)))
-sys.stdout.write(os.environ.get("PROVEO_LIVE_CLOSE_MODES", ""))
-print("CHILD_READY", flush=True)
-while True:
-    b = sys.stdin.buffer.read(1)
-    if not b: break
-    print("KEY:%02x" % b[0], flush=True)
-`)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestLiveRawKeysHelper$")
+	cmd.Env = append(os.Environ(), "FIXTURE_RAW_CLOSE=CHILD_READY")
+
 	p := ptyproxy.New(os.Stdin, os.Stdout)
 	p.DisableFilter = os.Getenv("PROVEO_LIVE_CLOSE_FILTER") == "off"
 	var removed atomic.Bool
@@ -151,9 +146,6 @@ func screenFlags(t *testing.T, sess *schedule.TmuxSession) string {
 // that set its own screen modes, and compares the terminal's flags before and after.
 func TestLiveCtrlCDialogGivesTheChildItsScreenModesBack(t *testing.T) {
 	requireTmux(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
-	}
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -205,9 +197,6 @@ func TestLiveCtrlCDialogGivesTheChildItsScreenModesBack(t *testing.T) {
 // seconds to stop, and reads the dialog's line while it waits.
 func TestLiveCloseDialogStaysUpWhileTheAgentStops(t *testing.T) {
 	requireTmux(t)
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
-	}
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +244,7 @@ func TestLiveCloseDialogStaysUpWhileTheAgentStops(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the dialog did not say a stop is in flight: %v\n%s", err, screen)
 	}
-	if strings.Contains(screen, "enter press") {
+	if strings.Contains(screen, "↵ press") {
 		t.Errorf("the waiting dialog still offers its buttons\n%s", screen)
 	}
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
@@ -347,5 +336,21 @@ func TestCtrlCDialogOverARealAgentGivesItsScreenBackAndRemovesOnYes(t *testing.T
 	}
 	if now, ok := sbxSandboxNames(); ok && now[k.name] {
 		t.Errorf("answering y left sandbox %s in place\n%s", k.name, tail(screen, 40))
+	}
+}
+
+func TestLiveRawKeysHelper(t *testing.T) {
+	ready := os.Getenv("FIXTURE_RAW_CLOSE")
+	if ready == "" {
+		return
+	}
+	if os.Getenv("PROVEO_LIVE_CLOSE_STOP") == "slow" {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, syscall.SIGTERM)
+		defer signal.Stop(stop)
+		go func() { <-stop; time.Sleep(3 * time.Second); os.Exit(0) }()
+	}
+	if err := testx.RawTTY("KEY", os.Getenv("PROVEO_LIVE_CLOSE_MODES")+ready+"\n"); err != nil {
+		t.Fatal(err)
 	}
 }

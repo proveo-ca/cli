@@ -30,6 +30,9 @@ title Testing strategy — layers 1, 2 and 4, speed traded for fidelity (layer 3
 ' from the invoking session. Tests set the launch choices each case needs.
 ' Init's flow fixtures provide a private Git identity and a controlled gh PATH.
 ' Syntax checks probe the optional shell before giving it the prompt snippet.
+' Keep Python as a toolchain target under e2e. Use Go, shell or Node for
+' Proveo-owned runtime and fixture drivers. TestPythonIsAToolchainTargetOnly
+' checks for Python drivers and interpreter calls outside that target.
 '
 ' ── LAYER 3 IS RETIRED (DECIDED 2026-10-16) ────────────────────────────────
 ' Layer 3 was the live egress topology — real containers, the MITM, Squid and
@@ -47,7 +50,7 @@ title Testing strategy — layers 1, 2 and 4, speed traded for fidelity (layer 3
 ' verb that replaced it (2026-11-12; maintainer tooling is mise tasks:
 ' _spec/cmd/proveo/usage.puml).
 '   test ............ rm -rf cov/unit, mkdir -p cov/unit, go test [-race]
-'                     [--baseline's -skip] -cover -covermode=atomic
+'                     -cover -covermode=atomic
 '                     [go_test_args, default ./...] -args
 '                     -test.gocoverdir={{ config_root | quote }}/cov/unit,
 '                     then go tool covdata percent and textfmt

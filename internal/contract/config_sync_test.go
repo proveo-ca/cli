@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 // runConfigSync sources the lib and runs one direction of the config sync.
@@ -40,6 +42,9 @@ const cfgSet = ".claude|.claude|;.cursor|.cursor|auth.json"
 // survive a teardown and are in place before the next run's agent reads them.
 func TestConfigSyncRoundTripsTheHarnessConfiguration(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	agent, state := t.TempDir(), t.TempDir()
 	env := map[string]string{"HOME": agent, "PROVEO_STATE_HOME": state, "PROVEO_CONFIG_DIRS": cfgSet}
@@ -69,6 +74,9 @@ func TestConfigSyncRoundTripsTheHarnessConfiguration(t *testing.T) {
 
 func TestConfigSyncNeverCarriesADeniedFileOut(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	agent, state := t.TempDir(), t.TempDir()
 	env := map[string]string{"HOME": agent, "PROVEO_STATE_HOME": state, "PROVEO_CONFIG_DIRS": cfgSet}
@@ -89,6 +97,9 @@ func TestConfigSyncNeverCarriesADeniedFileOut(t *testing.T) {
 // to the state sync in both directions, and a lib that does not read the variable still carries them.
 func TestConfigSyncLeavesTheStateDirsToTheStateSync(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	agent, state := t.TempDir(), t.TempDir()
 	env := map[string]string{"HOME": agent, "PROVEO_STATE_HOME": state, "PROVEO_CONFIG_DIRS": cfgSet,
@@ -192,6 +203,9 @@ func TestSeedRestoresConfigBeforeAnythingWritesIt(t *testing.T) {
 // either direction, and the host copy stays where it is.
 func TestConfigSyncSkipsTransientPathsBothWays(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	agent, state := t.TempDir(), t.TempDir()
 	env := map[string]string{"HOME": agent, "PROVEO_STATE_HOME": state, "PROVEO_CONFIG_DIRS": ".claude|.claude|jobs/*/tmp"}
@@ -220,6 +234,9 @@ func TestConfigSyncSkipsTransientPathsBothWays(t *testing.T) {
 // it must still replace only what is newer and create what is missing.
 func TestConfigSyncCopiesInBulk(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	realCp, err := exec.LookPath("cp")
 	if err != nil {
@@ -290,6 +307,9 @@ func TestConfigSyncCopiesInBulk(t *testing.T) {
 // sub-second stamps in the same second together.
 func TestConfigSyncComparesSubSecondMtimes(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	agent, state := t.TempDir(), t.TempDir()
 	sec := int64(1_780_000_000)
@@ -324,6 +344,9 @@ func TestConfigSyncComparesSubSecondMtimes(t *testing.T) {
 // hold a matching path must not turn it into that literal path.
 func TestConfigSyncNeverGlobsTheSkipListAgainstTheCwd(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	agent, state, cwd := t.TempDir(), t.TempDir(), t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cwd, "jobs", "build", "tmp"), 0o755); err != nil {

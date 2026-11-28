@@ -15,6 +15,12 @@ const mobileMCPVersion = "1.0.6"
 // adbLib runs script against the entrypoint lib with getent, npm, adb and proveo-entrypoint stubbed on PATH.
 func adbLib(t *testing.T, env []string, script string) (stdout, stderr, calls string) {
 	t.Helper()
+	return adbLibAwait(t, env, script, "")
+}
+
+// adbLibAwait is adbLib that polls the call log for want, which a background stub writes late.
+func adbLibAwait(t *testing.T, env []string, script, want string) (stdout, stderr, calls string) {
+	t.Helper()
 	bash := bashOrSkip(t)
 	bin, tools := t.TempDir(), t.TempDir()
 	log := filepath.Join(t.TempDir(), "calls.log")
@@ -40,6 +46,10 @@ source "$1/packages/lib/entrypoint-lib.sh"
 	_ = cmd.Run()
 	time.Sleep(50 * time.Millisecond)
 	b, _ := os.ReadFile(log)
+	for deadline := time.Now().Add(5 * time.Second); want != "" && !strings.Contains(string(b), want) && time.Now().Before(deadline); {
+		time.Sleep(20 * time.Millisecond)
+		b, _ = os.ReadFile(log)
+	}
 	return out.String(), errb.String(), string(b)
 }
 
@@ -75,8 +85,8 @@ chmod +x "$d/.bin/mcp-server-mobile"
 `
 
 func TestMobileMCPExecRunsTheInstalledServer(t *testing.T) {
-	out, _, calls := adbLib(t, []string{"ADB_SERVER_SOCKET=tcp:host.docker.internal:5037", "TMPDIR=" + t.TempDir()},
-		installedServer+`proveo_mobile_mcp_exec`)
+	out, _, calls := adbLibAwait(t, []string{"ADB_SERVER_SOCKET=tcp:host.docker.internal:5037", "TMPDIR=" + t.TempDir()},
+		installedServer+`proveo_mobile_mcp_exec`, "mirror adb-mirror")
 	if strings.Contains(calls, "npm ") {
 		t.Errorf("a matching version must not reinstall; npm ran: %q", calls)
 	}
@@ -104,8 +114,8 @@ func TestMobileMCPExecNeedsAnADBAddress(t *testing.T) {
 }
 
 func TestAdbMirrorStartsWithTheSocketAddress(t *testing.T) {
-	out, _, calls := adbLib(t, []string{"ADB_SERVER_SOCKET=tcp:host.docker.internal:5037", "TMPDIR=" + t.TempDir()},
-		`proveo_host_adb_env && proveo_adb_mirror_start; echo "rc=$?"`)
+	out, _, calls := adbLibAwait(t, []string{"ADB_SERVER_SOCKET=tcp:host.docker.internal:5037", "TMPDIR=" + t.TempDir()},
+		`proveo_host_adb_env && proveo_adb_mirror_start; echo "rc=$?"`, "mirror adb-mirror")
 	if strings.TrimSpace(out) != "rc=0" || !strings.Contains(calls, "mirror adb-mirror host.docker.internal:5037") {
 		t.Errorf("out=%q calls=%q; want proveo-entrypoint adb-mirror with ADB_HOST/ADB_PORT", out, calls)
 	}

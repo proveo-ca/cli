@@ -70,7 +70,7 @@ COPY AGENTS.md /opt/proveo/AGENTS.md
 COPY packages/lib/entrypoint-lib.sh /entrypoint-lib.sh
 COPY defs/opencode/harness.manifest /usr/local/lib/proveo/opencode.harness.manifest
 COPY --chmod=0755 packages/lib/proveo-opencode-runtime /usr/local/bin/proveo-opencode-runtime
-RUN python3 -c 'import sqlite3'
+RUN node --no-warnings -e 'const { backup } = require("node:sqlite"); if (typeof backup !== "function") process.exit(1)'
 # The sbx Kit names this as its ONE startup command for every target
 # (internal/sbx SeedCommand), so an image that runs on sbx and does not ship
 # it fails startup with exit 127 and seeds nothing.
@@ -78,6 +78,7 @@ RUN python3 -c 'import sqlite3'
 COPY --chmod=0755 packages/lib/proveo-seed /usr/local/bin/proveo-seed
 COPY --chmod=0755 packages/lib/hooks/git-sync-turn.sh /opt/proveo/hooks/git-sync-turn.sh
 COPY packages/lib/hooks/proveo-git-sync-turn.js /opt/proveo/hooks/proveo-git-sync-turn.js
+COPY packages/lib/hooks/proveo-activity.js /opt/proveo/hooks/proveo-activity.js
 COPY --chmod=0755 defs/opencode/entrypoint.sh /entrypoint.sh
 COPY --chmod=0755 packages/lib/proveo-await-seed /usr/local/bin/proveo-await-seed
 RUN install -d /opt/proveo/shims \

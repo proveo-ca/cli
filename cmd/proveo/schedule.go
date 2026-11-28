@@ -20,6 +20,8 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/backend/sandbox"
 	"github.com/proveo-ca/proveo/internal/proveohome"
+	"github.com/proveo-ca/proveo/internal/results"
+	"github.com/proveo-ca/proveo/internal/run"
 	"github.com/proveo-ca/proveo/internal/schedule"
 	"github.com/proveo-ca/proveo/internal/ui"
 )
@@ -68,7 +70,9 @@ a job with no at: runs only when ` + "`proveo schedule run`" + ` starts it:
 With no subcommand it lists every job, soonest run first, and closes on
 whether the tick is installed. A job whose last outcome is failed or
 not-ready shows × with its reason; on a terminal it asks to retry, and
-` + "`proveo schedule retry <job>`" + ` starts it again. The tick reads
+` + "`proveo schedule retry <job>`" + ` starts it again, and
+` + "`proveo schedule pause <job> [--until YYYY-MM-DD]`" + ` holds its runs back
+(paused or paused_until in its block) until ` + "`proveo schedule resume <job>`" + `. The tick reads
 ~/.proveo/schedule.yml whatever PROVEO_HOME says.
 ` + "`proveo attach`" + ` lists the tasks whose tmux session is up.
 ` + "`proveo attach sample-task`" + ` (or ` + "`proveo schedule attach sample-task`" + `) opens one
@@ -78,7 +82,7 @@ Transcripts and results: <proveo home>/logs/schedule/<job>/.`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return scheduleTable(cmd) },
 	}
-	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), scheduleWatchCmd(),
+	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), schedulePauseCmd(), scheduleResumeCmd(), scheduleReviewCmd(), scheduleDropReviewCmd(), scheduleDropCmd(), scheduleWatchCmd(), scheduleDispatchCmd(), scheduleAcceptCmd(), schedulePhaseCmd(),
 		scheduleAttachCmd(), scheduleInstallCmd(), scheduleUninstallCmd())
 	return cmd
 }
@@ -255,7 +259,7 @@ func retryJob(home string, c schedule.Config, name string) error {
 	case !last.Failed():
 		return errNotFailed{name, last.Outcome}
 	}
-	if err := schedule.Launch(home, proveoExe(), name, last.Entry, j, nil); err != nil {
+	if err := submitScheduled(home, name, last.Entry, j); err != nil {
 		return err
 	}
 	ui.Okf("%s — started again", name)
@@ -280,7 +284,7 @@ func scheduleTickCmd() *cobra.Command {
 			home, c, err := loadSchedule()
 			var none errNoSchedule
 			if errors.As(err, &none) {
-				return nil
+				return restartDispatcher(home)
 			}
 			if err != nil {
 				return refuse("", err)
@@ -288,6 +292,18 @@ func scheduleTickCmd() *cobra.Command {
 			now := scheduleNow()
 			st := schedule.LoadState(home)
 			for _, d := range c.Due(now, st) {
+				job := c.Jobs[d.Job]
+				if queuedJob(job) {
+					if err := submitScheduled(home, d.Job, d.Entry, job); err != nil && !errors.Is(err, schedule.ErrRunning) {
+						return err
+					}
+					st.Mark(d.Job, d.Entry, d.At)
+					if err := st.Save(home); err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s tick: queued %s for %q\n", now.Format(time.RFC3339), d.Job, d.Entry)
+					continue
+				}
 				st.Mark(d.Job, d.Entry, d.At)
 				if err := st.Save(home); err != nil {
 					return err
@@ -302,9 +318,17 @@ func scheduleTickCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s tick: started %s for %q (due %s)\n", now.Format(time.RFC3339), d.Job, d.Entry,
 					d.At.Format(time.RFC3339))
 			}
-			return nil
+			return restartDispatcher(home)
 		},
 	}
+}
+
+func restartDispatcher(home string) error {
+	pending, err := schedule.QueuePending(home)
+	if err != nil || !pending {
+		return err
+	}
+	return schedule.StartDispatcher(home, proveoExe())
 }
 
 func scheduleRunCmd() *cobra.Command {
@@ -325,8 +349,12 @@ func scheduleRunCmd() *cobra.Command {
 			if printOnly {
 				return schedule.Describe(cmd.OutOrStdout(), home, proveoExe(), args[0], j, scheduleNow(), printScheduledRun)
 			}
-			if err := schedule.Launch(home, proveoExe(), args[0], "manual", j, nil); err != nil {
+			if err := submitScheduled(home, args[0], "manual", j); err != nil {
 				return refuse(args[0], err)
+			}
+			if queuedJob(j) {
+				ui.Okf("%s — queued", args[0])
+				return nil
 			}
 			ui.Okf("%s — started", args[0])
 			return nil
@@ -342,6 +370,112 @@ func printScheduledRun(argv []string, dir string) error {
 	c.Env = append(os.Environ(), "PROVEO_SCHEDULE=1")
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return c.Run()
+}
+
+// scheduleReviewCmd queues a headless review of a pull request; the dashboard's review-required cards call it.
+// SPEC: _spec/internal/dashboard/review-requests.puml
+func scheduleReviewCmd() *cobra.Command {
+	var target, title, promptFile string
+	cmd := &cobra.Command{
+		Use:    "review <pr-url>",
+		Short:  "Queue a headless, read-only review of a pull request",
+		Hidden: true,
+		Args:   cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			home := proveohome.Root(os.Getenv)
+			prompt, err := os.ReadFile(promptFile)
+			if err != nil {
+				return err
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			if real, err := filepath.EvalSymlinks(cwd); err == nil {
+				cwd = real
+			}
+			name, j, err := schedule.NewReviewJob(home, cwd, target, args[0], title, string(prompt))
+			if err != nil {
+				return err
+			}
+			if err := submitScheduled(home, name, "dashboard", j); err != nil {
+				return err
+			}
+			fmt.Println(name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&target, "target", "claudecode", "harness that runs the review")
+	cmd.Flags().StringVar(&title, "title", "", "task label for the review")
+	cmd.Flags().StringVar(&promptFile, "prompt-file", "", "file holding the review's opening prompt")
+	_ = cmd.MarkFlagRequired("prompt-file")
+	return cmd
+}
+
+// scheduleDropReviewCmd forgets a review run that failed: its sandbox, its instance, its queue entry and its job.
+// SPEC: _spec/internal/dashboard/review-requests.puml
+func scheduleDropReviewCmd() *cobra.Command { return dropJobCmd("drop-review", true) }
+
+// scheduleDropCmd forgets an ended dashboard job, or an instance no job owns, the same way.
+// SPEC: _spec/internal/dashboard/ended-runs.puml
+func scheduleDropCmd() *cobra.Command { return dropJobCmd("drop", false) }
+
+func dropJobCmd(use string, reviewOnly bool) *cobra.Command {
+	var stop bool
+	cmd := &cobra.Command{
+		Use:    use + " <job|instance>",
+		Short:  "Forget an ended dashboard job or instance: its kept sandbox, instance, queue entry and job",
+		Hidden: true,
+		Args:   cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			home, state, name := proveohome.Root(os.Getenv), run.StateDir(), args[0]
+			snap, err := schedule.ReadJobSnapshot(filepath.Join(home, "dashboard-jobs", name, "job.json"))
+			job := err == nil
+			var inst *sandbox.Instance
+			switch {
+			case job:
+				if reviewOnly && (snap.Phase != "Review" || !strings.Contains(snap.Ticket, "/pull/")) {
+					return fmt.Errorf("%s is not a review job", name)
+				}
+				if schedule.NewTmux(schedule.SessionName(name), nil).Alive() {
+					return fmt.Errorf("%s is still running", name)
+				}
+				inst, err = sandbox.JobInstance(state, name)
+			case reviewOnly || !errors.Is(err, fs.ErrNotExist):
+				return err
+			default:
+				inst, err = sandbox.InstanceByID(state, name)
+				if err == nil && inst == nil {
+					err = fmt.Errorf("%s is neither a dashboard job nor an instance", name)
+				}
+			}
+			if err != nil {
+				return err
+			}
+			if inst != nil {
+				if s := sandbox.SessionOf(inst.Name); s != "" && tmuxHasSession(s) {
+					return fmt.Errorf("%s is still running in tmux session %s", name, s)
+				}
+				dir := results.Dir(state)
+				if err := sandbox.RemoveKept(inst.Name, dir, ui.Hostf, job || stop); err != nil {
+					return err
+				}
+				sandbox.ReconcileResults(dir, here())
+				if err := inst.Forget(home); err != nil {
+					return err
+				}
+			}
+			if job {
+				if _, err := schedule.DropDashboardJob(home, name); err != nil {
+					return err
+				}
+				fmt.Println(snap.Ticket)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&stop, "stop", false, "stop a lone instance's sandbox that still runs, then carry its work home and remove it")
+	return cmd
 }
 
 func scheduleRetryCmd() *cobra.Command {
@@ -360,7 +494,7 @@ func scheduleRetryCmd() *cobra.Command {
 }
 
 func scheduleWatchCmd() *cobra.Command {
-	var entry, transcript string
+	var entry, transcript, snapshot string
 	var typed bool
 	cmd := &cobra.Command{
 		Use:    "watch <job>",
@@ -368,11 +502,18 @@ func scheduleWatchCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, c, err := loadSchedule()
-			if err != nil {
-				return refuse(args[0], err)
+			home := proveohome.Root(os.Getenv)
+			var j schedule.Job
+			var err error
+			if snapshot != "" {
+				j, err = schedule.ReadJobSnapshot(snapshot)
+			} else {
+				_, c, loadErr := loadSchedule()
+				if loadErr != nil {
+					return refuse(args[0], loadErr)
+				}
+				j, err = jobNamed(c, args[0])
 			}
-			j, err := jobNamed(c, args[0])
 			if err != nil {
 				return refuse(args[0], err)
 			}
@@ -387,6 +528,7 @@ func scheduleWatchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&entry, "entry", "", "the schedule entry that fired")
 	cmd.Flags().StringVar(&transcript, "transcript", "", "the transcript file")
 	cmd.Flags().BoolVar(&typed, "typed", false, "the instruction is already in; only wait for the report or the budget")
+	cmd.Flags().StringVar(&snapshot, "job-snapshot", "", "read the submitted job and prompt snapshot")
 	return cmd
 }
 
@@ -413,8 +555,9 @@ running: ` + "`proveo schedule`" + ` shows its last run.
 
 Without -r your keys reach the agent. Detach with the tmux prefix, then d
 (Ctrl-b d); the run keeps going. Inside tmux, attach switches your client
-to the task's session; with -r it nests a client (Ctrl-b Ctrl-b d). In
-zellij, press Ctrl-b twice, then d.`,
+to the task's session. Use the prefix, then uppercase L (Ctrl-b L), to
+return to the previous session. With -r it nests a client (Ctrl-b
+Ctrl-b d). In zellij, press Ctrl-b twice, then d.`,
 		Example: `proveo attach
 proveo attach sample-task
 proveo schedule attach sample-task -r`,
@@ -471,10 +614,29 @@ var stdinTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 // for tmux, is one × before tmux runs; a hand-off that fails ends on "⚠ attach — stopped at tmux".
 func attachSession(job string, readOnly bool) error {
 	sess := schedule.SessionName(job)
+	if strings.HasPrefix(job, runSessionPrefix) {
+		sess = job
+	}
 	if !tmuxHasSession(sess) {
+		if sess == job {
+			return reported(sandbox.Item{Fail: true, Text: job + " — not running", Detail: []string{"no tmux session " + sess}},
+				fmt.Errorf("%s is not running", job))
+		}
 		return notAttachable(job, sess)
 	}
+	return attachTmux(job, sess, readOnly)
+}
+
+// attachTmux puts this terminal on tmux session sess, or switches the surrounding tmux client to it.
+func attachTmux(job, sess string, readOnly bool) error {
 	args, nested := attachArgs(sess, readOnly, os.Getenv("TMUX") != "")
+	if args[0] == "switch-client" {
+		client, err := originTmuxClient(os.Getenv("TMUX_PANE"))
+		if err != nil {
+			return err
+		}
+		args = append(args, "-c", client)
+	}
 	if args[0] == "attach" && !stdinTerminal() {
 		return reported(sandbox.Item{Fail: true, Text: job + " — not attached", Detail: []string{"tmux needs a terminal"}},
 			fmt.Errorf("%s: tmux needs a terminal", job))
@@ -490,6 +652,25 @@ func attachSession(job string, readOnly bool) error {
 		return reported(sandbox.Item{Warn: true, Text: "attach — stopped at tmux"}, err)
 	}
 	return nil
+}
+
+func originTmuxClient(pane string) (string, error) {
+	if pane == "" {
+		return "", fmt.Errorf("current tmux pane is unavailable")
+	}
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", pane, "#{session_id}").Output()
+	if err != nil {
+		return "", fmt.Errorf("locate this tmux pane: %w", err)
+	}
+	out, err = exec.Command("tmux", "list-clients", "-t", strings.TrimSpace(string(out)), "-F", "#{client_name}").Output()
+	if err != nil {
+		return "", fmt.Errorf("locate this tmux client: %w", err)
+	}
+	clients := strings.Fields(string(out))
+	if len(clients) != 1 {
+		return "", fmt.Errorf("attach needs one client on the current tmux session (found %d)", len(clients))
+	}
+	return clients[0], nil
 }
 
 // notAttachable is the × for a task whose session is not up, worded from schedule.yml.
@@ -594,4 +775,64 @@ func notify(title, body string) {
 	case "linux":
 		_ = exec.Command("notify-send", title, body).Run()
 	}
+}
+
+func schedulePauseCmd() *cobra.Command {
+	var until string
+	cmd := &cobra.Command{
+		Use:   "pause <job>",
+		Short: "Hold a job's runs back: until resumed, or until a day (--until YYYY-MM-DD, in the job's tz)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			p := schedule.Pause{Forever: until == ""}
+			if until != "" {
+				day, err := time.Parse(time.DateOnly, until)
+				if err != nil {
+					return refuse(args[0], fmt.Errorf("--until %q: want YYYY-MM-DD", until))
+				}
+				p.Until = day
+			}
+			if err := setPause(args[0], "paused", p); err != nil {
+				return err
+			}
+			if p.Forever {
+				ui.Okf("%s — paused until `proveo schedule resume %s`", args[0], args[0])
+			} else {
+				ui.Okf("%s — paused; runs again from %s", args[0], p.Until.Format("Mon Jan 2"))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&until, "until", "", "the first day the job runs again (YYYY-MM-DD, in the job's tz)")
+	return cmd
+}
+
+func scheduleResumeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "resume <job>",
+		Short: "Let a paused job run at its times again",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := setPause(args[0], "resumed", schedule.Pause{}); err != nil {
+				return err
+			}
+			ui.Okf("%s — resumed", args[0])
+			return nil
+		},
+	}
+}
+
+// setPause writes a job's pause into schedule.yml, after checking the file names the job.
+func setPause(name, done string, p schedule.Pause) error {
+	home, c, err := loadSchedule()
+	if err != nil {
+		return refuse(name, err)
+	}
+	if _, err := jobNamed(c, name); err != nil {
+		return refuse(name, err)
+	}
+	if err := schedule.SetPaused(schedule.Path(home), name, p); err != nil {
+		return reported(sandbox.Item{Fail: true, Text: name + " — not " + done, Detail: errLines(err)}, err)
+	}
+	return nil
 }

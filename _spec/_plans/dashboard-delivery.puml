@@ -1,0 +1,306 @@
+@startuml DashboardDelivery
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+skinparam noteTextAlignment left
+' purpose: deliver same-directory sandbox instances and the native Proveo dashboard
+' covers: _spec/internal/dashboard/**
+' covers: e2e/dashboard*_test.go
+' covers: e2e/testdata/_spec/_plans/*.puml
+' status: IMPLEMENTATION IN PROGRESS. D7 is pending live sbx acceptance.
+' D0: sbx v0.54.1 returned 10g from settings in the Linux verifier.
+' D1 is implemented. The three-VM gate needs an authenticated sbx host.
+' D2: Codex and Claude Code transcript archives and exact-ID selection
+' pass host fixtures. Rebuilt-VM native restore is still pending.
+' D3: independent OpenCode change. The v2.4.1 native CLI round-tripped
+' a parent, child, and message after a directory change.
+' D4: disk setting, ledger, queue, and dispatcher restart pass fixtures.
+' Physical allocation reflection is unverified. Leases charge conservatively.
+' D5: task identity, dependency folding, phase revisions and Git previews
+' run locally. Provider and live push data depend on configured clients.
+' D6: tmux fixtures cover color, attach, cancel, detach, guest-only Fresh,
+' new instance, resize, tab switch, Ctrl+C and terminal restore.
+' Stock-child parity is pending.
+' D6 2026-11-25: task details are a no-scroll popover (the split, accordion
+' and left pane are retired); Files and Changes read the task's sandbox.
+' D6 upgrade 2026-11-25: size tiers (too small, single, portrait, short),
+' two-row sbx-dense task items and a compacted, filterable change tree.
+' Design notes: _spec/_paradigms/dashboard-terminal-design.puml.
+' D7: rerun live verification on Apple Silicon or Linux with KVM, an
+' authenticated sbx, and the required images. The current Linux verifier
+' has no /dev/kvm. Its CLI reads settings, and inventory requires sign-in.
+' Local Go build, vet, lint, race baseline, PlantUML and dashboard E2E
+' passed. The full E2E suite reproduced four failures at the merge base
+' with origin/main. These cover deploy print arguments and three offline
+' sbx preflight expectations.
+' UI reference: Review queue, lower-right split (the HTML prototype, index.html, retired 2026-11-28)
+' Runtime design: _spec/internal/dashboard/workspace-instances.puml
+' Admission design: _spec/internal/schedule/resource-queue.puml and resource_queue.qnt
+' Current runtime: _spec/internal/sbx/{instance-lifecycle,state-sync,clone-workspace,kit-lifecycle}.puml
+' Supersedes the proposed 1:1 ownership and shared writable history in
+' _spec/_plans/session-continuity.puml.
+'
+' D0  BASELINE AND STOCK SBX PROBE
+' Record the existing CLI, state formats and tmux visuals before changing
+' default dispatch. On each supported sbx host, pin the sbx version and run
+' its stock interactive entry point from a fixed-size tmux pane. Capture an
+' empty inventory and a seeded card, including cursor, footer and colors.
+' Determine the supported inventory ID, usage and disk setting outputs and
+' units. Confirm whether child TUI exit stops only the client. Find the sbx
+' storage filesystem and confirm how disk reservations become observable.
+' Test the adapters against those observations before consuming their output.
+' Compare live stock and embedded sbx on the same pinned version and grid.
+'
+' D0 MEASURED 2026-11-24 (Linux arm64, tmux 3.7b, Go 1.26.10)
+' e2e/dashboard_tmux_test.go captures the real post-exit card in a 120×40
+' pane. The card spans 37×11 cells. Its gray (#8A8A8A) frame and footer
+' rule, cyan (#00BAC6) selected face, dark teal (#0E3A48) idle face and
+' selected-only ↵ match the pattern in the Chromium attach prototype.
+' The native card has rounded cell corners and uses the terminal background.
+' The prototype uses a rectangular border and dimmed backdrop. Use the
+' native card geometry and identity styles for Attach.
+' Chromium verified that the prototype holds the outer frame at 1160×810
+' pixels across tabs, focuses Cancel, moves ↵ with focus, and restores
+' the selected task's focus after simulated detach. This is the HTML sample.
+' The real proveo attach command accepted keys and returned with the same
+' agent pane still alive after Ctrl+B d or Ctrl+B L, respectively.
+' TestDashboardRunsThreeTasksFromOneDirectoryOnTmux submits three prompts
+' from e2e/testdata/_spec/_plans/ into one workdir. It checks
+' overlapping pane lifetimes, prompt routing and separate run outcomes.
+' The fixture workers share the host directory.
+' [Unverified] Live sbx parity, guest telemetry, and physical disk
+' allocation on an authenticated daemon.
+'
+' D1  INSTANCE IDENTITY, PRIVATE WORK, SAFE MIGRATION
+' Runtime implemented. The live three-VM acceptance gate is pending.
+' Touch cmd/proveo run, lifecycle verbs and clean, internal/run,
+' internal/sbx inventory, internal/backend/sandbox receipts and teardown,
+' internal/proveohome, schedule selectors, and the defs workspace contract.
+' Resolve one canonical effective pwd for all defs. Honor --input / --scope
+' and carry the resolved guest cwd independently of image WORKDIR, Git
+' source, build paths and harness home. Ignore symlink aliases of that pwd.
+' Store workspace -> instances, with immutable instance and attempt IDs.
+' Put a task label and Git base on the record. Allocate agent-task-shortid
+' within 32 ASCII chars. Use adhoc without a ticket and reserve the suffix
+' before clipping the task slug. Handle a name collision before creating.
+' Store the owning host, inventory VM ID and launch receipt. Keep the name
+' stable across edits to a task title. Reuse needs matching identity and
+' create-time settings, a verified idle state and an acquired owner lease.
+' Serialize launch through settling and lifecycle verbs per instance.
+' Reconciliation distinguishes matching, stale, missing and unknown VMs.
+' Failed listing means unknown. Never mutate a VM based on name alone.
+' A live external owner needs an explicit recovery path. Pin backing paths
+' while a VM may depend on them. Keep and Cancel is the safe replacement
+' answer. Replace and Continue carries only the selected instance first.
+' Migrate each trusted legacy (pwd, target) record into one default
+' instance without renaming its VM or rewriting its history. Keep discovery
+' of legacy records while readers roll forward. Quarantine ambiguous
+' records for operator selection. Keep migration repeatable and reversible
+' through a legacy index backup. Clean follows migrated ownership and skips
+' unknown resources. Preserve browser profile and port ownership rules.
+' CLI: run <target> --new [--task ...] and run <target> --instance ID.
+' Keep the implicit single candidate. With several, pick interactively or
+' report a required selector. --continue resumes the chosen native ID.
+' Scheduled jobs pin an instance or request a new one.
+' Create one private guest checkout and feature branch per instance from a
+' recorded commit. Bundle a base missing from the remote. Leave host edits
+' in place unless an explicit snapshot includes them. Isolate non-Git paths
+' with a private copy. Guard writable direct mode against overlapping paths.
+' Gate: e2e/dashboard_instances_sbx_test.go launches three instances of the
+' same target concurrently from one real pwd. Assert distinct VM IDs, guest
+' files, branch refs and outputs. Confirm host edits stay unchanged. Attempt
+' a duplicate owner, simulate stale and unknown inventory in adapter tests,
+' and show that cleanup or replacement touches only its elected instance.
+' Reuse e2e/clone_test.go for host/worktree compatibility.
+'
+' D2  HISTORY ON THE HOST THAT OWNS THE VM
+' Touch internal/backend/sandbox teardown, result carry and harness state,
+' internal/sbx state export and internal/proveohome resume. Read attempt
+' receipts for recovery after a runner restarts. Run a managed checkpoint at
+' exit after success, failure, interruption or requested stop. Keep
+' checkpoint and Git carry outcomes separate and visible.
+' Export a consistent native checkpoint to private staging, validate its
+' native session ID and payload, sync it and atomically publish it. Advance
+' the instance head only after publication. Retries are idempotent. Resume
+' the chosen native ID from a clean VM and carried Git ref. Keep live locks,
+' sockets and authentication material outside the archive.
+' Try periodic safe checkpoints where the harness supports them. A full
+' disk, failed permissions, unreachable guest, abrupt host death or raw sbx
+' removal can prevent final export. Preserve the last good checkpoint and
+' record a recovery reason. Keep a surviving VM through failed history or
+' Git carry unless the operator explicitly discards it. Reconcile raw sbx
+' stop/removal without asserting a new session checkpoint exists.
+' Prove native restore for each supported harness and pin capabilities by
+' version. Scope Claude Code projects/session records to the instance.
+' Check Codex rollout/SQLite requirements and Cursor's native restore.
+' Use a per-instance Hermes home to isolate the DB and gateway. Keep
+' unsupported restore visibly unavailable. Publish only verified history.
+' Gate: add e2e/dashboard_history_sbx_test.go. Exit two same-pwd instances
+' in both orders, then resume each by exact native ID in a rebuilt VM.
+' Verify cancellation, failed export, retry, retained VM and raw removal.
+' Inject read/write failures outside sbx at the adapter boundary. Inspect
+' artifacts for excluded paths. Reuse e2e/resume_test.go.
+'
+' D3  OPENCODE HISTORY FIX (OWN PR, CAN PROCEED BESIDE D1)
+' Reproduce lost history on the pinned OpenCode version, including its
+' project filter on guest cwd changes. Verify a native export/import round
+' trip across rebuilt VMs and changed paths, including messages and child
+' sessions. Preserve the native ID. Keep engine backups private and check
+' that portable archives exclude credentials. Preserve the existing engine
+' while migration remains unverified. Test retained and replaced engines
+' with e2e/opencode_engine_sbx_test.go. D2 can ship per harness while this
+' fix lands separately. OpenCode joins the portable-resume matrix after D3.
+'
+' D4  RESOURCE-DRIVEN ADMISSION
+' Touch internal/schedule, internal/sbx host capacity and the run launch
+' boundary shared by calendar, manual and retry paths. Calendar submits
+' a durable item. The headless scheduler owns dispatch and recovers
+' pending work on restart. Submission, carry, prerequisite completion
+' and changes from a bounded disk probe wake it. Closing the dashboard
+' leaves queued and running work with the scheduler.
+' Implement Queued → Reserved → Running → Settling → Attention required
+' in Go. Model acceptance, invalid requests, failed start, retry and
+' reconciliation as explicit events. Persist state and leases before
+' launch. Serialize admissions across Proveo queues on the owning host.
+' Synchronous run acquires the same lease or reports why it cannot launch.
+' Reserve disk for new VMs only. An already-accounted VM keeps its own charge.
+' Read sbx settings get sandbox.disk.dockerVolume on the owning host.
+' Display the configured value verbatim and record its byte equivalent with
+' the lease. Use the smaller of policy and actual filesystem headroom.
+' Prevent counting an allocation twice when it starts appearing in samples.
+' Retain pending leases across unknown inventory and through settling.
+' Reconcile charges on restart and resample before reusing freed headroom.
+' Keep CPU and system RAM as telemetry. Show discrete VRAM separately and
+' count unified memory once. Show one segment per 2 CPU cores, 8 GiB RAM
+' and 64 GiB disk, with occupied capacity and muted totals.
+' Show a wait reason for stale, unreadable or insufficient disk and for
+' unmet dependencies. Pick the oldest ready item that fits. Do not promise
+' dispatch times. Keep deadlines for job budgets and sample freshness.
+' Gate: keep Go transitions aligned with the Quint cases. Test competing
+' reservers, restarts, stale samples, changed settings, and full disks with
+' injected capacity. Add e2e/dashboard_admission_test.go for concurrent
+' CLI producers and reconciliation. Use a disposable sbx host to verify
+' the configured disk value and the observe/start/carry/release cycle.
+'
+' D5  TASK READ MODEL AND HANDOFF
+' Join task source, initial prompt, agent, instance, attempt, carried Git
+' refs, review revision and scheduler state. Begin with local _plan/ files
+' and explicit ticket references. Resolve GitHub/GitLab separately from
+' the task source. Add provider reads to show linked ticket excerpt, PR and
+' push timestamps when available. Keep reads cached and failure-tolerant.
+' Detect missing IDs and cycles before dispatch. Keep blocker identifiers
+' visible when a graph row folds. Record stable order and keep the stable
+' job selector used by attach.
+' Keep task phase separate from capacity. Track spec → verification → spec
+' → live verification (repeat) → upgrade → PR → review → merge. Review
+' feedback can requeue work. Mark results and verification with the exact
+' revision. A new revision reopens affected verification. Support overnight
+' submission and daytime review through the same records. Leave PR and
+' merge posting with the operator.
+' Read Changes from the recorded base and carried tip, including deleted
+' and renamed files. Retain the reachable objects during review. Display
+' last known revision and age or pending carry for live work. Use a separate
+' read-only Files view anchored to pwd. Show deleted contents from the base
+' and changed contents from the tip. Confine host file reads to effective
+' pwd, including symlink resolution.
+' Gate: fixture tests cover selection, stale provider reads, dependency
+' cycles, revision-driven rework and diff paths with rename/delete.
+'
+' D6  NATIVE TERMINAL AND CHILD OWNERSHIP
+' Add a Go dashboard model, reuse choiceui, internal/ui and ptyproxy.
+' Bubble Tea v2 owns terminal input and the alternate screen. Lip Gloss v2
+' composes the panes and Bubbles v2 provides the key-map footer. Reuse
+' creack/pty and x/term on Unix. Qualify Charm x/vt with live sbx before
+' pinning it for grid, cursor, scrollback, terminal replies and resize.
+' Start native sbx at the content pane size on entry to its tab, and keep
+' the client across view switches. Render stock cells and the stock footer
+' inside the pane. The Proveo multiplexer owns only its global chrome and
+' keys. Show effective pwd, proveo/sbx tabs and Ctrl+G then Tab in the
+' header. Preserve both views' dimensions and state through switches.
+' Forward child input, paste and mouse, except reserved parent sequences.
+' Forward an unmatched Ctrl+G prefix after a bounded wait or next key.
+' Ctrl+C on Proveo displays the standard exit card with Cancel selected.
+' A confirmed exit, Ctrl+C on sbx and SIGINT use bounded shutdown,
+' return 130, restore the terminal and leave jobs/VMs alive. Reap a dashboard-owned
+' child client. If it exits, show status in Proveo without a shell fallback.
+' Preserve headless help and --help. Show the sbx view as unavailable when
+' the client, daemon or qualified PTY is missing. Verify Windows still
+' builds with the PTY fallback.
+' Port Review queue with lower-right split first. Use Attention required,
+' Working and Queued with an outlined n new instance item under Queued.
+' Port Task graph with bounded path folding (for example, "3 tasks").
+' Port Schedule with wait reasons and completed runs. Offer alternate
+' detail placement via Task detail options. Keep the demo chooser outside
+' the terminal reference.
+' Preserve column layout at narrow widths. Clip at cell boundaries and let
+' panes scroll independently. Match the left-pane width between tabs.
+' Use #1B1B20, identity colors and key-first muted action hints.
+' Use red D and strike for deletes. Open with details hidden. Show them
+' on request for the selected task and close them if that selection is lost.
+' Omit empty task-group labels from the queue.
+' Show CPU, RAM and disk usage before task details. Query the selected
+' sandbox on selection and every 5s on the Proveo tab. Use one bounded
+' request, discard stale replies, show unknown values and retain a dated
+' last sample. Use that probe to discover Fresh while details are closed.
+' Show the Git + task source, ticket, branch, instance, sandbox, PR,
+' three-row excerpt, muted last-pushed date/time and original prompt.
+' t toggles detail. f/g switch Files/Changes. ↵ on a file opens its preview
+' across the task and detail panes. e opens Fresh only inside the selected
+' running guest via sbx exec on its owning host, in the recorded guest cwd
+' as its run user. Hide e if the guest or editor is unavailable.
+' Enter on a live task confirms via the existing card style. Name the agent
+' and task, default to Cancel and recheck the job before proveo attach.
+' Suspend terminal drawing for direct attachment or hand off the tmux client
+' that invoked it. Ctrl+B d detaches direct attach. Ctrl+B L switches back
+' from an existing tmux client. The attached agent receives its own input.
+' Restore selection, focus and scroll in both cases.
+' New instance runs `proveo run --queue`: the CLI's own card, an attended
+' job through the same queue as CLI and schedule, then attach (2026-11-25).
+' Gate: add e2e/dashboard_native_tmux_test.go for bare CLI, all views, n,
+' attach/cancel/detach, details, diff and guest-only Fresh. Exercise two
+' tmux clients to verify which one attach switches. Drive 120×40, 80×24
+' and a live resize. Test ANSI cells, clipping, keys and pane state.
+' Add e2e/dashboard_sbx_tmux_test.go for stock vs embedded text and styles,
+' cursor and replies, live switch preservation, and Ctrl+C on both tabs.
+' Compare the embedded viewport with direct sbx at identical dimensions
+' and seed. Mask only measured volatile cells such as elapsed times.
+' Assert exit 130, restored modes, no fallback shell and a surviving job.
+'
+' D7  RELEASE GATE
+' Land in dependency order as reviewable PRs. D1 is first runtime ownership.
+' D2 and D4 build on it. D5 joins D1/D2/D4. D6 can prototype on fixed
+' fixtures early, then connects the verified runtime. D3 stays separate.
+' Keep bare proveo help until native checks pass. Publish migration notes
+' and repair commands for orphaned and legacy records. Keep existing
+' selectors readable during rollback. Never roll back by deleting sessions.
+' Each slice updates its current-state _spec, adds its named E2E checks,
+' runs unit/contract tests, go vet and PlantUML, and records skip reasons.
+' Run tmux checks on Linux and macOS. Run live sbx gates on a supported
+' daemon host. A prerequisite skip leaves a release gate pending.
+' Run the targeted live suite with:
+'   PROVEO_DASHBOARD_LIVE_TEST=1 mise exec -- go test -tags=e2e ./e2e -v -run
+'     'TestDashboard(ThreeParallelSandboxInstancesSharePWD|ResumesTwoNativeSessionsAcrossRebuiltVMs|MatchesStockSbxOnTmux)$'
+' Prepare the Codex and Claude Code images and credentials on that host.
+' Treat a skip or signed-out inventory as pending. Inspect raw allocation
+' reflection on that daemon before reducing conservative disk charges.
+' Host Go race tests use cgo and a mise-provisioned Zig C compiler on Linux.
+
+title Native dashboard and same-directory sandboxes — live acceptance pending
+
+component "D0\nCapture current behavior" as D0 <<host>>
+component "D1\nInstance identity and private checkout" as D1 <<app>>
+component "D2\nNative history and resume" as D2 <<db>>
+component "D3\nOpenCode history PR" as D3 <<app>>
+queue "D4\nDisk admission" as D4 <<async>>
+component "D5\nTask and Git read model" as D5 <<app>>
+component "D6\nNative dashboard and sbx tab" as D6 <<app>>
+component "D7\nRelease gates" as D7 <<host>>
+
+D0 ARROW_MAIN D1
+D0 ARROW_OPTIONAL D3
+D1 ARROW_MAIN D2
+D1 ARROW_QUEUE D4
+D2 ARROW_MAIN D5
+D4 ARROW_QUEUE D5
+D5 ARROW_MAIN D6
+D3 ARROW_MAIN D7
+D6 ARROW_MAIN D7
+@enduml

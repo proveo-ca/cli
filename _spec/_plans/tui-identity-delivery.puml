@@ -1,0 +1,130 @@
+@startuml TuiIdentityDelivery
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+skinparam noteTextAlignment left
+' purpose: deliver one product identity across every proveo terminal surface — tokens, components, background and enforcement
+' covers: internal/ui/ui.go
+' covers: internal/choiceui/choiceui.go
+' covers: internal/choiceui/marks.go
+' covers: internal/dashboard/**
+' covers: cmd/proveo/help.go
+' covers: defs/claudecode/mcp/themes/proveo-sandbox.json
+' covers: internal/contract/tui_vocabulary_test.go
+'   the guidelines ............ _spec/_conventions/tui-design-language.puml (ONE PRODUCT IDENTITY)
+'   the dashboard's size tiers  _spec/_paradigms/dashboard-terminal-design.puml
+'   the stack ................. _spec/internal/choiceui/tui-stack.puml
+' Notes are capped at 5 lines x 50 columns; one idea per anchor.
+' status: I0, I1 and I2 BUILT 2026-11-25 (mise run ci green on darwin/arm64).
+' I3-I6 PLANNED. sbx is upstream and not the operator's: proveo styles only
+' the cells it draws (tui-design-language.puml, SBX IS UPSTREAM).
+'
+' ── DECISIONS (the Executor, 2026-11-25, from a prompt) ───────────────────
+'   tokens ....... two layers: the identity palette, then semantic roles with
+'                  dark, light, 256 and 16-colour values; one ui.Styles
+'   background ... the terminal's own; one bounded OSC 11 query; dark default;
+'                  tmux #ffffff guard; PROVEO_THEME override
+'   spec home .... _spec/_conventions/tui-design-language.puml
+'   enforcement .. colour/SGR ban, golden snapshots, component gallery, VHS
+'
+' ── SLICES ────────────────────────────────────────────────────────────────
+' I0  PALETTE FROM THE IDENTITY — BUILT
+'     A Go test, not a main (maintainer steps are Go tests unless a mise task
+'     runs them): TestPaletteMatchesIdentity -update refreshes the snapshot in
+'     internal/ui/testdata and writes internal/ui/palette.go. Fix the drifted constants: ColorMuted
+'     #8A8A8A becomes $GRAY #888888; ColorSurface #0E3A48 waits for an upstream
+'     dark surface. Gate: a contract test that every Color* names an identity
+'     value; the network comparison runs only under the maintainer main.
+' I1  TONES, STYLES, BACKGROUND — BUILT (internal/ui/tone.go)
+'     ui.Tone with dark, light, computed 256 and chosen 16 values; ui.Styles with Header, Keys, Card, List,
+'     Section, Badge, Empty, Error, Spinner, TooSmall, Banner. Bubble Tea
+'     programs read BackgroundColorMsg; the stream asks once with a deadline.
+'     Register PROVEO_THEME in internal/envreg. MOVED: COLORTERM into a guest
+'     waits on measuring what sbx already carries.
+'     Gate: role table complete; light and dark contrast checked in a test.
+' I2  THE BAN — BUILT (internal/contract/tui_identity_test.go, .golangci.yml)
+'     A contract test and a forbidigo rule: no lipgloss.Color(, hex literal or
+'     \033[ outside internal/ui. Start with an allow-list of today's drawers
+'     (dashboard, choiceui dialog_run.go, cmd/proveo/help.go) that only shrinks.
+' I3  DASHBOARD
+'     Drop the painted #1B1B20 and ink; key hints in the shared format; the
+'     rounded card for the n button; every glyph through the tier; TooSmall
+'     from ui. Gate: e2e dashboard tmux tests; the size grid stays exact.
+' I4  STREAM, HELP, CHOICEUI
+'     One mark table: warn becomes ! in the stream. One Section rule. help.go
+'     loses its raw italic SGR. choiceui styles() reads roles, gaining light
+'     values. One TooSmall. Sentence case: "Exit proveo?".
+' I5  SANDBOX THEME
+'     Generate defs/claudecode/mcp/themes/proveo-sandbox.json from the roles:
+'     success $SUCCESS, warn $ACCENT, no #7FE3E9. Needs an image rebuild
+'     (mise run build claudecode) before it reaches a guest.
+' I6  GOLDENS, GALLERY, FLOWS
+'     teatest golden files per component x {dark, light, 16-colour, NO_COLOR};
+'     a gallery test rendering every component into one golden; VHS tapes for
+'     init, the run card and the dashboard with .txt goldens in the e2e lane.
+'     [Unverified] VHS's .txt output still needs ttyd and ffmpeg on the host;
+'     pin them through mise before the lane depends on them.
+' Each slice: mise run ci green, dashboard e2e by anchored name, plantuml.
+'
+' ── SOURCES (research run, 2026-11-25) ────────────────────────────────────
+' guidelines
+'   https://github.com/primer/design/blob/main/content/native/cli/foundations.mdx
+'   https://github.com/primer/design/blob/main/content/native/cli/components.mdx
+'   https://github.blog/engineering/user-experience/building-a-more-accessible-github-cli/
+'   https://shopify.github.io/cli/cli-kit/ui-kit/guidelines.html
+'   https://github.com/Shopify/cli/blob/main/docs/cli-kit/ui-kit/contributing.md
+'   https://clig.dev/#output
+'   https://devcenter.heroku.com/articles/cli-style-guide
+'   https://www.patternfly.org/content-design/writing-guides/cli-handbook
+' tokens and themes
+'   https://github.com/charmbracelet/lipgloss/blob/main/UPGRADE_GUIDE_V2.md
+'   https://github.com/charmbracelet/colorprofile/blob/main/env.go
+'   https://github.com/charmbracelet/crush/blob/main/internal/ui/styles/palette.go
+'   https://github.com/charmbracelet/crush/blob/main/internal/ui/styles/styles.go
+'   https://github.com/charmbracelet/fang/blob/main/theme.go
+'   https://github.com/charmbracelet/huh/blob/main/theme.go
+'   https://textual.textualize.io/guide/design/
+'   https://k9scli.io/topics/skins/
+'   https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md#color-attributes
+' components
+'   https://github.com/cli/cli/blob/trunk/pkg/iostreams/color.go
+'   https://github.com/Shopify/cli/tree/main/packages/cli/src/cli/commands/kitchen-sink
+' terminal capability
+'   https://no-color.org/
+'   https://github.com/termstandard/colors
+'   https://github.com/google-gemini/gemini-cli/pull/27572
+'   https://github.com/charmbracelet/lipgloss/issues/73
+' enforcement
+'   https://golangci-lint.run/docs/linters/configuration/
+'   https://github.com/charmbracelet/x/blob/main/exp/teatest/v2/teatest.go
+'   https://github.com/charmbracelet/vhs
+'   https://bradfrost.com/blog/post/interface-inventory/
+
+title One product identity — palette, roles, components, enforcement
+
+component "I0\nPalette from the identity" as I0 <<db>>
+component "I1\nRoles · Styles · background" as I1 <<app>>
+component "I2\nColour and SGR ban" as I2 <<host>>
+component "I3\nDashboard" as I3 <<app>>
+component "I4\nStream · help · choiceui" as I4 <<app>>
+component "I5\nSandbox Claude theme" as I5 <<cloud>>
+component "I6\nGoldens · gallery · flows" as I6 <<host>>
+
+I0 ARROW_MAIN I1
+I1 ARROW_MAIN I2
+I2 ARROW_MAIN I3
+I2 ARROW_MAIN I4
+I1 ARROW_OPTIONAL I5
+I3 ARROW_MAIN I6
+I4 ARROW_MAIN I6
+
+note bottom of I2
+  **The ban lands before the migrations.**
+  An allow-list names today's drawers, and each
+  migration deletes its own row from that list.
+end note
+
+note bottom of I6
+  **Snapshots stop the identity drifting back.**
+  Each component renders in four terminal modes,
+  so a raw colour shows up as a golden diff.
+end note
+@enduml

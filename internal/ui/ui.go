@@ -741,16 +741,16 @@ func displayWidth(b []byte) int {
 }
 
 const (
-	ColorApp   = 0x005F7F // first-party app / runtime service — teal
-	ColorAsync = 0xCBDB2A // queue · scheduler · background — lime
-	ColorHost  = 0x00BAC6 // host / platform / operator boundary — cyan
-	ColorCloud = 0x585858 // external SaaS / vendor — slate
-	ColorDB    = 0xE5E4E4 // persistence / state store — light
-	ColorError = 0xCB2000 // destructive · failure · security-sensitive — red
+	ColorApp   = IdentityMain   // first-party app / runtime service — teal
+	ColorAsync = IdentityAccent // queue · scheduler · background — lime
+	ColorHost  = IdentityAlt    // host / platform / operator boundary — cyan
+	ColorCloud = IdentityGray2  // external SaaS / vendor — slate
+	ColorDB    = IdentityGray4  // persistence / state store — light
+	ColorError = IdentityError  // destructive · failure · security-sensitive — red
 )
 
 const (
-	ColorSuccess = 0x009532 // passed · resolved · healthy — green
+	ColorSuccess = IdentitySuccess // passed · resolved · healthy — green
 	ColorFailure = ColorError
 )
 
@@ -759,12 +759,12 @@ const (
 	ColorAccent       = ColorApp   // first-party emphasis
 	ColorWarn         = ColorAsync // attention, not yet a failure
 	ColorFail         = ColorError
-	ColorSecondary    = ColorDB    // supporting text — light enough to read on dark terminals
-	ColorMuted        = 0x8A8A8A   // stream detail — grey that reads on dark and light
-	ColorRule         = ColorCloud // stream divider rules
-	ColorSurface      = 0x0E3A48   // a filled face: chips and idle buttons — dark teal
-	ColorAccentBright = 0x00769D   // first-party emphasis — identity MAIN_3
-	ColorWhite        = 0xFAFAFA   // ink on a red face — identity WHITE
+	ColorSecondary    = ColorDB       // supporting text — light enough to read on dark terminals
+	ColorMuted        = IdentityGray  // stream detail — grey that reads on dark and light
+	ColorRule         = ColorCloud    // stream divider rules
+	ColorSurface      = 0x0E3A48      // a filled face: chips and idle buttons; pending an identity dark surface
+	ColorAccentBright = IdentityMain3 // first-party emphasis
+	ColorWhite        = IdentityWhite // ink on a red face
 )
 
 func ANSI(rgb int) string {

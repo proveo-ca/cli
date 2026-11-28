@@ -288,9 +288,10 @@ func gone(name string, detail ...string) Item {
 
 // saveState is SaveState under ctx.
 func (t *teardown) saveState(ctx context.Context) (string, error) {
-	return SaveState(t.cfg.Name, t.cfg.Env, !sbx.Gone(t.cfg.Name), func(args ...string) (string, error) {
+	saved, err := SaveState(t.cfg.Name, t.cfg.Env, !sbx.Gone(t.cfg.Name), func(args ...string) (string, error) {
 		return guestRunIn(ctx, args...)
 	})
+	return saved, t.sessionCheckpoint(ctx, err)
 }
 
 // failedEnd carries what it can home, saves the agent's state (its transcript with it), prints
@@ -427,7 +428,14 @@ func (t *teardown) normalEnd(ctx context.Context) {
 	if t.forced {
 		ui.Logf("sbx rm --force %s — deleting the session", cfg.Name)
 	}
-	err := t.do(ctx, stepRemove, func() error { return removeSandbox(ctx, cfg.Name) })
+	err := t.do(ctx, stepRemove, func() error {
+		if t.in.Instance != nil {
+			if err := t.in.Instance.checkVM(); err != nil {
+				return err
+			}
+		}
+		return removeSandbox(ctx, cfg.Name)
+	})
 	switch {
 	case err == nil && stranded != nil:
 		Item{Warn: true, Text: cfg.Name + " — removed", Detail: []string{"what did not come home went with it"}}.print()

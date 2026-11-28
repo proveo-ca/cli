@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/proveo-ca/proveo/internal/ui"
 )
 
 var sgr = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
@@ -158,7 +160,7 @@ func TestTheCloseDialogSaysWhatItDoesAndNamesItsKeys(t *testing.T) {
 		"That deletes the session.",
 		"Uncommitted changes can be permanently lost.",
 		"Stay ↵", "Remove", "Interrupt agent",
-		"←→ choose · enter press · esc stay · ctrl+c interrupt agent",
+		"←→ choose · ↵ press · esc stay · ctrl+c interrupt agent",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the close dialog lacks %q\n%s", want, out)
@@ -200,7 +202,7 @@ func TestAcceptingRemoveStopsTheAgentOnceAndKeepsTheDialogUp(t *testing.T) {
 	if !strings.Contains(out, "stopping the agent (up to 30s)") {
 		t.Errorf("the held dialog does not say a stop is in flight\n%s", out)
 	}
-	if strings.Contains(out, "Remove") || strings.Contains(out, "enter press") {
+	if strings.Contains(out, "Remove") || strings.Contains(out, "↵ press") {
 		t.Errorf("the held dialog still offers its buttons\n%s", out)
 	}
 	later, _ := held.Update(dialogTick{at: held.heldAt.Add(4 * time.Second)})
@@ -250,9 +252,9 @@ func TestTheUpgradeDialogNamesTheConsequence(t *testing.T) {
 		"2. sbx rm --force proveo-claudecode-abc will run.",
 		"3. this run creates a new sandbox with this same name",
 		"This session does not persist.",
-		"It is running. Yes replaces that live session.",
+		"It is running. Replace and Continue stops that live session.",
 		"Uncommitted clone edits are lost unless fetched.",
-		"Keep ↵", "Replace", "esc keep",
+		"Keep and Cancel ↵", "Replace and Continue", "esc keep and cancel",
 	} {
 		if !strings.Contains(upgrade, want) {
 			t.Errorf("the upgrade dialog lacks %q\n%s", want, upgrade)
@@ -425,7 +427,7 @@ func TestEveryDialogIsACardWithItsLossLinesMarked(t *testing.T) {
 			!strings.HasPrefix(rows[last], g.frameBL) || !strings.HasSuffix(rows[last], g.frameBR) {
 			t.Fatalf("%s: no rounded frame:\n%s", name, plain(raw))
 		}
-		if !strings.Contains(raw, "\x1b[38;2;138;138;138m"+g.frameTL) {
+		if !strings.Contains(raw, ui.ANSI(ui.ColorMuted)+g.frameTL) {
 			t.Errorf("%s: the frame is not grey: %q", name, strings.SplitN(raw, "\n", 2)[0])
 		}
 		body := slices.Clone(d.lines)
@@ -498,7 +500,7 @@ func TestOffAndASCIIDialogsDrawThePlainSet(t *testing.T) {
 		d := NewSandboxClose(nil, time.Second).(dialog)
 		d.glyphs = tier
 		box := plain(d.box())
-		for _, want := range []string{"+---", "| ", "<enter>", "left/right choose · enter press"} {
+		for _, want := range []string{"+---", "| ", "<enter>", "left/right choose · <enter> press"} {
 			if !strings.Contains(box, want) {
 				t.Errorf("tier %d lacks %q:\n%s", tier, want, box)
 			}
@@ -506,5 +508,16 @@ func TestOffAndASCIIDialogsDrawThePlainSet(t *testing.T) {
 		if strings.ContainsAny(box, "╭╮╰╯│─├┤↵←→") {
 			t.Errorf("tier %d draws a Unicode rune:\n%s", tier, box)
 		}
+	}
+}
+
+func TestAButtonOutsideADialogIsTheDialogsButton(t *testing.T) {
+	d := newDialog("t", nil, 0, dialogButton{Label: "Verdict", Key: 'v'})
+	d.glyphs = ui.GlyphsSafe
+	if got, want := Button("Verdict", 'v', false, ui.GlyphsSafe), d.button(d.buttons[0], false); got != want {
+		t.Errorf("Button = %q, the dialog draws %q", got, want)
+	}
+	if got := plain(Button("Verdict", 'v', true, ui.GlyphsSafe)); got != " Verdict ↵ " {
+		t.Errorf("selected = %q", got)
 	}
 }

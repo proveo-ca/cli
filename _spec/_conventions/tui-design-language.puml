@@ -3,6 +3,9 @@
 ' purpose: the one design language every proveo terminal surface renders in, and why the status stream had to join it
 ' covers: internal/ui/**, internal/posture/posture.go, internal/choiceui/topology.go
 ' covers: internal/contract/tui_vocabulary_test.go
+' covers: internal/contract/tui_identity_test.go
+' covers: .golangci.yml
+' covers: internal/dashboard/links.go (linkStyle, linked)
 ' covers: internal/choiceui/card.go (the frame runes, read from glyphsFor)
 '   the prompt that already obeyed it .. _spec/internal/choiceui/choice-prompt-render.puml
 '   its glyph + width rules ............ _spec/internal/choiceui/topology-strip.puml
@@ -305,6 +308,135 @@
 ' language with three notions of its own tier is not one language, so ui owns
 ' the type and the other two alias it. run/topology.go's stripGlyphs — the
 ' function that translated between two of them — is gone.
+'
+' ── ONE PRODUCT IDENTITY (DECIDED 2026-11-25; I0-I2 BUILT) ──────────────
+' The Executor, 2026-11-25: "every feature has its own bland/raw look, rather
+' than keeping a brand/product identity". Decisions taken from a prompt:
+' a two-layer theme, the terminal's own background, guidelines in this file,
+' and four enforcement layers. Delivery: _spec/_plans/tui-identity-delivery.puml.
+' SBX IS UPSTREAM. The Executor, 2026-11-25: "i don't own `sbx`. I just want
+' to add upon it". Identity work applies to cells proveo draws. The sbx tab
+' renders stock cells, and sbx's footer, cards and colours are grammar to
+' borrow, never a surface to restyle. proveo-owned assets passed into a
+' sandbox (kits, the Claude theme in defs/) stay proveo's to style.
+'
+' MEASURED 2026-11-25 (read-only audit). choiceui is coherent: every face
+' comes from one styles() palette of ui.Color* tokens (choiceui.go:1283). The
+' drift sits between the drawers:
+'   1 dashboard hex literals, #1B1B20 matches no token (dashboard/view.go:20-26);
+'     two number-to-colour helpers (choiceui/dialog_run.go:26, dashboard/items.go:21)
+'   2 dashboard paints background and ink under NO_COLOR (view.go:66)
+'   3 key hints: choiceui bold key, " · ", lowercase keys (choiceui.go:1561,
+'     1679); dashboard brand key, three spaces, "Ctrl+C" casing (view.go:28)
+'   4 warn mark ⚠ in the stream (ui.go:101) but ! in choiceui (marks.go:41)
+'     and the dashboard; `proveo init` prints both
+'   5 the sandbox Claude theme paints success in ACCENT lime, proveo's warn,
+'     and adds an off-palette #7FE3E9 (defs/claudecode/mcp/themes/proveo-sandbox.json)
+'   6 four section-rule styles (ui.go:166, help.go:62, dashboard/items.go:373,
+'     choiceui/card.go:214); three glyph tables and three mark-colour maps
+'   7 two "too small" screens (choiceui.go:1982, dashboard/layout.go:76)
+'   8 nothing adapts to a light terminal; ui.ColorMuted 0x8A8A8A is not the
+'     identity's $GRAY #888888; ColorSurface 0x0E3A48 is not in the identity
+'   9 no contract test bans a colour literal or raw SGR outside internal/ui
+'
+' LAYER 0 — THE IDENTITY. proveo-ca/identity proveo.puml is the source:
+'   $BLACK #181818  $WHITE #FAFAFA  $GRAY #888888  $GRAY_2 #585858
+'   $GRAY_3 #B4B3B3  $GRAY_4 #E5E4E4  $SURFACE #E9F4F7  $MAIN #005F7F
+'   $MAIN_3 #00769D  $ALT #00BAC6  $ALT_1 #006B70  $ACCENT #CBDB2A
+'   $ACCENT_1 #818D00  $ERROR #CB2000  $SUCCESS #009532
+' `go test ./internal/ui -run TestPaletteMatchesIdentity -update` refreshes
+' internal/ui/testdata/identity.puml and regenerates internal/ui/palette.go;
+' offline, the test fails when palette.go drifts from that snapshot.
+' Every ui.Color* now names an Identity* value except ColorSurface; ColorMuted
+' moved from #8A8A8A to $GRAY #888888 (MEASURED: three tests held the old
+' escape bytes; they now derive them from ui.ColorMuted). The identity has no dark surface: propose one upstream
+' before inventing it here.
+'
+' LAYER 1 — TONES (ui.Tone; ui.Role stays the line's subject). A call site
+' names a tone; ui.Theme{Dark, Depth} picks the value. The 256 column is the
+' nearest xterm index (x/ansi Convert256), computed, never typed; the 16
+' column is chosen by meaning; -1 keeps the terminal's own colour. Built:
+'   tone       dark       light      256  16
+'   ink        $GRAY_4    $BLACK     254  default   emphasised body
+'   muted      $GRAY      $GRAY_2    245  8         descriptions, key words
+'   rule       $GRAY_2    $GRAY_3    240  8         dividers, frames
+'   brand      $ALT       $MAIN      37   6         selection, focus, keys
+'   accent     $MAIN_3    $MAIN_3    31   4         first-party emphasis
+'   success    $SUCCESS   $SUCCESS   28   2         ok marks only
+'   warn       $ACCENT    $ACCENT_1  184  3         attention, never success
+'   error      $ERROR     $ERROR     160  1         failure, destructive
+'   surface    upstream   $SURFACE   -    reverse   chips, selected buttons
+'   on.brand   $BLACK     $WHITE     16   0         ink on a brand fill
+' NO_COLOR or TERM=dumb: no colour at all; marks and words carry meaning.
+'
+' BACKGROUND. No surface paints a background or a default ink. Light or dark
+' (built: ui.DetectDark, ui.DarkFrom, ui.ThemeOverride; PROVEO_THEME is
+' registered in internal/envreg)
+' comes from one bounded OSC 11 query per session (Bubble Tea
+' RequestBackgroundColor; a deadline on the stream), dark when it times out,
+' and dark when tmux 3.5+ answers #ffffff without asking the outer terminal.
+' PROVEO_THEME=dark|light|auto overrides. [Unverified] whether sbx carries
+' COLORTERM into a guest; measure before proveo adds it to its own run call.
+'
+' COMPONENTS. One owner each, in internal/ui, behind ui.Styles:
+'   Header      path tail, tabs, switch key       Keys     key bold ink, word
+'   Card        rounded frame from glyphsFor                muted, " · " join
+'   List        cursor ›, two-row item            Badge    status mark + word
+'   Section     ├── label ── rule to width        Empty    one muted sentence
+'   Error       what · why · next command         Spinner  ◐◓◑◒, static off-TTY
+'   TooSmall    size, minimum, quit               Banner   the wordmark only
+' A surface composes these; a new look starts as a change to one of them.
+' Marks: one table (ok ✓ +, warn ! !, fail × x, run ● *, wait ○ o, later –).
+' The warn mark becomes ! everywhere: one column in every font, as Primer uses.
+'
+' STATES. Focus changes colour, never layout (huh HiddenBorder, k9s
+' focusColor). Selected uses brand; disabled uses muted; busy uses the
+' spinner; error uses the error role plus its mark.
+' EMPHASIS. Bold for keys and titles; dim never (it vanishes on some light
+' themes); italic only in help examples; underline only for a link or a
+' fuzzy match; reverse only as the NO_COLOR fill. One emphasis per span.
+' LINKS (2026-11-27, "Always highlight links with cyan color and underline"):
+' every OSC 8 link is brand cyan, underlined in the same colour, whatever it
+' sits in: a card's PR or ticket number, Task Details, a report (glamour's
+' link and link_text). dashboard.linked draws them all; a PR number with no
+' address keeps its state tone, as it is no link.
+' LAYOUT. Cell gutters 1/2/4; an 80-column baseline; the size tiers in
+' _spec/_paradigms/dashboard-terminal-design.puml; the rounded card is the one
+' frame; square corners are retired.
+' COPY. Sentence case for titles and buttons; the brand is always "proveo",
+' lowercase; an error says what failed, why, then the command that fixes it.
+' ACCESSIBILITY. Colour never carries meaning alone; the 16-colour column is
+' a complete theme; plain output stays greppable.
+' BRAND DISPLAY. The wordmark lives in the banner and help header only, never
+' in machine-readable output. The sandbox Claude theme maps the same roles:
+' success is $SUCCESS, warn is $ACCENT, and no off-palette shimmer.
+'
+' ENFORCEMENT (all four chosen):
+'   BUILT 2026-11-25: internal/contract/tui_identity_test.go bans
+'   lipgloss.Color, ui.Identity*, SGR colour strings and #RRGGBB literals
+'   outside internal/ui; its allow-list (help.go, choiceui dialog_run.go,
+'   dashboard items.go and view.go) only shrinks, and .golangci.yml's
+'   forbidigo exclusions must equal it.
+'   EXCEPTION 2026-11-25: "Let the code highlighting go beyond proveo's
+'   color palette; the only exception." internal/dashboard/highlight.go
+'   colours code with a chroma style (catppuccin-mocha, PROVEO_CODE_THEME)
+'   and stays on the allow-list for good: foreground, bold and italic only,
+'   never a background; diff gutters keep the identity's green and red.
+'   ban ......... a forbidigo rule and a contract test: no lipgloss.Color(,
+'                 hex literal or \033[ outside internal/ui; a shrinking
+'                 allow-list while surfaces migrate; every role has 4 values
+'   goldens ..... teatest golden files per component x {dark, light,
+'                 16-colour, NO_COLOR}, colour escapes kept, -update to record
+'   gallery ..... a Go test that renders every component side by side into
+'                 one golden: the interface inventory for review
+'   flows ....... VHS tapes for init, the run card and the dashboard with
+'                 .txt goldens, in the e2e lane
+' SOURCES: Primer CLI foundations/components, Shopify cli-kit guidelines,
+' clig.dev, Heroku CLI style, Lip Gloss v2 upgrade guide, colorprofile,
+' Crush styles/palette.go, fang theme.go, Textual design guide, k9s skins,
+' lazygit colour config, no-color.org, gemini-cli PR 27572 (tmux #ffffff),
+' teatest v2, VHS. Links: the research run recorded in the session of
+' 2026-11-25, and _spec/_plans/tui-identity-delivery.puml.
 
 title TUI design language — one palette, one closed glyph set, two speakers
 
@@ -450,4 +582,37 @@ note right of EMOJI
   comment needs the glyph to make its point.
 end note
 
+
+package "IDENTITY — decided 2026-11-25, delivery pending" as IDENT {
+  database "proveo-ca/identity\nproveo.puml · 15 colours" as IDPAL <<db>>
+  component "ui/palette.go\ngenerated, layer 0" as GEN <<app>>
+  component "roles\ndark · light · 256 · 16" as ROLES <<app>>
+  component "ui.Styles\none owner per component" as STYLES <<app>>
+  component "dashboard · help\nsandbox theme" as DRIFT <<error>>
+}
+
+IDPAL ARROW_MAIN GEN
+GEN ARROW_MAIN ROLES
+ROLES ARROW_MAIN STYLES
+STYLES ARROW_MAIN CUI
+STYLES ARROW_MAIN PRN
+DRIFT ARROW_ERROR STYLES : migrate
+
+note bottom of ROLES
+  **A role picks its value from the terminal.**
+  Light or dark comes from one bounded query, and
+  the depth decides truecolour, 256 or 16 colours.
+end note
+
+note bottom of STYLES
+  **A new look starts as a change to a component.**
+  Surfaces compose the shared pieces, so a key
+  hint or a card reads the same on every screen.
+end note
+
+note bottom of DRIFT
+  **These drawers chose their own colours.**
+  Each one migrates behind a shrinking allow-list
+  that the colour ban test keeps honest.
+end note
 @enduml

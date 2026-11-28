@@ -253,18 +253,21 @@ var androidHarnesses = []androidHarness{
 
 // opencodeToolCalls lists opencode 2.x's tool calls: part names and the completed MCP calls an `execute` part made.
 // SPEC: _spec/internal/sbx/host-android-adb.puml (THE USER-STYLE E2E)
-const opencodeToolCalls = `d=$(mktemp -d) && cp "$HOME"/.local/share/opencode/opencode.db* "$d"/ 2>/dev/null && python3 - "$d/opencode.db" <<'PY'
-import json, sqlite3, sys
-names = set()
-for (data,) in sqlite3.connect(sys.argv[1]).execute("select data from session_message where type = 'assistant'"):
-    for part in json.loads(data).get("content", []):
-        if part.get("type") == "tool":
-            names.add(part.get("name", ""))
-            for call in part.get("state", {}).get("metadata", {}).get("toolCalls", []):
-                if call.get("status") == "completed":
-                    names.add(call.get("tool", ""))
-print("\n".join(sorted(n for n in names if n)))
-PY`
+const opencodeToolCalls = `d=$(mktemp -d) && cp "$HOME"/.local/share/opencode/opencode.db* "$d"/ 2>/dev/null && node --no-warnings - "$d/opencode.db" <<'JS'
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync(process.argv[2]);
+const names = new Set();
+for (const { data } of db.prepare("select data from session_message where type = 'assistant'").iterate()) {
+  for (const part of JSON.parse(data).content || []) {
+    if (part.type !== "tool") continue;
+    if (part.name) names.add(part.name);
+    for (const call of part.state?.metadata?.toolCalls || []) {
+      if (call.status === "completed" && call.tool) names.add(call.tool);
+    }
+  }
+}
+console.log([...names].sort().join("\n"));
+JS`
 
 // TestAndroidAppInWorkspaceInstallsOnTheHostEmulator drives each harness the way a
 // user does: tick android in the form, let the seed provision the build from the

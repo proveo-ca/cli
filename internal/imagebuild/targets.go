@@ -251,7 +251,13 @@ func (b *Builder) buildRef(name, ref string, o Options) error {
 				return err
 			}
 		} else if !b.present(from) || !b.fresh(from) {
-			if err := b.BuildTarget(s.Needs, tag, Options{NoCache: o.NoCache}); err != nil {
+			unlock := b.lockImage(s.Needs)
+			var err error
+			if !b.present(from) || !b.fresh(from) {
+				err = b.BuildTarget(s.Needs, tag, Options{NoCache: o.NoCache})
+			}
+			unlock()
+			if err != nil {
 				return err
 			}
 		}
@@ -302,6 +308,8 @@ func (b *Builder) ensure(name, ref string, push bool) error {
 	if push {
 		return b.RequirePublished(ref, RefTag(ref))
 	}
+	unlock := b.lockImage(name)
+	defer unlock()
 	if b.present(ref) {
 		if !b.fresh(ref) {
 			b.UI.Warnf("%s was built from other defs/ and packages/ content — rebuilding", ref)

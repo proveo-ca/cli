@@ -2,6 +2,8 @@
 import { spawn } from "node:child_process"
 import { isAbsolute } from "node:path"
 
+const IDLE = new Set(["session.idle", "session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"])
+
 export default {
   id: "proveo-git-sync-turn",
   setup(ctx) {
@@ -39,11 +41,11 @@ export default {
         if (controller.signal.aborted) break
         const sessionID = event.data?.sessionID
         if (!sessionID) continue
-        if (event.type === "session.status" && event.data.status.type !== "idle") {
+        if (event.type === "session.execution.started" || (event.type === "session.status" && event.data.status.type !== "idle")) {
           idle.delete(sessionID)
           continue
         }
-        if (event.type !== "session.idle" && event.type !== "session.status") continue
+        if (!IDLE.has(event.type) && event.type !== "session.status") continue
         if (idle.has(sessionID)) continue
         idle.add(sessionID)
         pending.set(sessionID, event)

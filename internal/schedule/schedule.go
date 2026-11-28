@@ -2,8 +2,11 @@
 package schedule
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,20 +27,28 @@ const (
 
 // Job is one scheduled agent run.
 type Job struct {
-	Target     string   `yaml:"target"`
-	Model      string   `yaml:"model,omitempty"`
-	Addons     []string `yaml:"addons,omitempty"`
-	Args       []string `yaml:"args,omitempty"` // extra `proveo run` flags
-	Workdir    string   `yaml:"workdir,omitempty"`
-	PromptFile string   `yaml:"prompt_file"`
-	Mode       string   `yaml:"mode,omitempty"` // goal | loop | plain
-	Budget     string   `yaml:"budget,omitempty"`
-	CatchUp    string   `yaml:"catch_up,omitempty"`
-	Timezone   string   `yaml:"tz,omitempty"`
-	At         []string `yaml:"at"`
-	Ready      string   `yaml:"ready,omitempty"`    // pane text that means the agent takes input
-	Accepted   string   `yaml:"accepted,omitempty"` // pane text that means the agent took the instruction
-	Command    []string `yaml:"command,omitempty"`  // argv run instead of `proveo run <target>`
+	Target      string   `yaml:"target"`
+	Instance    string   `yaml:"instance,omitempty"`
+	New         bool     `yaml:"new,omitempty"`
+	Task        string   `yaml:"task,omitempty"`
+	DependsOn   []string `yaml:"depends_on,omitempty"`
+	Ticket      string   `yaml:"ticket,omitempty"`
+	Phase       string   `yaml:"phase,omitempty"`
+	Model       string   `yaml:"model,omitempty"`
+	Addons      []string `yaml:"addons,omitempty"`
+	Args        []string `yaml:"args,omitempty"` // extra `proveo run` flags
+	Workdir     string   `yaml:"workdir,omitempty"`
+	PromptFile  string   `yaml:"prompt_file"`
+	Mode        string   `yaml:"mode,omitempty"` // goal | loop | plain | attended
+	Budget      string   `yaml:"budget,omitempty"`
+	CatchUp     string   `yaml:"catch_up,omitempty"`
+	Timezone    string   `yaml:"tz,omitempty"`
+	At          []string `yaml:"at"`
+	Ready       string   `yaml:"ready,omitempty"`        // pane text that means the agent takes input
+	Accepted    string   `yaml:"accepted,omitempty"`     // pane text that means the agent took the instruction
+	Command     []string `yaml:"command,omitempty"`      // argv run instead of `proveo run <target>`
+	Paused      bool     `yaml:"paused,omitempty"`       // no run starts until the file says otherwise
+	PausedUntil string   `yaml:"paused_until,omitempty"` // YYYY-MM-DD in tz: the first day the job runs again
 }
 
 // Config is the schedule file.
@@ -48,14 +59,53 @@ type Config struct {
 // Path is the schedule file under the proveo home.
 func Path(home string) string { return filepath.Join(home, FileName) }
 
-func Load(home string) (Config, error) {
+// LoadFile reads one schedule file strictly, unknown keys included, and checks every job in it.
+func LoadFile(path string) (Config, error) {
 	var c Config
-	b, err := os.ReadFile(Path(home))
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return c, err
 	}
-	if err := yaml.Unmarshal(b, &c); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
+	for _, name := range c.Names() {
+		if err := c.Jobs[name].validate(); err != nil {
+			return c, fmt.Errorf("%s: job %q: %w", path, name, err)
+		}
+	}
+	return c, nil
+}
+
+// Names lists the jobs in name order.
+func (c Config) Names() []string {
+	names := make([]string, 0, len(c.Jobs))
+	for name := range c.Jobs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func Load(home string) (Config, error) {
+	var c Config
+	b, err := os.ReadFile(Path(home))
+	if err != nil && !os.IsNotExist(err) {
+		return c, err
+	}
+	if err == nil {
+		if err := yaml.Unmarshal(b, &c); err != nil {
+			return c, fmt.Errorf("%s: %w", Path(home), err)
+		}
+	}
+	manualErr := err
+	if err := loadDashboardJobs(home, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", Path(home), err)
+	}
+	if len(c.Jobs) == 0 && manualErr != nil {
+		return c, manualErr
 	}
 	for name, j := range c.Jobs {
 		if err := j.validate(); err != nil {
@@ -72,10 +122,14 @@ func (j Job) validate() error {
 	if j.PromptFile == "" {
 		return fmt.Errorf("prompt_file is required")
 	}
+	if (j.New && j.Instance != "") || (j.Task != "" && !j.New) ||
+		(len(j.Command) > 0 && (j.New || j.Instance != "")) {
+		return fmt.Errorf("instance and new are exclusive, task requires new, and instance selection requires a target")
+	}
 	switch j.Mode {
-	case "", "goal", "loop", "plain":
+	case "", "goal", "loop", "plain", ModeAttended:
 	default:
-		return fmt.Errorf("mode %q: want goal, loop or plain", j.Mode)
+		return fmt.Errorf("mode %q: want goal, loop, plain or attended", j.Mode)
 	}
 	if _, err := j.Location(); err != nil {
 		return err
@@ -88,8 +142,59 @@ func (j Job) validate() error {
 	if _, err := j.BudgetDuration(); err != nil {
 		return err
 	}
+	if j.Paused && j.PausedUntil != "" {
+		return fmt.Errorf("paused and paused_until are exclusive")
+	}
+	if _, err := j.ResumeAt(); err != nil {
+		return err
+	}
 	_, err := j.CatchUpDuration()
 	return err
+}
+
+// ResumeAt is the start of the day paused_until names, in the job's tz; zero when no date is set.
+func (j Job) ResumeAt() (time.Time, error) {
+	if strings.TrimSpace(j.PausedUntil) == "" {
+		return time.Time{}, nil
+	}
+	loc, err := j.Location()
+	if err != nil {
+		return time.Time{}, err
+	}
+	t, err := time.ParseInLocation(time.DateOnly, strings.TrimSpace(j.PausedUntil), loc)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("paused_until %q: want YYYY-MM-DD", j.PausedUntil)
+	}
+	return t, nil
+}
+
+// PausedAt says whether the job skips a run due at t.
+func (j Job) PausedAt(t time.Time) bool {
+	if j.Paused {
+		return true
+	}
+	until, err := j.ResumeAt()
+	return err == nil && t.Before(until)
+}
+
+// NextRun is the job's soonest run after now that no pause skips; false when nothing starts it on its own.
+func (j Job) NextRun(now time.Time) (time.Time, bool) {
+	loc, err := j.Location()
+	if err != nil || j.Paused {
+		return time.Time{}, false
+	}
+	from := now
+	if until, err := j.ResumeAt(); err == nil && until.After(now) {
+		from = until.Add(-time.Nanosecond)
+	}
+	var best time.Time
+	for _, e := range j.At {
+		t, err := NextOccurrence(e, from, loc)
+		if err == nil && (best.IsZero() || t.Before(best)) {
+			best = t
+		}
+	}
+	return best, !best.IsZero()
 }
 
 func (j Job) Location() (*time.Location, error) {
@@ -217,7 +322,7 @@ func (c Config) Due(now time.Time, st State) []Due {
 		var best *Due
 		for _, e := range j.At {
 			t, err := lastOccurrence(e, now, loc)
-			if err != nil || now.Sub(t) > catch {
+			if err != nil || now.Sub(t) > catch || j.PausedAt(t) {
 				continue
 			}
 			if fired, ok := st[name][e]; ok && !fired.Before(t) {

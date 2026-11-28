@@ -30,7 +30,7 @@ skinparam noteTextAlignment left
 ' covers: e2e/host_adb_sbx_test.go
 ' covers: e2e/android_test.go
 ' covers: e2e/testdata/android-hello.txtar
-'   why this shape, measured ............ _spec/_experiments/mobile-device-reach.puml
+'   why this shape, measured ............ _spec/internal/sbx/mobile-device-reach.puml
 '   the pattern it copies ............... _spec/internal/sbx/host-browser-cdp.puml
 '   why the box has no emulator ......... _spec/_paradigms/capability-ladder.puml (THE LADDER IS A HOST MEASUREMENT)
 '

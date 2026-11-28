@@ -121,21 +121,12 @@ const hermesBrowserProbe = `
   exec 3>&-
   export PROVEO_SEED_ONLY=1 PROVEO_SEED_PHASE=none
   PROVEO_BROWSER_MODE=isolated /entrypoint.sh --prepare
-  cd /opt/hermes
-  HERMES_MANAGED_DIR=/var/lib/proveo/browser/hermes-isolated /opt/hermes/.venv/bin/python - <<'PY'
-import json
-from hermes_cli.env_loader import load_hermes_dotenv
-from tools.browser_use_cli import browser_exec
-
-load_hermes_dotenv()
-response = json.loads(browser_exec('new_tab("data:text/html,<title>proveo-browser-client</title>"); print(page_info())'))
-assert response["success"], response
-PY
+  set -a
+  . /var/lib/proveo/browser/hermes-isolated/.env
+  set +a
+  curl -fsS -X PUT -- "$BROWSER_CDP_URL/json/new?data:text/html,%3Ctitle%3Eproveo-browser-client%3C/title%3E"
   PROVEO_BROWSER_MODE=none /entrypoint.sh --prepare
-  HERMES_MANAGED_DIR=/var/lib/proveo/browser/hermes-none /opt/hermes/.venv/bin/python - <<'PY'
-from hermes_cli.config import load_config
-assert "browser" in load_config()["agent"]["disabled_toolsets"]
-PY
+  grep -Eq '^[[:space:]]*-[[:space:]]+browser[[:space:]]*$' /var/lib/proveo/browser/hermes-none/config.yaml
 )
 viewport tabs | grep -F proveo-browser-client
 `

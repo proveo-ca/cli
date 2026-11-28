@@ -127,7 +127,10 @@ skinparam noteTextAlignment left
 ' It is a per-run snapshot: host edits land on the next run.
 ' Under --credentials broker the copy DROPS every provider key variable, since
 ' sbx's proxy attaches those and the agent must never hold them; forward keeps
-' the file whole. /.env goes into the clone's .git/info/exclude, so a project
+' them. Every run, broker or forward, also drops credentials.HostOnlyVars:
+' keys the host reads for itself (LINEAR_API_KEY, the operator's personal token
+' the dashboard's task picker uses, 2026-11-27); the teardown merge refuses an
+' agent's copy of one and keeps the host's (cloneEnvStrip, task-picker.puml). /.env goes into the clone's .git/info/exclude, so a project
 ' that forgot to ignore it still never commits the link at teardown, and an
 ' existing .env in a reattached clone is left alone and reported.
 '

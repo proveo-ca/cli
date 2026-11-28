@@ -66,6 +66,15 @@ func (j Job) RunArgv(proveo string) []string {
 		return append([]string(nil), j.Command...)
 	}
 	argv := []string{proveo, "run", j.Target, "--yes"}
+	if j.Instance != "" {
+		argv = append(argv, "--instance", j.Instance)
+	}
+	if j.New {
+		argv = append(argv, "--new")
+		if j.Task != "" {
+			argv = append(argv, "--task", j.Task)
+		}
+	}
 	if j.Model != "" {
 		flag := "--local-model"
 		if isRemoteModel(j.Model) {
@@ -344,7 +353,7 @@ var ErrRunning = errors.New("still running")
 var ErrSessionStart = errors.New("start tmux session")
 
 // Launch starts the job's tmux session and a detached watcher; it returns once both run.
-func Launch(home, proveo, name, entry string, j Job, run TmuxRunner) error {
+func Launch(home, proveo, name, entry string, j Job, run TmuxRunner, snapshot ...string) error {
 	run = orTmux(run)
 	sess := NewTmux(SessionName(name), run)
 	if sess.Alive() {
@@ -354,14 +363,22 @@ func Launch(home, proveo, name, entry string, j Job, run TmuxRunner) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	stamp := time.Now().Format("20060102-150405")
+	stamp := time.Now().Format("20060102-150405.000000000")
 	transcript := filepath.Join(dir, stamp+".log")
 	wd := j.WorkDir(home, name)
 	if err := os.MkdirAll(wd, 0o700); err != nil {
 		return err
 	}
 	start := sess.Name + "-start-" + stamp
-	cmd := "tmux wait-for " + shellQuote(start) + " && " + sessionCommand(wd, transcript, proveo, j)
+	env := "PROVEO_SCHEDULE_JOB=" + shellQuote(name) + " PROVEO_HOME=" + shellQuote(home)
+	if j.New {
+		dir := isolatedReportDir(transcript)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			return err
+		}
+		env += " PROVEO_SCHEDULE_REPORT_DIR=" + shellQuote(dir)
+	}
+	cmd := "tmux wait-for " + shellQuote(start) + " && export " + env + " && " + sessionCommand(wd, transcript, proveo, j)
 	if err := sess.Start(200, 50, "sh", "-c", cmd); err != nil {
 		return fmt.Errorf("%w: %w", ErrSessionStart, err)
 	}
@@ -373,15 +390,31 @@ func Launch(home, proveo, name, entry string, j Job, run TmuxRunner) error {
 		sess.Kill()
 		return fmt.Errorf("start scheduled command: %w", err)
 	}
-	w := exec.Command(proveo, "schedule", "watch", name, "--entry", entry, "--transcript", transcript)
+	watchArgs := []string{"schedule", "watch", name, "--entry", entry, "--transcript", transcript}
+	if len(snapshot) > 0 {
+		watchArgs = append(watchArgs, "--job-snapshot", snapshot[0])
+	}
+	w := exec.Command(proveo, watchArgs...)
 	w.Stdout, w.Stderr = nil, nil
 	detach(w)
-	if err := w.Start(); err != nil {
+	if _, err := startReaped(w); err != nil {
 		sess.Kill()
 		return fmt.Errorf("start watcher: %w", err)
 	}
-	_ = w.Process.Release()
 	return nil
+}
+
+// startReaped starts c and waits for it in the background, so a long-lived dispatcher leaves no zombie.
+func startReaped(c *exec.Cmd) (<-chan struct{}, error) {
+	if err := c.Start(); err != nil {
+		return nil, err
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = c.Wait()
+		close(done)
+	}()
+	return done, nil
 }
 
 // Watch types the instruction once the agent is ready, then ends the session at the budget.
@@ -395,9 +428,14 @@ func Rewatch(home, name, entry, transcript string, j Job, run TmuxRunner, notify
 }
 
 func watch(home, name, entry, transcript string, j Job, run TmuxRunner, notify func(title, body string), typed bool) Result {
+	if j.Mode == ModeAttended {
+		return watchAttended(home, name, entry, transcript, j, run, notify, typed)
+	}
 	res := Result{Job: name, Entry: entry, Started: time.Now(), Transcript: transcript}
 	report := filepath.Join(j.WorkDir(home, name), ReportFile)
-	if !typed {
+	if j.New {
+		report = filepath.Join(isolatedReportDir(transcript), ReportFile)
+	} else if !typed {
 		_ = os.Remove(report)
 	}
 	finish := func(outcome, detail string) Result {
@@ -426,6 +464,9 @@ func watch(home, name, entry, transcript string, j Job, run TmuxRunner, notify f
 		return finish("failed", "prompt: "+err.Error())
 	}
 	instruction := j.Instruction(string(prompt))
+	if j.New {
+		instruction += " Write your final report to " + report + "."
+	}
 	for attempt := 1; !typed; attempt++ {
 		pane, err := awaitReady(sess, j.readyMarker(), readyWait)
 		if errors.Is(err, errGone) {
@@ -481,6 +522,10 @@ func watch(home, name, entry, transcript string, j Job, run TmuxRunner, notify f
 		time.Sleep(budgetPoll)
 	}
 	return finish("budget", stopAgent(sess, "stopped at "+compact(budget)))
+}
+
+func isolatedReportDir(transcript string) string {
+	return strings.TrimSuffix(transcript, ".log") + ".handoff"
 }
 
 // stopAgent ends a run at its budget, gentlest first: interrupt the turn and /exit, then
@@ -628,4 +673,43 @@ func shellJoin(argv []string) string {
 		q[i] = shellQuote(a)
 	}
 	return strings.Join(q, " ")
+}
+
+// ModeAttended is an operator's own session: an optional opening prompt, no budget and no report stop.
+const ModeAttended = "attended"
+
+// watchAttended types a non-empty prompt once the agent is ready, then waits for the operator to end the session.
+func watchAttended(home, name, entry, transcript string, j Job, run TmuxRunner, notify func(title, body string), typed bool) Result {
+	res := Result{Job: name, Entry: entry, Started: time.Now(), Transcript: transcript}
+	finish := func(outcome, detail string) Result {
+		res.Outcome, res.Detail, res.Finished = outcome, detail, time.Now()
+		writeResult(home, name, res)
+		if notify != nil {
+			notify("proveo "+name, outcome+": "+detail)
+		}
+		return res
+	}
+	sess := NewTmux(SessionName(name), orTmux(run))
+	sess.Pin()
+	prompt, err := os.ReadFile(j.PromptFile)
+	if err != nil {
+		return finish("failed", "prompt: "+err.Error())
+	}
+	if text := strings.Join(strings.Fields(string(prompt)), " "); text != "" && !typed {
+		if _, err := awaitReady(sess, j.readyMarker(), readyWait); err != nil {
+			if errors.Is(err, errGone) {
+				return finish("failed", exitedDetail(transcript, "before it was ready"))
+			}
+			return finish("not-ready", fmt.Sprintf("no %q within %s", j.readyMarker(), readyWait))
+		}
+		if err := sess.SendText(text); err != nil {
+			return finish("failed", "type prompt: "+err.Error())
+		}
+		_ = sess.Enter()
+	}
+	started := time.Now()
+	for sess.Alive() {
+		time.Sleep(budgetPoll)
+	}
+	return finish("done", "attended session closed after "+compact(time.Since(started).Round(time.Minute)))
 }

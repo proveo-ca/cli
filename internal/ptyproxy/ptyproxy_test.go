@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 // Usable must refuse a headless run: pipes are not terminals, so there is no
@@ -32,15 +34,25 @@ func TestUsableRejectsNonTerminals(t *testing.T) {
 	}
 }
 
-const etxReader = `import sys, tty
-tty.setraw(sys.stdin.fileno())
-while True:
-    b = sys.stdin.buffer.read(1)
-    if not b:
-        break
-    sys.stdout.buffer.write(b"SEE:%02x\n" % b[0])
-    sys.stdout.buffer.flush()
-`
+func TestPTYRawKeysHelper(t *testing.T) {
+	if os.Getenv("FIXTURE_PTY_RAW") != "1" {
+		return
+	}
+	if err := testx.RawTTY("SEE", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func etxReader(t *testing.T) *exec.Cmd {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^TestPTYRawKeysHelper$")
+	cmd.Env = append(os.Environ(), "FIXTURE_PTY_RAW=1")
+	return cmd
+}
 
 func TestCtrlCConfirmHoldsTheInterruptUntilTheOperatorAnswers(t *testing.T) {
 	t.Parallel()
@@ -60,7 +72,7 @@ func TestCtrlCConfirmHoldsTheInterruptUntilTheOperatorAnswers(t *testing.T) {
 		saw <- struct{}{}
 		return CtrlCStay
 	}, nil)
-	cmd := exec.Command("python3", "-c", etxReader)
+	cmd := etxReader(t)
 	go func() { _ = p.Run(cmd) }()
 	defer func() { _ = cmd.Process.Kill() }()
 	time.Sleep(300 * time.Millisecond)
@@ -102,7 +114,7 @@ func TestCtrlCPassReachesTheChild(t *testing.T) {
 
 	p := New(inR, outW)
 	p.HandleCtrlC(func(io.Reader, io.Writer) CtrlCAction { return CtrlCPass }, nil)
-	cmd := exec.Command("python3", "-c", etxReader)
+	cmd := etxReader(t)
 	go func() { _ = p.Run(cmd) }()
 	defer func() { _ = cmd.Process.Kill() }()
 	time.Sleep(300 * time.Millisecond)
