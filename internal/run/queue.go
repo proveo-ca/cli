@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package run
 
 import (
@@ -11,6 +11,7 @@ import (
 type QueueRequest struct {
 	Target, Task string
 	Prompt       string   // the opening prompt the attended session types once the agent is ready
+	Ticket       string   // what the run works on: a plan path, an issue or PR URL
 	Args         []string // proveo run flags the scheduled run repeats; the card's answers replay from the settings cache
 }
 

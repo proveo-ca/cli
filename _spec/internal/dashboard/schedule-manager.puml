@@ -1,0 +1,114 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: view 3 manages schedule.yml: a week grid of runs, the job list, the selected job; edit, pause, run now
+' covers: internal/dashboard/schedule_view.go
+' covers: internal/dashboard/schedule_grid.go
+' covers: internal/dashboard/schedule_edit.go
+' covers: internal/dashboard/schedule_view_test.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/view.go
+' covers: internal/dashboard/mouse.go
+' covers: internal/dashboard/cards.go
+' covers: internal/dashboard/items.go
+' covers: internal/dashboard/layout_test.go
+' covers: internal/choiceui/schedule_choice.go
+' covers: internal/schedule/week.go
+' covers: internal/schedule/pause.go
+' covers: internal/schedule/pause_test.go
+' covers: internal/schedule/schedule.go
+' covers: internal/schedule/table.go
+' covers: cmd/proveo/schedule.go
+' covers: cmd/proveo/schedule_test.go
+'
+' "a schedule manager needs to be designed in the proveo dashboard. Do you have
+' access to the scheduled tasks for yahoo-ff as a sample?" (2026-11-28)
+' CHOSEN: "Week grid", "$EDITOR at the job", "paused_until in yml".
+' NOT CHOSEN: agenda cards (overlaps only as a chip); a job table (no
+' time-of-day shape); an in-pane form (yaml.v3 nodes move trailing comments);
+' a pause kept in schedule-state.json (nothing in the file says so).
+' BEFORE: view 3 regrouped the task cards (Recent outcomes, In progress,
+' Waiting for dispatch); it never showed run times, budgets or overlaps, and the
+' Task Dashboard lists only jobs whose workdir is the current directory.
+'
+' ── THE VIEW ──────────────────────────────────────────────────────────────
+' Right pane: "Schedule" + the tick chip (✓ tick launchd | ! tick not installed),
+' then the week grid, then the Jobs list (soonest next run first, manual last).
+' Left pane: the selected job: Now/Next, Runs (target · model · mode · budget),
+' Add-ons, At (each entry, and its time on your clock when the job's tz differs),
+' Overlaps (each other job's run that shares time, by start), Last (outcome,
+' started, summary), Prompt (path, then the file's head).
+' GRID: Monday to Sunday of the week holding now, on the dashboard's clock. A row
+' per half hour any run touches (2026-11-28, "can the schedule cover 30mins
+' intervals rather than 1h intervals?"; hour rows came first); a column per day;
+' each cell cut into 30/cw-minute slices, cw the largest of 6 5 4 3 2 that fits
+' (5 minutes at 6). A slice is █ brand for the selected job, █ muted for another,
+' ▒ warn when two of its runs overlap in time, ░ rule for a paused run. Runs
+' span start → start + budget. Week() also reads last week's spill-over and next
+' Monday's runs, so a Sunday-night run that meets Monday's shows ▒ on both ends.
+' Today's header and the current half hour's label are brand. ASCII tier: # x .
+'
+' ── KEYS (view 3 owns them unless a report or file is open) ─────────────────
+'   ↑↓ wheel  move · click a row or a run selects its job
+'   ↵         attach when running, else the last report (the report view), else
+'             says why there is none
+'   e         $VISUAL / $EDITOR on a draft at the job's line
+'   n         the same, with a job-N stub appended and the cursor on it
+'   p         pause: Cancel · 1 week · 4 weeks · Until resumed; on a paused job,
+'             Resume
+'   r         proveo schedule run <job> (not while it runs)
+'   a         attach
+'
+' ── EDIT ─────────────────────────────────────────────────────────────────
+' The editor gets <home>/.schedule.draft.yml, never schedule.yml. On close:
+' unchanged → nothing; schedule.yml changed meanwhile → refuse; LoadFile (strict:
+' unknown keys fail) refuses → "Not saved" with the error, Edit again (the safe
+' answer, so Esc reopens; at the line a YAML error names) or Discard; valid →
+' one rename over schedule.yml, mode kept. The tick never reads a half-edited
+' file. Editors: vi-family +N; code/cursor/windsurf --wait --goto f:N; zed/subl
+' --wait f:N; hx f:N.
+'
+' ── PAUSE (paused | paused_until in the job's block) ──────────────────────
+'   paused: true              no run starts until it is removed
+'   paused_until: YYYY-MM-DD  runs again from that day's 00:00 in the job's tz
+' Exclusive; LoadFile checks the date. Due() skips a paused occurrence, NextRun()
+' jumps past it, ls says "paused" or "paused until Mon Dec 7". SetPaused edits
+' lines, not nodes: it drops the job's paused/paused_until lines and writes the
+' new one under the job key, so every comment stays byte for byte; an inline
+' job ({...}) is refused. `proveo schedule pause <job> [--until DATE]` and
+' `proveo schedule resume <job>` write through the same SetPaused.
+' MEASURED 2026-11-28 on the operator's schedule (read-only render): 5 jobs,
+' 13 runs a week, 0 overlaps. Each lineup pass ends 6 minutes before its
+' refine pass, inside one 10-minute slice: the first render drew that slice ▒.
+' A slice is ▒ only when two of its runs overlap in time, not when they share it.
+title Schedule manager — week grid, job list, edit and pause in schedule.yml
+
+file "schedule.yml\n(comments kept)" as YML <<host>>
+file ".schedule.draft.yml" as DRAFT <<host>>
+component "Week()\nslots · overlaps" as WEEK <<app>>
+component "view 3\ngrid · jobs · details" as VIEW <<app>>
+component "$EDITOR" as ED <<host>>
+component "SetPaused\nline edit" as PAUSE <<app>>
+component "minutely tick\nDue() skips paused" as TICK <<async>>
+
+YML ARROW_MAIN WEEK : LoadFile
+WEEK ARROW_MAIN VIEW
+VIEW ARROW_MAIN DRAFT : e · n
+DRAFT ARROW_MAIN ED
+ED ARROW_MAIN YML : valid → rename
+VIEW ARROW_MAIN PAUSE : p
+PAUSE ARROW_MAIN YML
+YML ARROW_QUEUE TICK
+
+note right of DRAFT
+  **The tick never reads a draft.**
+  A refused edit stays in the draft;
+  schedule.yml changes only by one
+  rename of a valid file.
+end note
+
+note bottom of PAUSE
+  **A pause is a line in the file.**
+  It is visible, reversible, and
+  dated pauses resume on their own.
+end note
+@enduml

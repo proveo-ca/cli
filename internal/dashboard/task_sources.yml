@@ -1,4 +1,4 @@
-# SPEC: _spec/_experiments/dashboard/task-picker.puml
+# SPEC: _spec/internal/dashboard/task-picker.puml
 # proveo's default task sources; dashboard.yml tasks.sources replaces them.
 sources:
   - name: Plans

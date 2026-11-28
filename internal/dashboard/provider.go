@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package dashboard
 
 import (
@@ -26,10 +26,18 @@ type taskMetadata struct {
 	prs              []prInfo // every PR the task's branches have
 	branches         string   // the working branches the PRs were read for
 	linear           linearIssue
+	plan             planInfo            // the plan the task follows, with what it waits on
+	planRefs         map[string]planInfo // the plans it waits on, by graph key
 	at               time.Time
 }
 
-type linearIssue struct{ Identifier, Title, Description, URL, CreatedAt string }
+type linearIssue struct {
+	Identifier, Title, Description, URL, CreatedAt string
+	BlockedBy                                      []linearRef // the open issues Linear says block this one
+}
+
+// linearRef is another issue as a relation names it.
+type linearRef struct{ Identifier, Title, URL, State, StateType string }
 
 var linearID = regexp.MustCompile(`^[A-Z][A-Z0-9]*-[0-9]+$`)
 var linearIDInLabel = regexp.MustCompile(`(?i)\b[A-Z][A-Z0-9]*-[0-9]+\b`)
@@ -67,12 +75,13 @@ func (m *dashModel) readMetadata(t Task) tea.Cmd {
 	if cached, ok := m.metadata[cacheKey]; ok && time.Since(cached.at) < time.Minute {
 		return nil
 	}
-	cwd := m.CWD
+	cwd, plans := m.CWD, m.planSource()
 	m.metadataPending = true
 	return func() tea.Msg {
 		meta := taskMetadata{id: t.ID, key: cacheKey, at: time.Now(), branches: strings.Join(t.Branches, ",")}
 		meta.excerpt = issueExcerpt(t.Ticket)
 		meta.prs, meta.pr = branchPRs(t, cwd)
+		meta.plan, meta.planRefs = readTaskPlan(cwd, plans, t.Ticket, meta.pr.Plan)
 		if linear == "" && len(meta.pr.Tickets) > 0 {
 			linear = meta.pr.Tickets[0]
 		}
@@ -106,11 +115,31 @@ func readLinearIssue(token, id string) linearIssue {
 	if token == "" || id == "" {
 		return linearIssue{}
 	}
-	var v struct{ Issue linearIssue }
-	if linearQuery(token, "query($id: String!) { issue(id: $id) { identifier title description url createdAt } }", map[string]string{"id": id}, 3*time.Second, &v) != nil {
+	var v struct {
+		Issue struct {
+			linearIssue
+			InverseRelations struct {
+				Nodes []struct {
+					Type  string
+					Issue struct {
+						Identifier, Title, URL string
+						State                  struct{ Name, Type string }
+					}
+				}
+			}
+		}
+	}
+	if linearQuery(token, linearIssueQuery, map[string]string{"id": id}, 3*time.Second, &v) != nil {
 		return linearIssue{}
 	}
-	return v.Issue
+	out := v.Issue.linearIssue
+	for _, n := range v.Issue.InverseRelations.Nodes {
+		if s := n.Issue.State.Type; n.Type == "blocks" && s != "completed" && s != "canceled" {
+			out.BlockedBy = append(out.BlockedBy, linearRef{Identifier: n.Issue.Identifier, Title: n.Issue.Title, URL: n.Issue.URL,
+				State: n.Issue.State.Name, StateType: s})
+		}
+	}
+	return out
 }
 
 // linearToken is LINEAR_API_KEY from the dashboard's environment, else the workspace .env, which proveo keeps host-only.
@@ -203,3 +232,7 @@ func providerCommand(dir, bin string, args ...string) ([]byte, error) {
 	cmd.WaitDelay = time.Second
 	return cmd.Output()
 }
+
+// linearIssueQuery reads one issue and the relations that point at it: an inverse "blocks" is a blocker.
+const linearIssueQuery = `query($id: String!) { issue(id: $id) { identifier title description url createdAt
+  inverseRelations(first: 50) { nodes { type issue { identifier title url state { name type } } } } } }`

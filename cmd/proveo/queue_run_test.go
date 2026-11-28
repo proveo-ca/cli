@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package main
 
 import (
@@ -26,7 +26,7 @@ func TestAwaitAdmissionHandsBackAJobStillQueued(t *testing.T) {
 	t.Cleanup(func() { tmuxHasSession = orig })
 	tmuxHasSession = func(string) bool { return false }
 	home := t.TempDir()
-	name, j, err := schedule.NewAttendedJob(home, t.TempDir(), "codex", "", nil, "")
+	name, j, err := schedule.NewAttendedJob(home, t.TempDir(), "codex", "", nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,12 +59,12 @@ func TestAPromptFileNeedsTheQueueAndIsHidden(t *testing.T) {
 
 func TestAQueuedJobKeepsItsOpeningPrompt(t *testing.T) {
 	home := t.TempDir()
-	_, j, err := schedule.NewAttendedJob(home, t.TempDir(), "claudecode", "OPS-7 Rotate keys", nil, "Fix OPS-7: Rotate keys")
+	_, j, err := schedule.NewAttendedJob(home, t.TempDir(), "claudecode", "OPS-7 Rotate keys", nil, "Fix OPS-7: Rotate keys", "OPS-7")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, err := os.ReadFile(j.PromptFile); err != nil || string(b) != "Fix OPS-7: Rotate keys" || j.Task != "OPS-7 Rotate keys" {
-		t.Errorf("prompt %q (%v), task %q", b, err, j.Task)
+	if b, err := os.ReadFile(j.PromptFile); err != nil || string(b) != "Fix OPS-7: Rotate keys" || j.Task != "OPS-7 Rotate keys" || j.Ticket != "OPS-7" {
+		t.Errorf("prompt %q (%v), task %q, ticket %q", b, err, j.Task, j.Ticket)
 	}
 }
 

@@ -66,6 +66,10 @@
 ' branch, from its tip on origin when origin has it (a PR's branch), else from
 ' the checkout's base, and the hook pushes it. No branch keeps proveo/<instance>,
 ' which never leaves the machine (git-sync-turn.puml). proveo/ names are refused.
+' TICKET (2026-11-28): a pick hands its url (Linear, github) or path (plans) to
+' --ticket, hidden and --queue only, so the queued job's Ticket names it; the
+' task graph links tasks by it (task-graph.puml). A plan's status shows its
+' blocked_by refs: "planned · blocked by usage-meter, CONN-7".
 ' HOST-ONLY: LINEAR_API_KEY is a personal token. credentials.HostOnlyVars drop
 ' it from every staged .env (clone-workspace.puml); the merge home keeps the
 ' host's own value. Before this, Task Details read Linear only from the

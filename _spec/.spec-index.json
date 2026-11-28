@@ -178,7 +178,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/resource-queue.puml",
+      "spec": "_spec/internal/schedule/resource-queue.puml",
       "covers": [
         "cmd/proveo/schedule.go",
         "internal/schedule/schedule.go",
@@ -187,8 +187,7 @@
         "internal/sbx/host_memory.go",
         "internal/sbx/host_disk_unix.go",
         "internal/sbx/host_disk_other.go",
-        "_spec/_experiments/dashboard/index.html",
-        "_spec/_experiments/dashboard/resource_queue.qnt",
+        "_spec/internal/schedule/resource_queue.qnt",
         "cmd/proveo/admission.go",
         "internal/backend/sandbox/admission.go",
         "internal/backend/sandbox/admission_test.go",
@@ -199,9 +198,8 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/workspace-instances.puml",
+      "spec": "_spec/internal/dashboard/workspace-instances.puml",
       "covers": [
-        "_spec/_experiments/dashboard/index.html",
         "cmd/proveo/dashboard.go",
         "cmd/proveo/main.go",
         "cmd/proveo/queue_run.go",
@@ -391,7 +389,7 @@
     {
       "spec": "_spec/_plans/dashboard-delivery.puml",
       "covers": [
-        "_spec/_experiments/dashboard/**",
+        "_spec/internal/dashboard/**",
         "e2e/dashboard*_test.go",
         "e2e/testdata/_spec/_plans/*.puml"
       ],
@@ -2328,7 +2326,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/mobile-device-reach.puml",
+      "spec": "_spec/internal/sbx/mobile-device-reach.puml",
       "covers": [],
       "fingerprint": null
     },
@@ -2496,8 +2494,11 @@
       "spec": "_spec/_assets/readme-topology.puml",
       "covers": [
         "README.md",
+        "_spec/_assets/dashboard.gif",
         "_spec/_assets/hero.gif",
-        "_spec/_assets/readme-topology.svg"
+        "_spec/_assets/readme-topology.svg",
+        "cmd/proveo/schedule_test.go",
+        "internal/dashboard/readme_media_test.go"
       ],
       "fingerprint": null
     },
@@ -2527,7 +2528,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/run-reports.puml",
+      "spec": "_spec/internal/dashboard/run-reports.puml",
       "covers": [
         "go.mod",
         "internal/dashboard/cards.go",
@@ -2550,7 +2551,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/diagram-preview.puml",
+      "spec": "_spec/internal/dashboard/diagram-preview.puml",
       "covers": [
         "internal/dashboard/diagram.go",
         "internal/dashboard/diagram_test.go",
@@ -2561,7 +2562,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/ended-runs.puml",
+      "spec": "_spec/internal/dashboard/ended-runs.puml",
       "covers": [
         "cmd/proveo/queue_run_test.go",
         "cmd/proveo/schedule.go",
@@ -2584,7 +2585,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/review-requests.puml",
+      "spec": "_spec/internal/dashboard/review-requests.puml",
       "covers": [
         "cmd/proveo/schedule.go",
         "internal/backend/sandbox/instances.go",
@@ -2633,7 +2634,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/dashboard-config.puml",
+      "spec": "_spec/internal/dashboard/dashboard-config.puml",
       "covers": [
         "internal/dashboard/linkrules.go",
         "internal/dashboard/linkrules_test.go",
@@ -2645,7 +2646,7 @@
       "fingerprint": null
     },
     {
-      "spec": "_spec/_experiments/dashboard/task-picker.puml",
+      "spec": "_spec/internal/dashboard/task-picker.puml",
       "covers": [
         "cmd/proveo/main.go",
         "cmd/proveo/queue_run.go",
@@ -2666,6 +2667,53 @@
         "internal/run/queue.go",
         "internal/run/queue_test.go",
         "internal/run/run.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/internal/dashboard/schedule-manager.puml",
+      "covers": [
+        "cmd/proveo/schedule_test.go",
+        "cmd/proveo/schedule.go",
+        "internal/choiceui/schedule_choice.go",
+        "internal/dashboard/cards.go",
+        "internal/dashboard/items.go",
+        "internal/dashboard/layout_test.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/mouse.go",
+        "internal/dashboard/schedule_edit.go",
+        "internal/dashboard/schedule_grid.go",
+        "internal/dashboard/schedule_view_test.go",
+        "internal/dashboard/schedule_view.go",
+        "internal/dashboard/view.go",
+        "internal/schedule/pause_test.go",
+        "internal/schedule/pause.go",
+        "internal/schedule/schedule.go",
+        "internal/schedule/table.go",
+        "internal/schedule/week.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/internal/dashboard/task-graph.puml",
+      "covers": [
+        "_spec/_conventions/spec-conventions.puml",
+        "cmd/proveo/main.go",
+        "cmd/proveo/queue_run.go",
+        "internal/choiceui/task_picker.go",
+        "internal/dashboard/dag_render.go",
+        "internal/dashboard/dag_test.go",
+        "internal/dashboard/dag.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/plan_refs.go",
+        "internal/dashboard/provider.go",
+        "internal/dashboard/readme_media_test.go",
+        "internal/dashboard/tasksources.go",
+        "internal/dashboard/view.go",
+        "internal/run/params.go",
+        "internal/run/queue.go",
+        "internal/run/run.go",
+        "internal/schedule/dashboard_job.go"
       ],
       "fingerprint": null
     }

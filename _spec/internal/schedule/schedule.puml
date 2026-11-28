@@ -29,6 +29,7 @@ skinparam noteTextAlignment left
 '   NO TTY (A QUESTION INIT COULD NOT ASK) ..... _spec/cmd/proveo/init-sbx-bootstrap.puml
 '   R3 HAND-OFF FAILURE ........................ _spec/cmd/proveo/init-sbx-bootstrap.puml
 '   R3's QUIT .................................. _spec/cmd/proveo/init-preflight-and-result.puml
+'   PAUSE / RESUME, WEEK GRID, EDITS ....... _spec/internal/dashboard/schedule-manager.puml
 '
 ' ── THE TMUX DRIVER LIVES HERE (DECIDED 2026-11-15) ────────────────────────
 ' DECIDED 2026-11-15 (owner: "the 8 uncontested"; codebase-compression.puml

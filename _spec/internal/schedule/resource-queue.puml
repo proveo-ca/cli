@@ -8,8 +8,7 @@
 ' covers: internal/sbx/host_memory.go
 ' covers: internal/sbx/host_disk_unix.go
 ' covers: internal/sbx/host_disk_other.go
-' covers: _spec/_experiments/dashboard/index.html
-' covers: _spec/_experiments/dashboard/resource_queue.qnt
+' covers: _spec/internal/schedule/resource_queue.qnt
 ' covers: cmd/proveo/admission.go
 ' covers: internal/backend/sandbox/admission.go
 ' covers: internal/backend/sandbox/admission_test.go
@@ -17,10 +16,10 @@
 ' covers: internal/sbx/capacity.go
 ' covers: e2e/dashboard_admission_test.go
 ' status: Go admission and the durable queue are implemented.
-' HTML and Quint also model disk allocation reflection; the Go ledger
+' Quint also models disk allocation reflection; the Go ledger
 ' charges outstanding reservations conservatively until live qualification.
 ' Related capacity model: _spec/_paradigms/resource_management.puml
-' Workspace and graph: _spec/_experiments/dashboard/workspace-instances.puml
+' Workspace and graph: _spec/internal/dashboard/workspace-instances.puml
 '
 ' HOST CAPACITY
 ' Sample on the sbx host. Show CPU and system RAM as telemetry.
@@ -53,8 +52,8 @@
 ' over the total, with totals in muted text. Fill partial segments in
 ' proportion. Include pending reservations in the disk bar.
 ' Show unknown occupancy when a sample is absent. Keep totals visible.
-' The HTML sample uses a 512 GiB disk with 180 GiB of initial headroom
-' and a 32g sandbox.disk.dockerVolume setting.
+' The HTML prototype (retired 2026-11-28, decisions taken) used a 512 GiB
+' disk with 180 GiB of initial headroom and a 32g sandbox.disk.dockerVolume.
 '
 ' ADMISSION AND LIVENESS
 ' Serialize the disk reservation across Proveo queues on the same host.

@@ -1,0 +1,85 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: view 2 draws what blocks what: depends_on, stacked PRs, Linear's blocked-by and plans' blocked_by lines
+' covers: internal/dashboard/dag.go
+' covers: internal/dashboard/dag_render.go
+' covers: internal/dashboard/dag_test.go
+' covers: internal/dashboard/plan_refs.go
+' covers: internal/dashboard/provider.go
+' covers: internal/dashboard/tasksources.go
+' covers: internal/dashboard/view.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/readme_media_test.go
+' covers: internal/choiceui/task_picker.go
+' covers: internal/schedule/dashboard_job.go
+' covers: internal/run/params.go
+' covers: internal/run/queue.go
+' covers: internal/run/run.go
+' covers: cmd/proveo/main.go
+' covers: cmd/proveo/queue_run.go
+' covers: _spec/_conventions/spec-conventions.puml
+'
+' "Is the task graph only a list?" (2026-11-28). It was: one row per task, its
+' longest depends_on chain spelled "A → B", so a repo with no depends_on read as
+' a flat list. CHOSEN: "Layered DAG"; edges "depends_on (queue), PR stacks, Need
+' static syntax for @_spec/_plans. Linear shows dependencies/blocked by"; plan
+' syntax "' blocked_by: per line". NOT CHOSEN: git-style lanes, a timeline, an
+' indented tree; follow-ups and review → PR as edges; a depends_on comma list
+' and a plans.puml index for plans.
+'
+' ── EDGES (blocker → blocked) ─────────────────────────────────────────────
+'   depends_on  a job's depends_on names another job or task
+'   stack       a task's PR base is another task's PR head (a review request
+'               counts by its own head and base)
+'   Linear      Issue.inverseRelations of type "blocks" whose issue is not
+'               completed or canceled (IssueRelation{type, issue, relatedIssue};
+'               IssueRelationType = blocks | duplicate | related | similar;
+'               introspected 2026-11-28)
+'   plan        the task's plan's ' blocked_by: lines; a ref is a plan slug or
+'               path, a Linear id, a #PR or a URL (spec-conventions.puml)
+' A task is named by: its id and job, its Linear id (ticket or title), each PR
+' number and head branch, its plan's slug. A ref no task answers to becomes a
+' ghost node ◌ (label, then its source and state dim): "ACME-40 Meter billing
+' usage / Linear · In Progress", "billing-usage-meter / plan · planned". A plan
+' marked done (the plans source's hide_status words) blocks nothing. When two
+' sources name one ghost, the longer note wins: Linear's title and state.
+' A TASK'S PLAN: its ticket when that names a plan file, else the Plan: line of
+' its PR. The picker now hands its pick's url or path to `proveo run --queue
+' --ticket` (hidden, --queue only) → QueueRequest.Ticket → Job.Ticket → Task.Ticket,
+' so a task started from a plan, a Linear issue or a PR is named by it.
+' Metadata reads (provider.go, per task, cached a minute) carry the Linear
+' blockers and the plan files; nothing on the render path touches disk or the net.
+'
+' ── LAYOUT (dag_render.go) ───────────────────────────────────────────────
+' Connected parts are drawn one under another; tasks no edge touches list under
+' "No dependencies" in the old one-line form. In a part: DFS drops back edges
+' (a cycle), longest-path layers left → right, a dummy per layer a long edge
+' crosses, two barycentre sweeps order each layer, a node sits at the median
+' row of what it waits on. Between layers, each target with an incoming edge
+' owns a lane; an edge runs right from its source, along the lane, then ─▶ into
+' the target. Cells collect N/S/E/W stubs and join into ─ │ ╭ ╮ ╰ ╯ ├ ┤ ┬ ┴ ┼
+' (ASCII: - | + >). Edges touching the selected task are brand, the rest rule.
+' Layers take 14..36 cells; a part that cannot fit 14 falls back to one line
+' per task. ↑↓ follow the drawing (graphOrder): layer by layer, top to bottom.
+title Task graph — layered, four kinds of edge, ghosts for blockers nobody works on
+
+component "tasks\n(+ metadata)" as T <<app>>
+file "_spec/_plans/*\n' blocked_by:" as PLAN <<host>>
+cloud "Linear\ninverseRelations" as LIN <<cloud>>
+cloud "gh\nPR head/base" as GH <<cloud>>
+component "taskDAG\nnodes · edges · ghosts" as DAG <<app>>
+component "view 2\nlayers · lanes" as VIEW <<app>>
+
+T ARROW_MAIN DAG : depends_on
+GH ARROW_ASYNC DAG : stack
+LIN ARROW_ASYNC DAG : blocks
+PLAN ARROW_MAIN DAG : blocked_by
+DAG ARROW_MAIN VIEW
+
+note right of DAG
+  **A blocker nobody works on still
+  shows.** It is a dim ghost with
+  its source and state, so a stuck
+  task names what it waits for.
+end note
+@enduml

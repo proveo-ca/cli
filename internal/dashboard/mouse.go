@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/run-reports.puml
+// SPEC: _spec/internal/dashboard/run-reports.puml
 package dashboard
 
 import (
@@ -33,6 +33,14 @@ func (m *dashModel) paneAt(x, y int) int {
 
 // wheel scrolls the pane under the pointer, whichever pane has the keys.
 func (m *dashModel) wheel(x, y, delta int) tea.Cmd {
+	if m.inSchedule() {
+		if delta < 0 {
+			m.schedMove("up")
+		} else {
+			m.schedMove("down")
+		}
+		return nil
+	}
 	pane := m.paneAt(x, y)
 	if pane == 0 {
 		pane = 2
@@ -96,6 +104,10 @@ func (m *dashModel) mouse(msg tea.Msg) tea.Cmd {
 		m.pointer = point{e.X, e.Y, true}
 		if target, ok := m.linkAt(e.X, e.Y); ok {
 			return m.copyLink(target)
+		}
+		if m.inSchedule() {
+			m.scheduleClick(e.X, e.Y)
+			return nil
 		}
 		switch m.paneAt(e.X, e.Y) {
 		case 1:

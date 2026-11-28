@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml, _spec/_paradigms/dashboard-terminal-design.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml, _spec/_paradigms/dashboard-terminal-design.puml
 package dashboard
 
 import (
@@ -93,6 +93,16 @@ type dashModel struct {
 	metadataPending                                   bool
 	metadata                                          map[string]taskMetadata
 	runner                                            func(binary string, args ...string) tea.Cmd
+	sched                                             scheduleData     // schedule.yml as view 3 last read it
+	schedSel                                          int              // the job view 3 has selected
+	graphOrder                                        []int            // the tasks in the order view 2 last drew them
+	schedSpots                                        []schedSpot      // where each job showed in the last frame, for a click
+	schedEdit                                         *scheduleEdit    // the editor's draft of schedule.yml, while one is open or refused
+	pauseChoice                                       *choiceui.Choice // how long the job pauseFor holds its runs back
+	pauseFor                                          string
+	onDecline                                         func()                               // what declining the open confirm does
+	tickStatus                                        func() schedule.Tick                 // the tick as the service manager holds it; nil asks launchctl or systemctl
+	editor                                            func(file string, line int) []string // the editor argv; nil uses $VISUAL or $EDITOR
 }
 
 type dataEvent struct {
@@ -212,6 +222,9 @@ func (m *dashModel) withGuestWork(t Task) Task {
 }
 
 func (m *dashModel) taskOrder() []int {
+	if m.view == 1 && len(m.graphOrder) == len(m.data.Tasks) {
+		return slices.Clone(m.graphOrder)
+	}
 	var order []int
 	for i, t := range m.data.Tasks {
 		if m.view != 0 || t.State != schedule.Complete {
@@ -247,9 +260,6 @@ func taskGroup(state schedule.QueueState) int {
 
 // groupLabels name the queue's groups in order, Review requests on top.
 func (m *dashModel) groupLabels() []string {
-	if m.view == 2 {
-		return []string{"Review requests", "Recent outcomes", "In progress", "Waiting for dispatch", "Completed"}
-	}
 	return []string{"Review requests", "Attention required", "Working", "Queued", "Completed"}
 }
 
@@ -303,7 +313,17 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.receiveData(event.data)
 	case pollEvent:
+		if m.view == scheduleView {
+			return m, tea.Batch(m.readData(), m.readSchedule())
+		}
 		return m, m.readData()
+	case scheduleEvent:
+		m.receiveSchedule(event.data)
+		return m, nil
+	case editedEvent:
+		return m, m.receiveEdit(event)
+	case pausedEvent:
+		return m, m.receivePaused(event)
 	case guestPollEvent:
 		return m, tea.Batch(m.nextSample(), nextGuestPoll())
 	case freshEvent:
@@ -366,9 +386,13 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fail(fmt.Errorf("%s: %w", event.verb, event.err))
 			return m, m.readData()
 		}
-		if event.verb == "retry" {
+		switch event.verb {
+		case "retry":
 			m.say("Started again; it waits in the queue for a slot")
-		} else {
+		case "run":
+			m.say("Started " + safeText(event.id) + "; it waits in the queue for a slot")
+			return m, tea.Batch(m.readData(), m.readSchedule())
+		default:
 			m.say("Cleaned up")
 		}
 		return m, tea.Batch(m.readData(), m.readReviews())
@@ -615,8 +639,11 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.confirm = nil
 		m.portsFor = ""
-		then := m.onConfirm
-		m.onConfirm = nil
+		then, decline := m.onConfirm, m.onDecline
+		m.onConfirm, m.onDecline = nil, nil
+		if !attach && decline != nil {
+			decline()
+		}
 		if then != nil {
 			if attach {
 				return m, then()
@@ -645,9 +672,10 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.taskPicker != nil {
 		if done, start := m.taskPicker.Update(msg); done {
 			task, prompt, branch := m.taskPicker.Result()
+			ticket := m.taskPicker.Ticket()
 			m.taskPicker = nil
 			if start {
-				return m, m.startInstance(task, prompt, branch)
+				return m, m.startInstance(task, prompt, branch, ticket)
 			}
 		}
 		return m, nil
@@ -659,6 +687,14 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if start {
 				return m, m.startReview(m.reviewFor, template, notes)
 			}
+		}
+		return m, nil
+	}
+	if m.pauseChoice != nil {
+		if m.pauseChoice.Update(msg) {
+			answer := m.pauseChoice.Answer()
+			m.pauseChoice = nil
+			return m, m.pauseAnswer(answer)
 		}
 		return m, nil
 	}
@@ -681,6 +717,11 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	}
+	if m.inSchedule() {
+		if cmd, ok := m.scheduleKey(k); ok {
+			return m, cmd
+		}
+	}
 	if m.focus == 1 && (k == "n" || k == "p") {
 		return m, m.treeOpen(k)
 	}
@@ -690,6 +731,10 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "1", "2", "3":
 		m.view = int(k[0] - '1')
 		m.selectVisible()
+		if m.view == scheduleView {
+			m.focus, m.preview, m.report, m.details = 0, false, nil, false
+			return m, m.readSchedule()
+		}
 		return m, tea.Batch(m.readChanges(m.task()), m.readFiles(m.task()), m.readGuest(m.task()), m.readMetadata(m.task()))
 	case "f", "g":
 		m.showFiles, m.focus, m.preview, m.tree, m.details = k == "f", 1, false, nil, false
@@ -1174,7 +1219,7 @@ func helpSections() []choiceui.HelpSection {
 	return []choiceui.HelpSection{
 		{Title: "Tasks", Keys: [][2]string{
 			{"↑↓ wheel", "move through tasks"}, {"1 2 3", "dashboard, graph, schedule"}, {"↵", "attach, or read a run's report"}, {"s r x", "follow up · retry · clean up"},
-			{"t", "task details"}, {"click link", "copy it"}, {"p", "sbx ports of a sandbox"}, {"v", "verdict on its PR"}, {"n", "new instance"}, {"c", "host capacity"},
+			{"t", "task details"}, {"click link", "copy it"}, {"p", "sbx ports of a sandbox"}, {"v", "verdict on its PR"}, {"n", "new instance"}, {"c", "host capacity"}, {"3: e n p r", "edit · add · pause · run a job"},
 		}},
 		{Title: "Files", Keys: [][2]string{
 			{"f g", "files · changes"}, {"Tab", "tasks or files"}, {"↵", "open file or fold"},

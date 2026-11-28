@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/task-picker.puml
+// SPEC: _spec/internal/dashboard/task-picker.puml
 package dashboard
 
 import (
@@ -127,7 +127,7 @@ func (t task) item(prompt, branch string) choiceui.TaskItem {
 	}
 	b := strings.Join(strings.Fields(fill(branch, t.fields)), "-")
 	return choiceui.TaskItem{Title: safeText(title), Status: safeText(t.fields["status"]), Tone: t.tone,
-		Prompt: strings.TrimSpace(p), Task: safeText(label), Branch: safeText(b)}
+		Prompt: strings.TrimSpace(p), Task: safeText(label), Branch: safeText(b), Ticket: firstNonEmpty(t.fields["url"], t.fields["path"])}
 }
 
 var placeholder = regexp.MustCompile(`\{\{\s*([a-z_]+)\s*\}\}`)
@@ -220,6 +220,9 @@ func planTasks(s pickSource, cwd string) ([]task, error) {
 			shown := status
 			if shown == "" {
 				shown, _ = filepath.Rel(dir, p)
+			}
+			if refs := blockedBy(head); len(refs) > 0 {
+				shown += " · blocked by " + strings.Join(refs, ", ")
 			}
 			tasks = append(tasks, task{fields: map[string]string{"id": rel, "path": rel, "title": title, "status": shown,
 				"slug": strings.TrimSuffix(e.Name(), filepath.Ext(p))}, sort: st.ModTime()})
@@ -561,7 +564,7 @@ func (m *dashModel) receiveTasks(e tasksEvent) {
 
 // startInstance hands the terminal to `proveo run --queue` (its harness list, scope page and card, then the queue and
 // an attach), with the picked task's label and prompt when there is one; the dashboard redraws when it returns.
-func (m *dashModel) startInstance(label, prompt, branch string) tea.Cmd {
+func (m *dashModel) startInstance(label, prompt, branch, ticket string) tea.Cmd {
 	run := m.runner
 	if run == nil {
 		run = foreground
@@ -596,6 +599,9 @@ func (m *dashModel) startInstance(label, prompt, branch string) tea.Cmd {
 	}
 	if branch != "" {
 		args = append(args, "--branch", branch)
+	}
+	if ticket != "" {
+		args = append(args, "--ticket", ticket)
 	}
 	return run(m.Binary, args...)
 }

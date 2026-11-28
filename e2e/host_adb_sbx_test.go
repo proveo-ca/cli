@@ -1,6 +1,6 @@
 //go:build e2e
 
-// SPEC: _spec/internal/sbx/host-android-adb.puml, _spec/_experiments/mobile-device-reach.puml
+// SPEC: _spec/internal/sbx/host-android-adb.puml, _spec/internal/sbx/mobile-device-reach.puml
 
 package e2e
 

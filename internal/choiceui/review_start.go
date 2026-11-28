@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/review-requests.puml
+// SPEC: _spec/internal/dashboard/review-requests.puml
 package choiceui
 
 import (

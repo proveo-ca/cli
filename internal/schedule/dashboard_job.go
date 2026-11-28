@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package schedule
 
 import (
@@ -12,10 +12,10 @@ import (
 	"strings"
 )
 
-// NewAttendedJob snapshots an operator's run: the card's flags as Args and an optional opening prompt.
-func NewAttendedJob(home, cwd, target, label string, args []string, prompt string) (string, Job, error) {
+// NewAttendedJob snapshots an operator's run: the card's flags as Args, an optional opening prompt and what it works on.
+func NewAttendedJob(home, cwd, target, label string, args []string, prompt, ticket string) (string, Job, error) {
 	return newJob(home, prompt, Job{Target: target, New: true, Task: strings.TrimSpace(label), Workdir: cwd,
-		Args: args, Mode: ModeAttended, Phase: "Session"})
+		Args: args, Mode: ModeAttended, Phase: "Session", Ticket: strings.TrimSpace(ticket)})
 }
 
 func newJob(home, prompt string, j Job) (string, Job, error) {

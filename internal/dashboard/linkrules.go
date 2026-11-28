@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/dashboard-config.puml
+// SPEC: _spec/internal/dashboard/dashboard-config.puml
 package dashboard
 
 import (

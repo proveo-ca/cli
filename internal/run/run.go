@@ -110,7 +110,7 @@ func Do(p Params, d Deps) (err error) {
 		if d.Queue == nil {
 			return errors.New("--queue is unavailable in this build")
 		}
-		return d.Queue(QueueRequest{Target: p.Target, Task: p.Task, Prompt: p.Prompt, Args: queueArgs(p, rs.Workspace.ScopeLabel, rs.Workspace.RepoRoot)})
+		return d.Queue(QueueRequest{Target: p.Target, Task: p.Task, Prompt: p.Prompt, Ticket: p.Ticket, Args: queueArgs(p, rs.Workspace.ScopeLabel, rs.Workspace.RepoRoot)})
 	}
 	cdpEnv, cdpFact, cdpItems, err := startHostCDP(&p)
 	if err != nil {

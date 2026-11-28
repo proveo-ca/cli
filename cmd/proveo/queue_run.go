@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package main
 
 import (
@@ -27,7 +27,7 @@ func queueRun(q run.QueueRequest) error {
 	if real, err := filepath.EvalSymlinks(cwd); err == nil {
 		cwd = real
 	}
-	name, j, err := schedule.NewAttendedJob(home, cwd, q.Target, q.Task, q.Args, q.Prompt)
+	name, j, err := schedule.NewAttendedJob(home, cwd, q.Target, q.Task, q.Args, q.Prompt, q.Ticket)
 	if err != nil {
 		return err
 	}

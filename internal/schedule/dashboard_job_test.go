@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/review-requests.puml
+// SPEC: _spec/internal/dashboard/review-requests.puml
 package schedule
 
 import (
@@ -55,7 +55,7 @@ func TestDroppingAReviewJobForgetsItsQueueEntryAndSnapshot(t *testing.T) {
 	if err := Submit(home, name, "dashboard", j, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	other, oj, err := NewAttendedJob(home, cwd, "codex", "mine", nil, "")
+	other, oj, err := NewAttendedJob(home, cwd, "codex", "mine", nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

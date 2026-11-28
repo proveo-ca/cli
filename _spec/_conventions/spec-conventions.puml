@@ -11,6 +11,15 @@
 ' The palette these roles print in: _spec/_conventions/tui-design-language.puml.
 ' Prose for humans: CONTRIBUTING.md.
 '
+' ── PLAN HEADER LINES (_spec/_plans/, 2026-11-28) ──────────────────────────
+'   ' status: <words>       a done word (implemented, done, deferred, superseded,
+'                           retired) hides the plan from the task picker
+'   ' blocked_by: <ref>     one per line (commas also split); ref = a plan slug or
+'                           path, a Linear id (CONN-123), a PR (#3951 or its URL)
+' A .md plan writes the same keys as plain lines (status:, blocked_by:). The
+' dashboard's task graph draws each blocked_by as an edge, a done plan blocks
+' nothing: _spec/internal/dashboard/task-graph.puml.
+'
 ' ── WHAT THE BOX CHECKER ACTUALLY PARSES ───────────────────────────────────
 ' `note over X` and `note over X, Y` are the same box under a different keyword,
 ' and omitting them exempted a whole note form: credential-boundary carries 21

@@ -203,7 +203,7 @@ type runFlags struct {
 	printOnly, contSession, listSessions, cloneMode, yes, readOnlyShares                                   bool
 	addons                                                                                                 []string
 	newInstance, queue                                                                                     bool
-	instance, task, promptFile, branch                                                                     string
+	instance, task, promptFile, branch, ticket                                                             string
 }
 
 func (f *runFlags) bind(cmd *cobra.Command) {
@@ -235,6 +235,8 @@ func (f *runFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&f.queue, "queue", false, "submit the run to the dashboard queue and attach once admitted (a new instance)")
 	cmd.Flags().StringVar(&f.promptFile, "prompt-file", "", "the queued run's opening prompt, read from this file (with --queue)")
 	_ = cmd.Flags().MarkHidden("prompt-file")
+	cmd.Flags().StringVar(&f.ticket, "ticket", "", "what the queued run works on: a plan path, or an issue or pull request URL (with --queue)")
+	_ = cmd.Flags().MarkHidden("ticket")
 	cmd.Flags().StringVar(&f.branch, "branch", "", "the working branch a new instance takes (with --new or --queue); a branch origin has starts from its tip")
 	cmd.MarkFlagsMutuallyExclusive("new", "instance")
 	cmd.MarkFlagsMutuallyExclusive("new", "resume")
@@ -285,6 +287,9 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 			return err
 		}
 	}
+	if f.ticket != "" && !f.queue {
+		return fmt.Errorf("--ticket requires --queue")
+	}
 	var prompt string
 	if f.promptFile != "" {
 		if !f.queue {
@@ -312,7 +317,7 @@ func (f *runFlags) execute(cmd *cobra.Command, target string, extra []string) er
 		CredsSet:       credsSet, LocalModel: f.localModel, Model: f.model,
 		Input: f.input, Output: f.output, Scope: f.scope, DataDir: f.dataDir,
 		PrintOnly: f.printOnly, Extra: extra,
-		Queue: f.queue, Prompt: prompt, Branch: f.branch,
+		Queue: f.queue, Prompt: prompt, Branch: f.branch, Ticket: f.ticket,
 		NewInstance: f.newInstance, Instance: f.instance, Task: f.task,
 		ResumeID: f.resumeID, Continue: f.contSession, ListSessions: f.listSessions,
 		Clone: f.cloneMode, CloneSet: cmd.Flags().Changed("clone"),

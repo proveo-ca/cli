@@ -1,6 +1,6 @@
 //go:build e2e && !windows
 
-// SPEC: _spec/_experiments/dashboard/resource-queue.puml
+// SPEC: _spec/internal/schedule/resource-queue.puml
 package e2e
 
 import (

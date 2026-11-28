@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml, _spec/_paradigms/dashboard-terminal-design.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml, _spec/_paradigms/dashboard-terminal-design.puml
 package dashboard
 
 import (
@@ -59,6 +59,11 @@ func (m *dashModel) View() tea.View {
 	}
 	if m.verdictModal != nil && !m.sbxTab {
 		v := m.verdictModal.View()
+		v.BackgroundColor = dashBG
+		return v
+	}
+	if m.pauseChoice != nil && !m.sbxTab {
+		v := m.pauseChoice.View()
 		v.BackgroundColor = dashBG
 		return v
 	}
@@ -135,14 +140,21 @@ func (m *dashModel) renderDashboard() string {
 		if m.report != nil {
 			return m.renderReport(w, h)
 		}
+		if m.view == scheduleView {
+			return m.renderSchedule(w, h)
+		}
 		return m.renderTasks(w, h)
+	}
+	left := m.renderFiles
+	if m.view == scheduleView {
+		left = m.renderJob
 	}
 	leftFocus := m.focus == 1
 	switch {
 	case l.single:
 		pane := right
 		if leftFocus {
-			pane = m.renderFiles
+			pane = left
 		}
 		m.leftPane, m.rightPane = rect{}, rect{0, 1 + len(rows), l.w, l.body}
 		if leftFocus {
@@ -152,7 +164,7 @@ func (m *dashModel) renderDashboard() string {
 		rows = append(rows, m.paneBox(pane, l.w, l.body, true)...)
 	case l.portrait:
 		m.leftPane = rect{0, 1 + len(rows), l.w, l.top}
-		rows = append(rows, m.paneBox(m.renderFiles, l.w, l.top, leftFocus)...)
+		rows = append(rows, m.paneBox(left, l.w, l.top, leftFocus)...)
 		rest := max(3, l.body-l.top)
 		m.rightPane = rect{0, 1 + len(rows), l.w, rest}
 		m.pop = popAnchor{x: paneInset, top: len(rows), w: l.w - 2*paneInset, h: rest - 1}
@@ -160,7 +172,7 @@ func (m *dashModel) renderDashboard() string {
 	default:
 		m.pop = popAnchor{x: l.left + 1 + paneInset, top: len(rows), w: l.right - 2*paneInset, h: l.body - 1}
 		m.leftPane, m.rightPane = rect{0, 1 + len(rows), l.left, l.body}, rect{l.left + 1, 1 + len(rows), l.right, l.body}
-		lf := m.paneBox(m.renderFiles, l.left, l.body, leftFocus)
+		lf := m.paneBox(left, l.left, l.body, leftFocus)
 		rf := m.paneBox(right, l.right, l.body, !leftFocus)
 		for line := 0; line < l.body; line++ {
 			rows = append(rows, pad(lf[line], l.left)+" "+pad(rf[line], l.right))
@@ -478,18 +490,7 @@ func (m *dashModel) renderTasks(w, h int) []string {
 	anchor, rowH := 0, 1
 	if m.view == 1 {
 		m.cardPos = nil
-		graph := newTaskGraph(m.data.Tasks)
-		for i, t := range m.data.Tasks {
-			if i == m.selected {
-				anchor = len(rows)
-			}
-			st := m.statusOf(t)
-			mark := glyph(m.glyphs, st.mark)
-			if mark != "" {
-				mark = st.style.Render(mark) + " "
-			}
-			rows = append(rows, m.taskMarker(i)+mark+m.graphLine(graph, t, w-2-ansi.StringWidth(mark)))
-		}
+		rows, m.graphOrder, anchor = m.renderGraph(w)
 	} else {
 		labels := m.groupLabels()
 		cols, width := cardGrid(w)
@@ -678,6 +679,8 @@ func (m *dashModel) footer(w int) string {
 		} else {
 			add("d", "diff")
 		}
+	case m.inSchedule():
+		m.scheduleHints(add)
 	case m.focus == 1:
 		add("Esc", "back to tasks")
 		add("↑↓", "move")
@@ -736,10 +739,10 @@ func (m *dashModel) footer(w int) string {
 		add("f", "files")
 		add("g", "changes")
 	}
-	if t := m.task(); t.Guest && m.guest.id == t.ID && m.guest.sandbox == t.Sandbox && m.guest.vmid == t.VMID && m.guest.fresh {
+	if t := m.task(); !m.inSchedule() && t.Guest && m.guest.id == t.ID && m.guest.sandbox == t.Sandbox && m.guest.vmid == t.VMID && m.guest.fresh {
 		add("e", "Fresh")
 	}
-	if m.focus == 0 {
+	if m.focus == 0 && !m.inSchedule() {
 		add("n", "new instance")
 	}
 	add("?", "help")

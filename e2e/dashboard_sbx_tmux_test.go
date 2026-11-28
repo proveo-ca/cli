@@ -1,6 +1,6 @@
 //go:build e2e && !windows
 
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package e2e
 
 import (

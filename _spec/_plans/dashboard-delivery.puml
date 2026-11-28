@@ -2,7 +2,7 @@
 !include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
 skinparam noteTextAlignment left
 ' purpose: deliver same-directory sandbox instances and the native Proveo dashboard
-' covers: _spec/_experiments/dashboard/**
+' covers: _spec/internal/dashboard/**
 ' covers: e2e/dashboard*_test.go
 ' covers: e2e/testdata/_spec/_plans/*.puml
 ' status: IMPLEMENTATION IN PROGRESS. D7 is pending live sbx acceptance.
@@ -31,9 +31,9 @@ skinparam noteTextAlignment left
 ' passed. The full E2E suite reproduced four failures at the merge base
 ' with origin/main. These cover deploy print arguments and three offline
 ' sbx preflight expectations.
-' UI reference: _spec/_experiments/dashboard/index.html (Review queue, lower-right split)
-' Runtime design: _spec/_experiments/dashboard/workspace-instances.puml
-' Admission design: _spec/_experiments/dashboard/resource-queue.puml and resource_queue.qnt
+' UI reference: Review queue, lower-right split (the HTML prototype, index.html, retired 2026-11-28)
+' Runtime design: _spec/internal/dashboard/workspace-instances.puml
+' Admission design: _spec/internal/schedule/resource-queue.puml and resource_queue.qnt
 ' Current runtime: _spec/internal/sbx/{instance-lifecycle,state-sync,clone-workspace,kit-lifecycle}.puml
 ' Supersedes the proposed 1:1 ownership and shared writable history in
 ' _spec/_plans/session-continuity.puml.

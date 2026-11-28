@@ -37,6 +37,7 @@ type Params struct {
 	Queue                                                                        bool   // --queue: submit the chosen run to the dashboard queue instead of launching it
 	Prompt                                                                       string // --prompt-file: the queued run's opening prompt
 	Branch                                                                       string // --branch: the working branch a new instance takes
+	Ticket                                                                       string // --ticket: what a queued run works on, a plan path or an issue or PR URL
 	NewInstance                                                                  bool
 	Instance, Task                                                               string
 	ResumeID                                                                     string

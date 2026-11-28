@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/task-picker.puml
+// SPEC: _spec/internal/dashboard/task-picker.puml
 package choiceui
 
 import (
@@ -15,6 +15,7 @@ type TaskItem struct {
 	Tone          string // "ok", "warn", "fail", or "" for grey
 	Prompt, Task  string
 	Branch        string // the working branch the run takes; empty keeps proveo's own local branch
+	Ticket        string // what the run works on: a plan path, an issue or PR URL; the graph links tasks by it
 }
 
 // TaskSection is one source's tasks; Note stands in for them while they load or when the source cannot answer.
@@ -64,6 +65,9 @@ func (t *TaskPicker) SetSection(i int, s TaskSection) {
 func (t *TaskPicker) Result() (task, prompt, branch string) {
 	return t.picked.Task, strings.TrimSpace(string(t.prompt)), strings.TrimSpace(string(t.branch))
 }
+
+// Ticket is the picked task's plan, issue or PR; empty for a blank session.
+func (t *TaskPicker) Ticket() string { return t.picked.Ticket }
 
 // field is the buffer and cursor the edit keys work on: the prompt, or the branch after tab.
 func (t *TaskPicker) field() (*[]rune, *int) {

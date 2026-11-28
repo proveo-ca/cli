@@ -280,14 +280,14 @@ func TestANewInstancePassesItsBranchAndRefusesABadOne(t *testing.T) {
 	var ran []string
 	m.Binary = "/usr/local/bin/proveo"
 	m.runner = func(_ string, args ...string) tea.Cmd { ran = args; return nil }
-	m.startInstance("CONN-123 Connector errors", "Work on CONN-123.", "CONN-123")
-	if len(ran) < 2 || ran[len(ran)-2] != "--branch" || ran[len(ran)-1] != "CONN-123" {
-		t.Errorf("ran %q", ran)
+	m.startInstance("CONN-123 Connector errors", "Work on CONN-123.", "CONN-123", "https://linear.app/acme/issue/CONN-123")
+	if joined := strings.Join(ran, " "); !strings.Contains(joined, "--branch CONN-123") || !strings.HasSuffix(joined, "--ticket https://linear.app/acme/issue/CONN-123") {
+		t.Errorf("ran %q: the branch and the ticket ride along", ran)
 	}
 	_ = os.Remove(m.promptTemp)
 	ran = nil
 	for _, bad := range []string{"proveo/claudecode-x", "bad..name"} {
-		m.startInstance("x", "y", bad)
+		m.startInstance("x", "y", bad, "")
 		if ran != nil || !m.alert {
 			t.Errorf("branch %q ran %q; status %q", bad, ran, m.status)
 		}

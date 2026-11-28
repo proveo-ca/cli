@@ -329,9 +329,4 @@ func TestTheNewInstanceCardAlwaysEndsTheQueuedSection(t *testing.T) {
 	if got := sectionOf(m, "n new instance"); got != "Queued" {
 		t.Errorf("with no tasks the card sits under %q", got)
 	}
-	m = sampleModel(140, 60, ui.GlyphsSafe)
-	m.view = 2
-	if got := sectionOf(m, "n new instance"); got != "Waiting for dispatch" {
-		t.Errorf("the schedule view puts the card under %q", got)
-	}
 }

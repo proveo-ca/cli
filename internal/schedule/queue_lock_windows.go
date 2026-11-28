@@ -1,6 +1,6 @@
 //go:build windows
 
-// SPEC: _spec/_experiments/dashboard/resource-queue.puml
+// SPEC: _spec/internal/schedule/resource-queue.puml
 package schedule
 
 import (

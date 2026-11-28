@@ -16,7 +16,6 @@
 ' covers: internal/schedule/runner.go
 ' covers: internal/results/results.go
 ' covers: cmd/proveo/dashboard.go
-' covers: _spec/_experiments/dashboard/index.html
 ' covers: internal/dashboard/**
 ' covers: internal/choiceui/attach_confirm.go
 ' covers: internal/schedule/dashboard_job.go
@@ -28,8 +27,9 @@
 ' covers: internal/schedule/attended_test.go
 ' covers: e2e/dashboard_native_tmux_test.go
 ' covers: e2e/dashboard_sbx_tmux_test.go
-' status: The HTML prototype is index.html in this directory. The native
-' Go dashboard implements Review queue with lower-right task details.
+' status: implemented. The HTML prototype that chose the layout (index.html,
+' served by vite) was retired 2026-11-28 once the decisions were taken; the
+' native Go dashboard implements Review queue with lower-right task details.
 ' Task graph, Schedule and alternate details are keyboard-selectable.
 ' Stock sbx parity and Fresh still need an authenticated guest run.
 ' Join scheduled tasks by stable job keys or explicit instance IDs.
@@ -39,7 +39,7 @@
 ' Current lifecycle: _spec/internal/sbx/instance-lifecycle.puml
 ' Current state transfer: _spec/internal/sbx/state-sync.puml
 ' Earlier retention direction: _spec/_plans/session-continuity.puml
-' Resource admission: _spec/_experiments/dashboard/resource-queue.puml
+' Resource admission: _spec/internal/schedule/resource-queue.puml
 ' Delivery order and verification: _spec/_plans/dashboard-delivery.puml
 '
 ' IDENTITY AND ISOLATION

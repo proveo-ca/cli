@@ -1,4 +1,4 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package schedule
 
 import (
@@ -50,7 +50,7 @@ func TestAttendedSessionTypesAnOpeningPromptOncePlain(t *testing.T) {
 func TestNewAttendedJobSnapshotsTheCardFlags(t *testing.T) {
 	t.Parallel()
 	home, cwd := t.TempDir(), t.TempDir()
-	name, j, err := NewAttendedJob(home, cwd, "codex", "", []string{"--scope", "apps/web"}, "")
+	name, j, err := NewAttendedJob(home, cwd, "codex", "", []string{"--scope", "apps/web"}, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -339,3 +339,66 @@ func TestScheduleHelpExampleLoads(t *testing.T) {
 		t.Errorf("parsed %+v", j)
 	}
 }
+
+func TestPauseAndResumeRewriteOnlyTheJobsPauseLine(t *testing.T) {
+	home := scheduleHome(t, twoJobs, schedule.Tick{})
+	if _, stderr, err := proveoOut(t, "schedule", "pause", "lineup"); err != nil {
+		t.Fatalf("pause = %v\n%s", err, stderr)
+	}
+	b, _ := os.ReadFile(schedule.Path(home))
+	if want := strings.Replace(twoJobs, "  lineup:\n", "  lineup:\n    paused: true\n", 1); string(b) != want {
+		t.Fatalf("pause wrote:\n%s", b)
+	}
+	if stdout, _, _ := proveoOut(t, "schedule", "ls"); !strings.Contains(stdout, "lineup: paused") {
+		t.Errorf("ls must say the job is paused:\n%s", stdout)
+	}
+	if _, _, err := proveoOut(t, "schedule", "pause", "lineup", "--until", "2026-12-08"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ = os.ReadFile(schedule.Path(home)); !strings.Contains(string(b), "    paused_until: 2026-12-08\n") || strings.Contains(string(b), "paused: true") {
+		t.Fatalf("a dated pause replaces the open one:\n%s", b)
+	}
+	if _, _, err := proveoOut(t, "schedule", "resume", "lineup"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ = os.ReadFile(schedule.Path(home)); string(b) != twoJobs {
+		t.Fatalf("resume must restore the file:\n%s", b)
+	}
+	if _, stderr, err := proveoOut(t, "schedule", "pause", "lineup", "--until", "soon"); err == nil || !strings.Contains(stderr, "YYYY-MM-DD") {
+		t.Errorf("a bad date must be refused = %v\n%s", err, stderr)
+	}
+	if _, stderr, err := proveoOut(t, "schedule", "pause", "nosuch"); err == nil || !strings.Contains(stderr, "nosuch — no such job") {
+		t.Errorf("an unknown job must be refused = %v\n%s", err, stderr)
+	}
+}
+
+func TestTheREADMEScheduleSampleLoadsAndItsVerbsExist(t *testing.T) {
+	t.Parallel()
+	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	section := string(b)[strings.Index(string(b), "## Scheduling"):]
+	start := strings.Index(section, "```yaml\n")
+	end := strings.Index(section[start+8:], "```")
+	if start < 0 || end < 0 {
+		t.Fatalf("no yaml sample under ## Scheduling")
+	}
+	path := filepath.Join(t.TempDir(), schedule.FileName)
+	if err := os.WriteFile(path, []byte(section[start+8:start+8+end]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := schedule.LoadFile(path)
+	if err != nil || len(c.Jobs) != 3 {
+		t.Fatalf("the README's sample must be a valid schedule.yml: %v, %d jobs", err, len(c.Jobs))
+	}
+	verbs := map[string]bool{}
+	for _, sub := range scheduleCmd().Commands() {
+		verbs[sub.Name()] = true
+	}
+	for _, line := range strings.Split(section, "\n") {
+		if f := strings.Fields(line); len(f) > 2 && f[0] == "proveo" && f[1] == "schedule" && !strings.HasPrefix(f[2], "#") && !verbs[f[2]] {
+			t.Errorf("the README runs `proveo schedule %s`, which does not exist", f[2])
+		}
+	}
+}

@@ -19,6 +19,7 @@ type Row struct {
 	Since                                   time.Time     // start of the run in progress, in the job's tz; zero when idle or unknown
 	Span                                    time.Duration // the job's budget
 	Failed                                  *Result       // the last run, started in the job's tz, when it failed and nothing runs now
+	Paused                                  string        // "paused", or "paused until Mon Dec 7" while a date holds the job back
 }
 
 // Live is a run in progress: its tmux session is up.
@@ -76,11 +77,19 @@ func Rows(c Config, now time.Time, running func(job string) *Live, last func(job
 			Mode: j.ModeOrDefault(), Budget: compact(budget), Status: status, Last: lastRun, Failed: failed,
 			Since: since, Span: budget,
 		}
-		if len(j.At) == 0 {
+		from := now
+		if until, err := j.ResumeAt(); err == nil && until.After(now) {
+			row.Paused, from = "paused until "+until.Format("Mon Jan 2"), until.Add(-time.Nanosecond)
+		}
+		if j.Paused {
+			row.Paused = "paused"
+		}
+		if len(j.At) == 0 || j.Paused {
 			out = append(out, row)
+			continue
 		}
 		for _, e := range j.At {
-			next, err := NextOccurrence(e, now, loc)
+			next, err := NextOccurrence(e, from, loc)
 			if err != nil {
 				continue
 			}
@@ -214,6 +223,9 @@ func jobFacts(runs []Row, now time.Time) []ui.Fact {
 		}
 	}
 	detail := []string{config(head)}
+	if head.Paused != "" && !head.Next.IsZero() {
+		detail = append(detail, head.Paused)
+	}
 	if head.Failed == nil && head.Last != "never" {
 		detail = append(detail, "last "+head.Last)
 	}
@@ -224,6 +236,9 @@ func jobFacts(runs []Row, now time.Time) []ui.Fact {
 // when is a run's time and the wait to it, or "manual" for a job no `at` entry starts.
 func when(r Row, now time.Time) string {
 	if r.Next.IsZero() {
+		if r.Paused != "" {
+			return r.Paused
+		}
 		return "manual"
 	}
 	return r.Next.Format("Mon Jan 2 15:04 MST") + " · " + until(r.Next, now)

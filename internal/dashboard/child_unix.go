@@ -1,6 +1,6 @@
 //go:build unix
 
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/internal/dashboard/workspace-instances.puml
 package dashboard
 
 import (

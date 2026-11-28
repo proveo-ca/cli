@@ -313,14 +313,6 @@ func ago(at, now time.Time) string {
 	return at.Local().Format("Jan 02")
 }
 
-func clock(at, now time.Time) string {
-	at = at.Local()
-	if y, m, d := at.Date(); y == now.Year() && m == now.Month() && d == now.Day() {
-		return at.Format("15:04")
-	}
-	return at.Format("Jan 02")
-}
-
 func groupHeader(label string, w int) string {
 	out := brand.Render(label)
 	if rest := w - ansi.StringWidth(label) - 1; rest > 0 {

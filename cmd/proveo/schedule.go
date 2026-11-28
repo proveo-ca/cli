@@ -70,7 +70,9 @@ a job with no at: runs only when ` + "`proveo schedule run`" + ` starts it:
 With no subcommand it lists every job, soonest run first, and closes on
 whether the tick is installed. A job whose last outcome is failed or
 not-ready shows × with its reason; on a terminal it asks to retry, and
-` + "`proveo schedule retry <job>`" + ` starts it again. The tick reads
+` + "`proveo schedule retry <job>`" + ` starts it again, and
+` + "`proveo schedule pause <job> [--until YYYY-MM-DD]`" + ` holds its runs back
+(paused or paused_until in its block) until ` + "`proveo schedule resume <job>`" + `. The tick reads
 ~/.proveo/schedule.yml whatever PROVEO_HOME says.
 ` + "`proveo attach`" + ` lists the tasks whose tmux session is up.
 ` + "`proveo attach sample-task`" + ` (or ` + "`proveo schedule attach sample-task`" + `) opens one
@@ -80,7 +82,7 @@ Transcripts and results: <proveo home>/logs/schedule/<job>/.`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return scheduleTable(cmd) },
 	}
-	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), scheduleReviewCmd(), scheduleDropReviewCmd(), scheduleDropCmd(), scheduleWatchCmd(), scheduleDispatchCmd(), scheduleAcceptCmd(), schedulePhaseCmd(),
+	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), schedulePauseCmd(), scheduleResumeCmd(), scheduleReviewCmd(), scheduleDropReviewCmd(), scheduleDropCmd(), scheduleWatchCmd(), scheduleDispatchCmd(), scheduleAcceptCmd(), schedulePhaseCmd(),
 		scheduleAttachCmd(), scheduleInstallCmd(), scheduleUninstallCmd())
 	return cmd
 }
@@ -371,7 +373,7 @@ func printScheduledRun(argv []string, dir string) error {
 }
 
 // scheduleReviewCmd queues a headless review of a pull request; the dashboard's review-required cards call it.
-// SPEC: _spec/_experiments/dashboard/review-requests.puml
+// SPEC: _spec/internal/dashboard/review-requests.puml
 func scheduleReviewCmd() *cobra.Command {
 	var target, title, promptFile string
 	cmd := &cobra.Command{
@@ -411,11 +413,11 @@ func scheduleReviewCmd() *cobra.Command {
 }
 
 // scheduleDropReviewCmd forgets a review run that failed: its sandbox, its instance, its queue entry and its job.
-// SPEC: _spec/_experiments/dashboard/review-requests.puml
+// SPEC: _spec/internal/dashboard/review-requests.puml
 func scheduleDropReviewCmd() *cobra.Command { return dropJobCmd("drop-review", true) }
 
 // scheduleDropCmd forgets an ended dashboard job, or an instance no job owns, the same way.
-// SPEC: _spec/_experiments/dashboard/ended-runs.puml
+// SPEC: _spec/internal/dashboard/ended-runs.puml
 func scheduleDropCmd() *cobra.Command { return dropJobCmd("drop", false) }
 
 func dropJobCmd(use string, reviewOnly bool) *cobra.Command {
@@ -773,4 +775,64 @@ func notify(title, body string) {
 	case "linux":
 		_ = exec.Command("notify-send", title, body).Run()
 	}
+}
+
+func schedulePauseCmd() *cobra.Command {
+	var until string
+	cmd := &cobra.Command{
+		Use:   "pause <job>",
+		Short: "Hold a job's runs back: until resumed, or until a day (--until YYYY-MM-DD, in the job's tz)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			p := schedule.Pause{Forever: until == ""}
+			if until != "" {
+				day, err := time.Parse(time.DateOnly, until)
+				if err != nil {
+					return refuse(args[0], fmt.Errorf("--until %q: want YYYY-MM-DD", until))
+				}
+				p.Until = day
+			}
+			if err := setPause(args[0], "paused", p); err != nil {
+				return err
+			}
+			if p.Forever {
+				ui.Okf("%s — paused until `proveo schedule resume %s`", args[0], args[0])
+			} else {
+				ui.Okf("%s — paused; runs again from %s", args[0], p.Until.Format("Mon Jan 2"))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&until, "until", "", "the first day the job runs again (YYYY-MM-DD, in the job's tz)")
+	return cmd
+}
+
+func scheduleResumeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "resume <job>",
+		Short: "Let a paused job run at its times again",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := setPause(args[0], "resumed", schedule.Pause{}); err != nil {
+				return err
+			}
+			ui.Okf("%s — resumed", args[0])
+			return nil
+		},
+	}
+}
+
+// setPause writes a job's pause into schedule.yml, after checking the file names the job.
+func setPause(name, done string, p schedule.Pause) error {
+	home, c, err := loadSchedule()
+	if err != nil {
+		return refuse(name, err)
+	}
+	if _, err := jobNamed(c, name); err != nil {
+		return refuse(name, err)
+	}
+	if err := schedule.SetPaused(schedule.Path(home), name, p); err != nil {
+		return reported(sandbox.Item{Fail: true, Text: name + " — not " + done, Detail: errLines(err)}, err)
+	}
+	return nil
 }

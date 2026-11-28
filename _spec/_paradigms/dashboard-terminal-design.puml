@@ -20,8 +20,8 @@ skinparam noteTextAlignment left
 ' covers: internal/dashboard/ports.go
 ' covers: internal/dashboard/ports_test.go
 '   the plan this upgrades ............ _spec/_plans/dashboard-delivery.puml (D6)
-'   the runtime it renders ............ _spec/_experiments/dashboard/workspace-instances.puml
-'   the chosen HTML reference ......... _spec/_experiments/dashboard/index.html (1 Review queue, lower-right split)
+'   the runtime it renders ............ _spec/internal/dashboard/workspace-instances.puml
+'   the chosen layout ................ 1 Review queue, lower-right split (HTML prototype retired 2026-11-28)
 '   the design language it speaks ..... _spec/_conventions/tui-design-language.puml (glyph tiers, sbx's OWN TUI)
 '   the folder picker it does not reuse _spec/internal/choiceui/scope-tree.puml
 ' Notes are capped at 5 lines x 50 columns; one idea per anchor.

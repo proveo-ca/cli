@@ -226,9 +226,6 @@ func (m *dashModel) cardAges(t Task) string {
 		parts = append(parts, muted.Render("PR ")+compactAge(now.Sub(opened)))
 	}
 	if len(parts) == 0 && !t.Updated.IsZero() {
-		if m.view == 2 {
-			return muted.Render(clock(t.Updated, now))
-		}
 		return muted.Render(ago(t.Updated, now))
 	}
 	return strings.Join(parts, muted.Render(" - "))
