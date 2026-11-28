@@ -22,6 +22,7 @@ skinparam packageStyle rectangle
 ' Ctrl+C asks for confirmation in the Proveo tab. Exiting returns 130.
 ' The child tab exits directly on Ctrl+C. Running tasks continue.
 ' Run with --new --task TEXT for an independent workspace instance.
+' Run with --queue to show the same card, then queue it and attach once admitted.
 ' Run with --instance ID to select a particular instance in that pwd.
 ' The dashboard and task shortcuts are in workspace-instances.puml.
 '
@@ -120,7 +121,7 @@ skinparam packageStyle rectangle
 ' THE MAINS LIVE UNDER internal/, where the env-registry scan already reads.
 ' NOT CHOSEN: internal/devtool/* (a namespace with no library beside it);
 ' tools/ (the scan would have to learn it); cmd/ (reads as a shipped binary).
-'   gates ........ go test is the verdict: lint, test [--baseline], ci, every
+'   gates ........ go test is the verdict: lint, test, ci, every
 '                  e2e pass, and the retirement ledger deploy --cli runs
 '                  (git-hooks.puml, unit-baseline.puml, release-gate.puml)
 '   upstream ..... mise generate git-pre-commit, goreleaser (the snapshot in
@@ -205,7 +206,7 @@ package "Installer" as Install {
 }
 
 package "Maintainer\nmise.toml tasks (plain argv)" as Maint {
- component "mise run lint · ci · test [--baseline]\nbuild [--cli] · deploy [--cli]\ntest-images [target] · e2e [agent]... [--full]" as Mise <<internal>>
+ component "mise run lint · ci · test\nbuild [--cli] · deploy [--cli]\ntest-images [target] · e2e [agent]... [--full]" as Mise <<internal>>
  component "go run ./internal/maintain/fleet\nbuild · deploy → internal/imagebuild" as MaintLib <<internal>>
  component "go run ./internal/maintain/fleet test\ngo test -tags=image ./internal/imagetest" as BuildTest <<internal>>
  component "go run ./internal/cdn/stage\ndist/ → apps/cli/public/cli" as Stage <<internal>>

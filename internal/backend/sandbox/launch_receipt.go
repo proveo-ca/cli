@@ -341,3 +341,35 @@ var confirmUnansweredRemoval = func(name string, refs []string, history bool) bo
 	yes, _ := askUnansweredRemoval(name, sbx.MirrorRefs(name), refs, history)
 	return yes
 }
+
+// RunSessionVar names the host tmux session a `proveo run` hosts its agent in.
+const RunSessionVar = "PROVEO_RUN_SESSION"
+
+func sessionPath(name string) string {
+	if p := receiptPath(name); p != "" {
+		return strings.TrimSuffix(p, filepath.Ext(p)) + ".session"
+	}
+	return ""
+}
+
+// recordSession notes which host tmux session this run's agent lives in, for the dashboard and `proveo attach`.
+func recordSession(name string) {
+	sess, p := os.Getenv(RunSessionVar), sessionPath(name)
+	if sess == "" || p == "" {
+		return
+	}
+	_ = os.WriteFile(p, []byte(sess+"\n"), 0o600)
+}
+
+// SessionOf is the host tmux session the last `proveo run` of sandbox name hosted its agent in.
+func SessionOf(name string) string {
+	p := sessionPath(name)
+	if p == "" {
+		return ""
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}

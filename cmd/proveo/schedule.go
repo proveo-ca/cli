@@ -20,6 +20,8 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/backend/sandbox"
 	"github.com/proveo-ca/proveo/internal/proveohome"
+	"github.com/proveo-ca/proveo/internal/results"
+	"github.com/proveo-ca/proveo/internal/run"
 	"github.com/proveo-ca/proveo/internal/schedule"
 	"github.com/proveo-ca/proveo/internal/ui"
 )
@@ -78,7 +80,7 @@ Transcripts and results: <proveo home>/logs/schedule/<job>/.`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return scheduleTable(cmd) },
 	}
-	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), scheduleWatchCmd(), scheduleDispatchCmd(), scheduleAcceptCmd(), schedulePhaseCmd(),
+	cmd.AddCommand(scheduleLsCmd(), scheduleTickCmd(), scheduleRunCmd(), scheduleRetryCmd(), scheduleReviewCmd(), scheduleDropReviewCmd(), scheduleDropCmd(), scheduleWatchCmd(), scheduleDispatchCmd(), scheduleAcceptCmd(), schedulePhaseCmd(),
 		scheduleAttachCmd(), scheduleInstallCmd(), scheduleUninstallCmd())
 	return cmd
 }
@@ -368,6 +370,112 @@ func printScheduledRun(argv []string, dir string) error {
 	return c.Run()
 }
 
+// scheduleReviewCmd queues a headless review of a pull request; the dashboard's review-required cards call it.
+// SPEC: _spec/_experiments/dashboard/review-requests.puml
+func scheduleReviewCmd() *cobra.Command {
+	var target, title, promptFile string
+	cmd := &cobra.Command{
+		Use:    "review <pr-url>",
+		Short:  "Queue a headless, read-only review of a pull request",
+		Hidden: true,
+		Args:   cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			home := proveohome.Root(os.Getenv)
+			prompt, err := os.ReadFile(promptFile)
+			if err != nil {
+				return err
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			if real, err := filepath.EvalSymlinks(cwd); err == nil {
+				cwd = real
+			}
+			name, j, err := schedule.NewReviewJob(home, cwd, target, args[0], title, string(prompt))
+			if err != nil {
+				return err
+			}
+			if err := submitScheduled(home, name, "dashboard", j); err != nil {
+				return err
+			}
+			fmt.Println(name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&target, "target", "claudecode", "harness that runs the review")
+	cmd.Flags().StringVar(&title, "title", "", "task label for the review")
+	cmd.Flags().StringVar(&promptFile, "prompt-file", "", "file holding the review's opening prompt")
+	_ = cmd.MarkFlagRequired("prompt-file")
+	return cmd
+}
+
+// scheduleDropReviewCmd forgets a review run that failed: its sandbox, its instance, its queue entry and its job.
+// SPEC: _spec/_experiments/dashboard/review-requests.puml
+func scheduleDropReviewCmd() *cobra.Command { return dropJobCmd("drop-review", true) }
+
+// scheduleDropCmd forgets an ended dashboard job, or an instance no job owns, the same way.
+// SPEC: _spec/_experiments/dashboard/ended-runs.puml
+func scheduleDropCmd() *cobra.Command { return dropJobCmd("drop", false) }
+
+func dropJobCmd(use string, reviewOnly bool) *cobra.Command {
+	var stop bool
+	cmd := &cobra.Command{
+		Use:    use + " <job|instance>",
+		Short:  "Forget an ended dashboard job or instance: its kept sandbox, instance, queue entry and job",
+		Hidden: true,
+		Args:   cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			home, state, name := proveohome.Root(os.Getenv), run.StateDir(), args[0]
+			snap, err := schedule.ReadJobSnapshot(filepath.Join(home, "dashboard-jobs", name, "job.json"))
+			job := err == nil
+			var inst *sandbox.Instance
+			switch {
+			case job:
+				if reviewOnly && (snap.Phase != "Review" || !strings.Contains(snap.Ticket, "/pull/")) {
+					return fmt.Errorf("%s is not a review job", name)
+				}
+				if schedule.NewTmux(schedule.SessionName(name), nil).Alive() {
+					return fmt.Errorf("%s is still running", name)
+				}
+				inst, err = sandbox.JobInstance(state, name)
+			case reviewOnly || !errors.Is(err, fs.ErrNotExist):
+				return err
+			default:
+				inst, err = sandbox.InstanceByID(state, name)
+				if err == nil && inst == nil {
+					err = fmt.Errorf("%s is neither a dashboard job nor an instance", name)
+				}
+			}
+			if err != nil {
+				return err
+			}
+			if inst != nil {
+				if s := sandbox.SessionOf(inst.Name); s != "" && tmuxHasSession(s) {
+					return fmt.Errorf("%s is still running in tmux session %s", name, s)
+				}
+				dir := results.Dir(state)
+				if err := sandbox.RemoveKept(inst.Name, dir, ui.Hostf, job || stop); err != nil {
+					return err
+				}
+				sandbox.ReconcileResults(dir, here())
+				if err := inst.Forget(home); err != nil {
+					return err
+				}
+			}
+			if job {
+				if _, err := schedule.DropDashboardJob(home, name); err != nil {
+					return err
+				}
+				fmt.Println(snap.Ticket)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&stop, "stop", false, "stop a lone instance's sandbox that still runs, then carry its work home and remove it")
+	return cmd
+}
+
 func scheduleRetryCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "retry <task>",
@@ -504,9 +612,21 @@ var stdinTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 // for tmux, is one × before tmux runs; a hand-off that fails ends on "⚠ attach — stopped at tmux".
 func attachSession(job string, readOnly bool) error {
 	sess := schedule.SessionName(job)
+	if strings.HasPrefix(job, runSessionPrefix) {
+		sess = job
+	}
 	if !tmuxHasSession(sess) {
+		if sess == job {
+			return reported(sandbox.Item{Fail: true, Text: job + " — not running", Detail: []string{"no tmux session " + sess}},
+				fmt.Errorf("%s is not running", job))
+		}
 		return notAttachable(job, sess)
 	}
+	return attachTmux(job, sess, readOnly)
+}
+
+// attachTmux puts this terminal on tmux session sess, or switches the surrounding tmux client to it.
+func attachTmux(job, sess string, readOnly bool) error {
 	args, nested := attachArgs(sess, readOnly, os.Getenv("TMUX") != "")
 	if args[0] == "switch-client" {
 		client, err := originTmuxClient(os.Getenv("TMUX_PANE"))

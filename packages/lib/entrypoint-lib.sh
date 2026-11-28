@@ -55,19 +55,8 @@ accept_workspace_trust() {
  local dir="${1:-$PWD}" home
  home="$(_proveo_agent_home)"
  [[ -n "$home" && -d "$home" ]] || return 0
- command -v node >/dev/null 2>&1 || return 0
- PROVEO_TRUST_DIR="$dir" PROVEO_AGENT_HOME="$home" node -e '
-   const fs = require("fs"), path = process.env.PROVEO_AGENT_HOME + "/.claude.json";
-   let j = {};
-   try { j = JSON.parse(fs.readFileSync(path, "utf8")) || {}; } catch (e) {}
-   j.bypassPermissionsModeAccepted = true;
-   j.hasCompletedOnboarding = true;
-   j.projects = j.projects || {};
-   for (const d of new Set(["/", process.env.PROVEO_TRUST_DIR])) {
-     j.projects[d] = Object.assign({}, j.projects[d], { hasTrustDialogAccepted: true });
-   }
-   fs.writeFileSync(path, JSON.stringify(j, null, 2));
- ' 2>/dev/null || true
+ command -v proveo-entrypoint >/dev/null 2>&1 || return 0
+ proveo-entrypoint claude-trust "$home" "$dir" 2>/dev/null || true
 }
 
 bridge_google_keys() {
@@ -1396,25 +1385,14 @@ proveo_claude_reads_agents_md() {
 }
 
 # SPEC: _spec/packages/lib/git-sync-turn.puml
-_proveo_merge_stop_hook() {
-  local path="$1" cmd="$2"
-  [[ -n "$path" && -n "$cmd" ]] || return 0
-  command -v node >/dev/null 2>&1 || return 0
-  PROVEO_HOOKS_FILE="$path" PROVEO_HOOK_CMD="$cmd" node -e '
-    const fs = require("fs");
-    const path = process.env.PROVEO_HOOKS_FILE;
-    const cmd = process.env.PROVEO_HOOK_CMD;
-    const event = "Stop";
-    let j = {};
-    try { j = JSON.parse(fs.readFileSync(path, "utf8")) || {}; } catch (e) {}
-    if (typeof j.hooks !== "object" || j.hooks === null) j.hooks = {};
-    if (!Array.isArray(j.hooks[event])) j.hooks[event] = [];
-    const present = j.hooks[event].some(g => g && Array.isArray(g.hooks)
-      && g.hooks.some(h => h && h.command === cmd));
-    if (!present) j.hooks[event].push({ hooks: [{ type: "command", command: cmd, timeout: 90 }] });
-    fs.mkdirSync(require("path").dirname(path), { recursive: true });
-    fs.writeFileSync(path, JSON.stringify(j, null, 2) + "\n");
-  ' 2>/dev/null
+_proveo_merge_stop_hook() { _proveo_merge_claude_hook "$1" Stop "$2" 90; }
+
+# _proveo_merge_claude_hook <settings.json> <event> <command> <timeout> [matcher]: adds the command once.
+_proveo_merge_claude_hook() {
+  local path="$1" event="$2" cmd="$3" timeout="${4:-90}" matcher="${5:-}"
+  [[ -n "$path" && -n "$event" && -n "$cmd" ]] || return 0
+  command -v proveo-entrypoint >/dev/null 2>&1 || return 0
+  proveo-entrypoint claude-hook "$path" "$event" "$timeout" "$matcher" "$cmd" 2>/dev/null
 }
 
 # SPEC: _spec/packages/lib/git-sync-turn.puml
@@ -1473,6 +1451,34 @@ proveo_install_git_sync_hooks() {
   esac
   return 0
 }
+
+# SPEC: _spec/packages/lib/agent-activity.puml
+proveo_install_activity_hooks() {
+  local target="${1:-}" home settings
+  local plugin="${PROVEO_ACTIVITY_PLUGIN:-/opt/proveo/hooks/proveo-activity.js}"
+  local mark="proveo-entrypoint activity $target"
+  home="$(_proveo_agent_home)"
+  [[ -n "$home" ]] || return 0
+  case "$target" in
+    claudecode)
+      command -v proveo-entrypoint >/dev/null 2>&1 || return 0
+      settings="$home/.claude/settings.json"
+      if _proveo_merge_claude_hook "$settings" UserPromptSubmit "$mark busy" 5 \
+        && _proveo_merge_claude_hook "$settings" Stop "$mark idle" 5 \
+        && _proveo_merge_claude_hook "$settings" Notification "$mark waiting" 5 "permission_prompt|elicitation_dialog"; then
+        echo "activity: turn hooks mark busy, idle and waiting for the dashboard"
+      fi
+      ;;
+    opencode)
+      [[ -s "$plugin" ]] || return 0
+      mkdir -p "$home/.config/opencode/plugins" 2>/dev/null || return 0
+      cp -f "$plugin" "$home/.config/opencode/plugins/proveo-activity.js" \
+        && echo "activity: session.execution plugin marks busy and idle for the dashboard"
+      ;;
+  esac
+  return 0
+}
+
 
 # SPEC: _spec/defs/browser-layer.puml
 _browser_skill_dir() { case "$1" in
@@ -2587,6 +2593,7 @@ proveo_seed() {
 
  proveo_seed_step setup "installing hooks and rendering agents" "$target"
  proveo_install_git_sync_hooks "$target"
+ proveo_install_activity_hooks "$target"
  : > "$PROVEO_HOOKS_MARKER" 2>/dev/null || true
 
  case "$target" in

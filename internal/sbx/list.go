@@ -22,6 +22,7 @@ type ListedPort struct {
 	HostIP      string `json:"host_ip"`
 	HostPort    int    `json:"host_port"`
 	SandboxPort int    `json:"sandbox_port"`
+	Protocol    string `json:"protocol"`
 }
 
 // Running reports whether the sandbox is up.

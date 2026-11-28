@@ -1,0 +1,215 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: a PR that asks the gh user for a review is a ghost card until a headless proveo run takes it
+' covers: internal/dashboard/review.go
+' covers: internal/dashboard/review_templates.json
+' covers: internal/dashboard/review_live.md
+' covers: internal/dashboard/pr_status.go
+' covers: internal/dashboard/pr_status_test.go
+' covers: internal/dashboard/popover.go
+' covers: internal/dashboard/review_test.go
+' covers: internal/dashboard/prref.go
+' covers: internal/dashboard/prref_test.go
+' covers: internal/dashboard/verdict.go
+' covers: internal/backend/sandbox/instances.go
+' covers: internal/backend/sandbox/instances_test.go
+' covers: internal/choiceui/attach_confirm.go
+' covers: internal/dashboard/pr.go
+' covers: internal/dashboard/popover.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/cards.go
+' covers: internal/choiceui/review_start.go
+' covers: internal/choiceui/review_start_test.go
+' covers: internal/schedule/dashboard_job.go
+' covers: internal/schedule/dashboard_job_test.go
+' covers: cmd/proveo/schedule.go
+'
+' "Now through gh whenever the current gh auth user is requested a review, it
+' can be displayed as "review required" as a ghost; a proveo run must be
+' assigned/attached, in a headless run with 3 initial prompt templates to
+' choose from." Asked for: a Review required section on top; a dashed, muted
+' ghost card; Enter opens a pop-up of 3 templates plus a notes field; task
+' details list the PR description's links, so artifacts are linked; the 3
+' templates come from the operator's own review sessions.
+' RENAMED 2026-11-26: "keep required only when agents stop": the ghost group is
+' Review requests (Attention required stays the only "required"), and the task
+' pane's title is Task Dashboard, not Review queue ("Rename Review Queue to
+' Task Dashboard"); the help names the views dashboard, graph, schedule.
+'
+' SOURCE: gh pr list --search user-review-requested:@me --state open in the
+' dashboard's repository, every minute (20 s timeout: bodies and file lists).
+' JUDGEMENT: user-review-requested names the gh user directly; review-requested
+' would add every team request. MEASURED 2026-11-25 in the pluvo monorepo: 10+
+' open requests, 1.6 s without bodies.
+' A run takes a ghost by ticket: the review job's Ticket is the PR URL, and any
+' task whose Ticket matches hides the ghost.
+' RUN: Enter → the start card (choiceui.ReviewStart: the PR, Claude Code ·
+' headless · read-only prompt · up to 90m, three templates as radios, a notes
+' field, Start/Cancel). ↑↓ pick, typing goes to the notes, enter starts, esc
+' cancels. Start renders the template ({{pr_url}} {{pr_number}} {{pr_title}}
+' {{repo}} {{head}} {{base}} {{author}} {{changed_files}} {{notes}}) and runs
+' `proveo schedule review <pr-url> --target claudecode --title "Review #N: …"
+' --prompt-file <tmp>`, which writes a dashboard job (mode plain, ticket = PR,
+' phase Review, budget 90m) and submits it to the admission queue. The run is
+' then an ordinary task: Enter attaches to its tmux session.
+' Claude Code runs reviews because /review-map and /review-demo are its skills.
+' <proveo home>/review-templates.json replaces the three defaults.
+'
+' TEMPLATES, MEASURED 2026-11-25: of 412 proveo-saved Claude Code sessions
+' (~/.proveo/.claude/projects), 214 carry the operator's own text and nearly
+' all are review prompts; host ~/.claude had none about a PR; codex had 1;
+' opencode briefs were model-written. Clusters: read-only opener (11), map
+' first (~14), adversarial pass (~13 on a PR), concern-led judgement (~9),
+' demo and live check (~7). One session asked the agent to post comments;
+' every template keeps drafts only, the human posts.
+'   adversarial review ... map first, [BLOCKER]..[LOW] with filepath:line,
+'                          e2e judgement, draft verdict
+'   concern-led review ... the notes are the concerns, research first, yes/no
+'                          judgements, a concern table
+'   map + demo ........... reuse linked artifacts, live check over CDP :9222,
+'                          a claims table
+' [Inference] the sessions mention @"adversarial-reviewer (agent)"; the
+' templates say "the adversarial-reviewer agent" so it reads headless too.
+'
+' PR FILES (2026-11-26, "Fetch PR ref"): a ghost or a review run reads the PR,
+' never its sandbox: a review sandbox clones the operator's checkout, so its
+' diff is the operator's branch, and a run that dies early has none. The
+' dashboard fetches +refs/pull/N/head into refs/proveo/review/N of the
+' checkout (the namespace clone mode already writes), at most every two
+' minutes, then reads changes, files and previews as a carried tip against the
+' PR's base. A failed fetch falls back to gh's file list for a ghost.
+' MEASURED: review job claudecode-59e09913e73a died at the 30s seed gate
+' ("workspace setup and SSH verification not completed after 30s"), so its card
+' had nothing to show; see seed-and-launch.puml for the new 120s default.
+' FAILED REVIEWS (2026-11-26): "If a proveo run/attach failed on a review
+' request, clean-up everything necessary and bring the card back to the Review
+' requests as a ghost." A review run that ends failed or not-ready leaves the
+' queue at once and its ghost returns, saying "last review failed: <why>".
+' `proveo schedule drop-review <job>` then removes, in order: the kept sandbox
+' (RemoveKept --stop, which carries any work home), the instance record and its
+' ~/.proveo/instances/<id> mounts, the queue entry, the dashboard job. Logs stay.
+' A clean-up that fails keeps the card, says why in the footer, and is not
+' retried this session.
+' READ-ONLY SHARES (2026-11-26, "Reviews accept read-only"): a --new instance
+' mounts linked shares such as _spec read-only, and the seed refused it ("_spec
+' is read-only, so edits cannot reach the host"). Review jobs run with the
+' hidden --read-only-shares, which declares those shares ro in PROVEO_SHARES,
+' so the seed checks only that they read. Since 2026-11-27 other instances mount
+' linked shares writable (workspace-instances.puml), and --read-only-shares is
+' also what keeps a review's mount read-only.
+' MEASURED: after the kit fix (startup-dispatch.puml) review claudecode-
+' 66f84b715f71 seeded in under a second and stopped on this refusal.
+' VERDICT (2026-11-26): "Does the gh CLI allow us to submit a verdict to PRs?"
+' Yes: gh pr review <url> --comment | --approve | --request-changes --body.
+' The file tree ends with a Verdict on #N button pinned to its last row, drawn
+' by choiceui.Button exactly as the pop-ups draw theirs (key letter bold),
+' while the selected task is a review request or a review run; v opens the
+' card from anywhere. The card (choiceui.NewVerdict) offers Comment, Approve and
+' Request changes and a Comment field; GitHub needs text for Comment and
+' Request changes, so Submit waits for it. The operator submits; proveo never
+' posts on its own, which keeps AGENTS.md's drafts-only rule for agents.
+' After it lands the review requests and the PR's metadata are read again.
+' RENAMED 2026-11-26: the ghost's Enter reads "↵ agentic review", not "↵ start
+' review": Enter starts an agent's review, the Verdict button is the human's.
+' AGENTIC REVIEW AT THE TREE'S FOOT (2026-11-26): "Whenever the file-tree matches
+' an agentic review running; and the right pane is displaying files, attach the
+' task card by the bottom, so it shows [task card] [verdict] by the end of the
+' file-tree; the idea is that the reviewer can attach to that agentic review to
+' reach a verdict." While a file is open and the PR's review run is live, the
+' tree ends with that run's compact card (Agentic review chip, title, status,
+' "a attach to reach a verdict") above the Verdict button; a asks to attach it
+' as ↵ does for a card. With the task cards in view the card stays away.
+' FOLLOW UP (2026-11-26): Attention required cards lead with "↵ follow up", as
+' a ghost leads with "↵ agentic review". A live proveo tmux task attaches; an
+' agent started by `proveo run` in another tab gets a notice card: "proveo
+' can't attach: this agent's session is live in another terminal". The
+' operator chose that over forking the conversation or a parallel sbx session.
+'
+' LIVE VERIFICATION (2026-11-27): "the reviewer agents must be ready to run
+' tooling/AGENTS.md and verify any claims on the live app; if a sandbox
+' integration is inaccessible it should say so." Chosen: "Always host Chrome".
+' tooling/AGENTS.md (pluvo monorepo, origin/dev) sets up pnpm, codegen, the
+' Docker stack, migrations, pluvo-ai, web on :8083 (n8083 under sbx), and runs a
+' live sync through host Chrome CDP. The claudecode sandbox already has its own
+' Docker daemon and the published n8083 ports; review jobs now also pass
+' --addon chrome (schedule.ReviewArgs), and the start card says "live app in
+' host Chrome". Every template, the operator's own included, ends with
+' review_live.md: follow the AGENTS.md files that apply, verify claims on the
+' live app through agent-browser, open the report with an Access table
+' (integration | check | reachable? | exact error), label what could not be
+' checked [Unverified: <integration> unreachable], never edit the shared .env.
+' Host Chrome that cannot start fails the run before the agent launches
+' (host-browser-cdp.puml), so its ghost returns saying why.
+
+' STATUS (2026-11-27, "this PR isn't ready to be merged yet: #3966. git knows when
+' it has conflicts, show that. And gh knows when CI/CD failed. Review required
+' need statuses: draft/conflicts/errors/ready"): the request list also asks gh
+' for mergeable and statusCheckRollup (MEASURED: 1.5 s → 2.5 s for 12 PRs). A
+' card's status line, in tone: draft (muted), conflicts (mergeable CONFLICTING,
+' error), errors: N checks failed (a failure, error, timeout, cancellation,
+' required action or startup failure; error), checks running (anything
+' unfinished; warn), else ready (MERGEABLE, success). GitHub computes
+' mergeability lazily, so UNKNOWN reads "checking conflicts" until a later poll.
+' A failed-review or starting message takes the line and the status moves to
+' the size line. Task Details adds Status, Checks (failed · running · passed)
+' and the failed checks' names. MEASURED 2026-11-27: #3966 conflicts · errors:
+' 1 check failed (Lint); #3981 3 failed (Unit Tests, E2E core 1/2 and 2/2).
+' REVIEWS (2026-11-27, "The review required task cards should show if the card already
+' has an approval too via gh"): the list also asks for reviewDecision and
+' latestReviews (2.3 s for 12 PRs). A request someone already reviewed carries
+' a chip on its dashed top edge, as task cards carry theirs: "✓ Approved by "
+' (+N for more) in the success tone, or "Changes requested by " in the warn
+' tone, which wins over an approval; reviewDecision alone gives the bare word.
+' Comments make no chip: bots (Copilot, Aikido) comment on every PR. Task
+' Details adds Reviews: approved by  · changes requested by  · N commented.
+' MEASURED 2026-11-27: #4004 #4001 #3981 #3973 #3972 approved by .
+
+' LINKS: task details list up to five links from every PR's description, the
+' plan and image attachments left out, as OSC 8 hyperlinks.
+title Review requests — ghost cards a headless review run takes
+
+package "GitHub" as GH {
+  component "gh pr list\nuser-review-requested:@me\nopen · every minute" as SEARCH <<cloud>>
+}
+
+package "dashboard" as DASH {
+  component "Review requests\nfirst group, above Attention" as GROUP <<app>>
+  component "ghost card\ndashed ╌ ╎ · muted\n#N · @author · head → base\n↵ agentic review" as GHOST <<app>>
+  component "start card\n3 templates · notes\nStart / Cancel" as START <<app>>
+  component "task details\nLinks from the PR body" as LINKS <<app>>
+}
+
+package "proveo" as PROVEO {
+  component "proveo schedule review\nmode plain · ticket = PR\nbudget 90m · claudecode" as JOB <<host>>
+  component "admission queue\nheadless tmux session" as QUEUE <<async>>
+}
+
+SEARCH ARROW_MAIN GROUP
+GROUP ARROW_MAIN GHOST
+GHOST ARROW_MAIN START : Enter
+START ARROW_MAIN JOB : Start
+JOB ARROW_MAIN QUEUE
+QUEUE ARROW_OPTIONAL GHOST : ticket match\nhides the ghost
+GHOST ARROW_OPTIONAL LINKS : t
+
+note bottom of GHOST
+  **A ghost is work nobody runs yet.**
+  Dashed and grey, it reads as absent
+  until a run takes its PR; its keys
+  light only when selected.
+end note
+
+note bottom of START
+  **Typing is the notes, not a button.**
+  Letters never trigger Start or Cancel:
+  enter starts, esc cancels, ↑↓ pick
+  the template.
+end note
+
+note bottom of JOB
+  **Reviews stay read-only by prompt.**
+  Every template forbids commits, pushes
+  and posted comments; drafts only, the
+  operator posts them.
+end note
+@enduml

@@ -17,6 +17,11 @@ skinparam noteTextAlignment left
 ' covers: internal/schedule/queue.go
 ' covers: e2e/dashboard_admission_test.go
 ' Target jobs accept `instance: ID` or `new: true` with an optional `task:`.
+' mode: attended (proveo run --queue, the dashboard's n) is an operator's own
+' session: a non-empty prompt is typed once, plain; there is no budget, wrap-up
+' or report stop; the session closing records done. MEASURED 2026-11-25: the
+' dispatcher Released each watcher without reaping it, so a job cycling through
+' disk waits left one zombie watcher per retry; startReaped waits instead.
 ' Forward the selector to proveo run and keep workdir as the workspace key.
 ' covers: internal/run/choices.go (resolveAddonFlags), internal/run/params.go (AddonsSet, Yes)
 ' covers: internal/backend/sandbox/stop_signal_test.go

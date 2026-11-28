@@ -25,11 +25,14 @@
     {
       "spec": "_spec/_conventions/tui-design-language.puml",
       "covers": [
-        "internal/ui/**",
-        "internal/posture/posture.go",
+        ".golangci.yml",
+        "internal/choiceui/card.go",
         "internal/choiceui/topology.go",
+        "internal/contract/tui_identity_test.go",
         "internal/contract/tui_vocabulary_test.go",
-        "internal/choiceui/card.go"
+        "internal/dashboard/links.go",
+        "internal/posture/posture.go",
+        "internal/ui/**"
       ],
       "fingerprint": null
     },
@@ -159,7 +162,8 @@
       "spec": "_spec/_devops/unit-baseline.puml",
       "covers": [
         "mise.toml",
-        "internal/contract/mise_gates_test.go"
+        "internal/contract/mise_gates_test.go",
+        "internal/testx/linux_lane.go"
       ],
       "fingerprint": null
     },
@@ -197,28 +201,36 @@
     {
       "spec": "_spec/_experiments/dashboard/workspace-instances.puml",
       "covers": [
+        "_spec/_experiments/dashboard/index.html",
+        "cmd/proveo/dashboard.go",
         "cmd/proveo/main.go",
+        "cmd/proveo/queue_run.go",
+        "cmd/proveo/queue_run_test.go",
+        "e2e/dashboard_native_tmux_test.go",
+        "e2e/dashboard_sbx_tmux_test.go",
         "go.mod",
-        "internal/ui/ui.go",
-        "internal/choiceui/screen.go",
-        "internal/ptyproxy/ptyproxy.go",
-        "internal/run/run.go",
-        "internal/sbx/run.go",
+        "internal/backend/sandbox/agent_home.go",
+        "internal/backend/sandbox/instance_mounts_test.go",
+        "internal/backend/sandbox/instance_workspace.go",
+        "internal/backend/sandbox/instances.go",
+        "internal/backend/sandbox/opencode_engine.go",
         "internal/backend/sandbox/sandbox.go",
         "internal/backend/sandbox/teardown.go",
-        "internal/backend/sandbox/opencode_engine.go",
-        "internal/backend/sandbox/agent_home.go",
-        "internal/proveohome/proveohome.go",
-        "internal/schedule/runner.go",
-        "internal/results/results.go",
-        "cmd/proveo/dashboard.go",
-        "_spec/_experiments/dashboard/index.html",
-        "internal/dashboard/**",
         "internal/choiceui/attach_confirm.go",
+        "internal/choiceui/screen.go",
+        "internal/dashboard/**",
+        "internal/proveohome/proveohome.go",
+        "internal/ptyproxy/ptyproxy.go",
+        "internal/results/results.go",
+        "internal/run/queue.go",
+        "internal/run/queue_test.go",
+        "internal/run/run.go",
+        "internal/sbx/run.go",
+        "internal/schedule/attended_test.go",
         "internal/schedule/dashboard_job.go",
         "internal/schedule/phase.go",
-        "e2e/dashboard_native_tmux_test.go",
-        "e2e/dashboard_sbx_tmux_test.go"
+        "internal/schedule/runner.go",
+        "internal/ui/ui.go"
       ],
       "fingerprint": null
     },
@@ -261,6 +273,29 @@
         "e2e/credentials_test.go",
         "internal/backend/sandbox/provider_gate_test.go",
         "e2e/sbx_test.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_paradigms/dashboard-terminal-design.puml",
+      "covers": [
+        "e2e/dashboard_breakpoints_tmux_test.go",
+        "internal/dashboard/cards.go",
+        "internal/dashboard/filetree.go",
+        "internal/dashboard/filetree_test.go",
+        "internal/dashboard/handoff.go",
+        "internal/dashboard/handoff_test.go",
+        "internal/dashboard/highlight.go",
+        "internal/dashboard/highlight_test.go",
+        "internal/dashboard/items.go",
+        "internal/dashboard/layout.go",
+        "internal/dashboard/layout_test.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/popover.go",
+        "internal/dashboard/popover_test.go",
+        "internal/dashboard/ports.go",
+        "internal/dashboard/ports_test.go",
+        "internal/dashboard/view.go"
       ],
       "fingerprint": null
     },
@@ -449,6 +484,19 @@
         "internal/backend/sandbox/sandbox.go",
         "internal/sbx/run.go",
         "packages/lib/entrypoint-lib.sh"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_plans/tui-identity-delivery.puml",
+      "covers": [
+        "internal/ui/ui.go",
+        "internal/choiceui/choiceui.go",
+        "internal/choiceui/marks.go",
+        "internal/dashboard/**",
+        "cmd/proveo/help.go",
+        "defs/claudecode/mcp/themes/proveo-sandbox.json",
+        "internal/contract/tui_vocabulary_test.go"
       ],
       "fingerprint": null
     },
@@ -1009,21 +1057,23 @@
     {
       "spec": "_spec/internal/choiceui/confirm-dialogs.puml",
       "covers": [
+        "e2e/close_confirm_live_test.go",
+        "internal/backend/sandbox/confirm.go",
+        "internal/choiceui/agent_update.go",
+        "internal/choiceui/blocked_run.go",
+        "internal/choiceui/card.go",
+        "internal/choiceui/checklist_test.go",
         "internal/choiceui/dialog.go",
         "internal/choiceui/dialog_run.go",
         "internal/choiceui/dialog_test.go",
-        "internal/choiceui/card.go",
-        "internal/choiceui/tty_unix.go",
-        "internal/choiceui/tty_windows.go",
-        "internal/choiceui/sandbox_close.go",
         "internal/choiceui/fetch_pushed.go",
-        "internal/choiceui/blocked_run.go",
+        "internal/choiceui/help.go",
+        "internal/choiceui/help_test.go",
         "internal/choiceui/oversized_model.go",
-        "internal/choiceui/agent_update.go",
-        "internal/backend/sandbox/confirm.go",
-        "e2e/close_confirm_live_test.go",
         "internal/choiceui/quit_gate.go",
-        "internal/choiceui/checklist_test.go"
+        "internal/choiceui/sandbox_close.go",
+        "internal/choiceui/tty_unix.go",
+        "internal/choiceui/tty_windows.go"
       ],
       "fingerprint": null
     },
@@ -1228,10 +1278,15 @@
     {
       "spec": "_spec/internal/maintain/image-build-deploy.puml",
       "covers": [
-        "internal/maintain/**",
         "cmd/proveo/maintainer_surface_test.go",
         "internal/imagebuild/**",
-        "internal/imagetest/**"
+        "internal/imagebuild/imagebuild.go",
+        "internal/imagebuild/lock_other.go",
+        "internal/imagebuild/lock_test.go",
+        "internal/imagebuild/lock_unix.go",
+        "internal/imagebuild/targets.go",
+        "internal/imagetest/**",
+        "internal/maintain/**"
       ],
       "fingerprint": null
     },
@@ -1441,35 +1496,35 @@
     {
       "spec": "_spec/internal/sbx/clone-workspace.puml",
       "covers": [
-        "internal/run/run.go",
-        "internal/sbx/run.go",
-        "internal/backend/sandbox/sandbox.go",
+        "e2e/clone_output_test.go",
+        "e2e/clone_test.go",
+        "e2e/git_access_test.go",
+        "e2e/seed_ready_test.go",
+        "internal/backend/sandbox/clone_carry_test.go",
+        "internal/backend/sandbox/clone_shares_test.go",
+        "internal/backend/sandbox/launch_receipt.go",
+        "internal/backend/sandbox/pushed.go",
         "internal/backend/sandbox/report.go",
         "internal/backend/sandbox/report_test.go",
-        "internal/backend/sandbox/pushed.go",
-        "internal/choiceui/fetch_pushed.go",
-        "internal/run/clone_test.go",
-        "internal/sbx/clone_test.go",
-        "e2e/clone_test.go",
+        "internal/backend/sandbox/sandbox.go",
         "internal/backend/sandbox/sandbox_test.go",
-        "e2e/clone_output_test.go",
-        "e2e/git_access_test.go",
-        "internal/workspace/mount.go",
-        "internal/sbx/kit.go",
-        "packages/lib/proveo-await-seed",
-        "packages/lib/entrypoint-lib.sh",
-        "internal/workspace/clone_source_test.go",
         "internal/backend/sandbox/worktree_clone_test.go",
+        "internal/choiceui/fetch_pushed.go",
         "internal/contract/clone_checkout_test.go",
+        "internal/contract/seed_shares_test.go",
         "internal/credentials/credentials.go",
-        "internal/credentials/stage_env_test.go",
-        "e2e/seed_ready_test.go",
         "internal/credentials/project_env_merge.go",
         "internal/credentials/project_env_merge_test.go",
-        "internal/backend/sandbox/clone_shares_test.go",
-        "internal/contract/seed_shares_test.go",
-        "internal/backend/sandbox/clone_carry_test.go",
-        "internal/backend/sandbox/launch_receipt.go"
+        "internal/credentials/stage_env_test.go",
+        "internal/run/clone_test.go",
+        "internal/run/run.go",
+        "internal/sbx/clone_test.go",
+        "internal/sbx/kit.go",
+        "internal/sbx/run.go",
+        "internal/workspace/clone_source_test.go",
+        "internal/workspace/mount.go",
+        "packages/lib/entrypoint-lib.sh",
+        "packages/lib/proveo-await-seed"
       ],
       "fingerprint": null
     },
@@ -1675,13 +1730,15 @@
     {
       "spec": "_spec/internal/sbx/sbx-kit-v3.puml",
       "covers": [
+        "internal/claudecfg/claudecfg.go",
+        "internal/claudecfg/claudecfg_test.go",
+        "internal/contract/contract_test.go",
         "internal/sbx/kitv3.go",
         "internal/sbx/kitv3_test.go",
         "internal/sbx/sbx.go",
-        "internal/sbx/upstream.go",
-        "internal/sbx/upstream_test.go",
         "internal/sbx/third_party/**",
-        "internal/contract/contract_test.go"
+        "internal/sbx/upstream.go",
+        "internal/sbx/upstream_test.go"
       ],
       "fingerprint": null
     },
@@ -1706,16 +1763,18 @@
     {
       "spec": "_spec/internal/sbx/startup-dispatch.puml",
       "covers": [
-        "internal/sbx/kit.go",
-        "internal/sbx/sbx_test.go",
+        "e2e/seed_ready_test.go",
+        "e2e/startup_dispatch_test.go",
+        "internal/backend/sandbox/kit_roundtrip_test.go",
         "internal/backend/sandbox/sandbox.go",
         "internal/backend/sandbox/startup_commands_test.go",
-        "packages/lib/proveo-seed",
-        "packages/lib/entrypoint-lib.sh",
+        "internal/backend/sandbox/workload.go",
         "internal/contract/seed_phase_test.go",
-        "e2e/startup_dispatch_test.go",
-        "e2e/seed_ready_test.go",
-        "internal/sbx/agents.go"
+        "internal/sbx/agents.go",
+        "internal/sbx/kit.go",
+        "internal/sbx/sbx_test.go",
+        "packages/lib/entrypoint-lib.sh",
+        "packages/lib/proveo-seed"
       ],
       "fingerprint": null
     },
@@ -2012,21 +2071,23 @@
     {
       "spec": "_spec/packages/lib/git-sync-turn.puml",
       "covers": [
-        "packages/lib/hooks/git-sync-turn.sh",
-        "packages/lib/hooks/proveo-git-sync-turn.js",
-        "packages/lib/entrypoint-lib.sh",
-        "defs/opencode/entrypoint.sh",
-        "defs/cursor/defaults/hooks.json",
         "defs/base/Dockerfile",
-        "defs/cursor/Dockerfile",
-        "defs/opencode/Dockerfile",
+        "defs/claudecode/mcp/Dockerfile",
         "defs/codex/Dockerfile",
         "defs/codex/managed/requirements.toml",
-        "defs/claudecode/mcp/Dockerfile",
+        "defs/cursor/Dockerfile",
+        "defs/cursor/defaults/hooks.json",
+        "defs/opencode/Dockerfile",
+        "defs/opencode/entrypoint.sh",
+        "e2e/git_sync_turn_test.go",
+        "internal/backend/sandbox/instance_workspace.go",
+        "internal/backend/sandbox/sandbox.go",
         "internal/contract/git_sync_turn_test.go",
         "internal/contract/opencode_runtime_test.go",
         "internal/contract/testdata/opencode_git_sync_plugin.mjs",
-        "e2e/git_sync_turn_test.go"
+        "packages/lib/entrypoint-lib.sh",
+        "packages/lib/hooks/git-sync-turn.sh",
+        "packages/lib/hooks/proveo-git-sync-turn.js"
       ],
       "fingerprint": null
     },
@@ -2437,6 +2498,174 @@
         "README.md",
         "_spec/_assets/hero.gif",
         "_spec/_assets/readme-topology.svg"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/packages/lib/agent-activity.puml",
+      "covers": [
+        "internal/activity/activity.go",
+        "internal/activity/activity_test.go",
+        "cmd/proveo-entrypoint/activity.go",
+        "cmd/proveo-entrypoint/main.go",
+        "packages/lib/hooks/proveo-activity.js",
+        "packages/lib/hooks/proveo-git-sync-turn.js",
+        "packages/lib/entrypoint-lib.sh",
+        "defs/codex/managed/requirements.toml",
+        "defs/cursor/defaults/hooks.json",
+        "defs/base/Dockerfile",
+        "defs/opencode/Dockerfile",
+        "internal/envreg/envreg.go",
+        "internal/dashboard/sandbox_reads.go",
+        "internal/dashboard/guest.go",
+        "internal/dashboard/items.go",
+        "internal/dashboard/activity_test.go",
+        "internal/contract/agent_activity_test.go",
+        "internal/contract/git_sync_turn_test.go",
+        "internal/contract/testdata/opencode_git_sync_plugin.mjs"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/dashboard/run-reports.puml",
+      "covers": [
+        "go.mod",
+        "internal/dashboard/cards.go",
+        "internal/dashboard/data.go",
+        "internal/dashboard/filetree.go",
+        "internal/dashboard/handoff_test.go",
+        "internal/dashboard/highlight.go",
+        "internal/dashboard/links.go",
+        "internal/dashboard/links_test.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/mouse.go",
+        "internal/dashboard/mouse_test.go",
+        "internal/dashboard/popover.go",
+        "internal/dashboard/popover_test.go",
+        "internal/dashboard/report.go",
+        "internal/dashboard/report_test.go",
+        "internal/dashboard/review.go",
+        "internal/dashboard/view.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/dashboard/diagram-preview.puml",
+      "covers": [
+        "internal/dashboard/diagram.go",
+        "internal/dashboard/diagram_test.go",
+        "internal/dashboard/highlight.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/view.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/dashboard/ended-runs.puml",
+      "covers": [
+        "cmd/proveo/queue_run_test.go",
+        "cmd/proveo/schedule.go",
+        "internal/backend/sandbox/instances.go",
+        "internal/backend/sandbox/instances_test.go",
+        "internal/choiceui/attach_confirm.go",
+        "internal/dashboard/cards.go",
+        "internal/dashboard/data.go",
+        "internal/dashboard/ended.go",
+        "internal/dashboard/ended_test.go",
+        "internal/dashboard/guest.go",
+        "internal/dashboard/items.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/prref_test.go",
+        "internal/dashboard/sandbox_reads.go",
+        "internal/dashboard/view.go",
+        "internal/schedule/dashboard_job.go",
+        "internal/schedule/dashboard_job_test.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/dashboard/review-requests.puml",
+      "covers": [
+        "cmd/proveo/schedule.go",
+        "internal/backend/sandbox/instances.go",
+        "internal/backend/sandbox/instances_test.go",
+        "internal/choiceui/attach_confirm.go",
+        "internal/choiceui/review_start.go",
+        "internal/choiceui/review_start_test.go",
+        "internal/dashboard/cards.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/popover.go",
+        "internal/dashboard/pr.go",
+        "internal/dashboard/pr_status.go",
+        "internal/dashboard/pr_status_test.go",
+        "internal/dashboard/prref.go",
+        "internal/dashboard/prref_test.go",
+        "internal/dashboard/review.go",
+        "internal/dashboard/review_live.md",
+        "internal/dashboard/review_templates.json",
+        "internal/dashboard/review_test.go",
+        "internal/dashboard/verdict.go",
+        "internal/schedule/dashboard_job.go",
+        "internal/schedule/dashboard_job_test.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/cmd/proveo/run-session.puml",
+      "covers": [
+        "cmd/proveo/run_tmux.go",
+        "cmd/proveo/run_tmux_test.go",
+        "cmd/proveo/main.go",
+        "cmd/proveo/schedule.go",
+        "internal/backend/sandbox/launch_receipt.go",
+        "internal/backend/sandbox/kit_roundtrip_test.go",
+        "internal/dashboard/data.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/handoff_test.go",
+        "internal/envreg/envreg.go",
+        "e2e/main_test.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/herdr-vs-tmux.puml",
+      "covers": [],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/dashboard/dashboard-config.puml",
+      "covers": [
+        "internal/dashboard/linkrules.go",
+        "internal/dashboard/linkrules_test.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/popover.go",
+        "internal/dashboard/pr.go",
+        "internal/dashboard/tasksources.go"
+      ],
+      "fingerprint": null
+    },
+    {
+      "spec": "_spec/_experiments/dashboard/task-picker.puml",
+      "covers": [
+        "cmd/proveo/main.go",
+        "cmd/proveo/queue_run.go",
+        "cmd/proveo/queue_run_test.go",
+        "e2e/dashboard_native_tmux_test.go",
+        "internal/choiceui/task_picker.go",
+        "internal/choiceui/task_picker_test.go",
+        "internal/dashboard/highlight_test.go",
+        "internal/dashboard/layout_test.go",
+        "internal/dashboard/model.go",
+        "internal/dashboard/mouse.go",
+        "internal/dashboard/provider.go",
+        "internal/dashboard/task_sources.yml",
+        "internal/dashboard/tasksources.go",
+        "internal/dashboard/tasksources_test.go",
+        "internal/dashboard/view.go",
+        "internal/run/params.go",
+        "internal/run/queue.go",
+        "internal/run/queue_test.go",
+        "internal/run/run.go"
       ],
       "fingerprint": null
     }

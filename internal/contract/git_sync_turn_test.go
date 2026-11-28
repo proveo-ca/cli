@@ -812,9 +812,7 @@ func TestDockerfilesShipTheGitSyncTurnHook(t *testing.T) {
 func TestSeedRegistersTheGitSyncStopHookOnce(t *testing.T) {
 	t.Parallel()
 	bash := bashOrSkip(t)
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node unavailable")
-	}
+	bin := buildEntrypoint(t)
 	home := t.TempDir()
 	settings := filepath.Join(home, ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
@@ -825,12 +823,12 @@ func TestSeedRegistersTheGitSyncStopHookOnce(t *testing.T) {
 	}
 	script := `source "$1/packages/lib/entrypoint-lib.sh"
 agent_home="$2"
-export HOME="$2" PROVEO_GIT_SYNC_HOOK="$3"
+export HOME="$2" PROVEO_GIT_SYNC_HOOK="$3" PATH="$(dirname "$4"):$PATH"
 _proveo_agent_home() { printf '%s' "$agent_home"; }
 proveo_install_git_sync_hooks claudecode
 proveo_install_git_sync_hooks claudecode
 echo DONE`
-	out, err := exec.Command(bash, "-c", script, "bash", repoRoot(t), home, gitSyncScript(t)).CombinedOutput()
+	out, err := exec.Command(bash, "-c", script, "bash", repoRoot(t), home, gitSyncScript(t), bin).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "DONE") {
 		t.Fatalf("seed step failed: %v\n%s", err, out)
 	}
@@ -1199,5 +1197,33 @@ func TestGitSyncNamesWhyGitAddFailed(t *testing.T) {
 	}
 	if !strings.Contains(out, "git add failed: ") || !strings.Contains(out, "locked.txt") {
 		t.Errorf("stdout %q — a bare \"git add failed\" left the agent guessing at a cause the hook had in hand", out)
+	}
+}
+
+func TestGitSyncNeverPushesAProveoInstanceBranch(t *testing.T) {
+	t.Parallel()
+	for _, selfUpstream := range []bool{false, true} {
+		dir := initRepo(t)
+		bare := t.TempDir()
+		gitCmd(t, bare, nil, "init", "--bare", "-b", "main")
+		gitCmd(t, dir, nil, "remote", "add", "origin", bare)
+		gitCmd(t, dir, nil, "switch", "-c", "proveo/claudecode-feat-integ-26d02feee4")
+		if selfUpstream {
+			gitCmd(t, dir, nil, "config", "branch.proveo/claudecode-feat-integ-26d02feee4.remote", ".")
+			gitCmd(t, dir, nil, "config", "branch.proveo/claudecode-feat-integ-26d02feee4.merge", "refs/heads/proveo/claudecode-feat-integ-26d02feee4")
+		}
+		if err := os.WriteFile(filepath.Join(dir, "sf6.png"), []byte("png\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, errb, code := runGitSync(t, dir, `{"hook_event_name":"Stop"}`, hookEnv(t))
+		if code != 0 {
+			t.Fatalf("exit %d stdout %q stderr %q", code, out, errb)
+		}
+		if log := gitCmd(t, dir, nil, "log", "-1", "--pretty=%s"); !strings.Contains(log, "sf6.png") {
+			t.Errorf("self-upstream %v: the turn was not committed locally: %q", selfUpstream, log)
+		}
+		if heads := strings.TrimSpace(gitCmd(t, bare, nil, "for-each-ref", "refs/heads")); heads != "" {
+			t.Errorf("self-upstream %v: an instance branch reached origin: %q", selfUpstream, heads)
+		}
 	}
 }

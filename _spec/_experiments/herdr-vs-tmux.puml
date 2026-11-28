@@ -1,0 +1,97 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+skinparam noteTextAlignment left
+' purpose: EXPERIMENT — could herdr replace tmux as the host session layer proveo's runs and jobs live in?
+' status: researched 2026-11-27; decided "keep tmux"; nothing in src depends on this file
+' would touch: internal/schedule/tmux.go, cmd/proveo/run_tmux.go, cmd/proveo/schedule.go (attach, switch-client)
+' would touch: internal/schedule/runner.go (pipe-pane transcripts), e2e/*OnTmux tests
+'   what tmux carries today ........... _spec/cmd/proveo/run-session.puml
+'   how proveo reads agent state ...... _spec/packages/lib/agent-activity.puml
+'   the dashboard herdr would overlap . _spec/_paradigms/dashboard-terminal-design.puml
+'   upstream, read at v0.9.5 (2026-10-14), HEAD pushed 2026-11-19:
+'     https://github.com/herdrdev/herdr (README, Cargo.toml, src/detect/mod.rs, src/terminal_notify.rs)
+'     docs/versions/0.9.5/website/src/content/docs/{session-state,add-herdr-support,persistence-remote,cli-reference}.mdx
+' Notes are capped at 5 lines x 50 columns; one idea per anchor.
+'
+' ── THE QUESTION (2026-11-27) ──────────────────────────────────────────────
+' "We have plain tmux doing the heavy lifting. Is herdr made using tmux? any
+' clear advantages implementing it over tmux?"
+'
+' ── WHAT HERDR IS ──────────────────────────────────────────────────────────
+' Not tmux. A Rust multiplexer of its own: a background server owning each pane's
+' PTY (portable-pty) and screen (a vendored ghostty-vt), a ratatui/crossterm
+' client, an IPC socket API with a JSON schema. tmux appears only to unset TMUX
+' in its panes, to wrap notifications in tmux passthrough when herdr itself runs
+' inside tmux, and as the inspiration for its ctrl+b prefix keys. Apache-2.0,
+' created 2026-03-27, v0.9.5, ~53k stars.
+'
+' ── WHAT IT ADDS OVER TMUX ─────────────────────────────────────────────────
+'   agent state   every pane idle, working or blocked: screen-tail patterns,
+'                 the foreground process's name, OSC, and reports an agent makes
+'                 with `herdr pane report-agent --state --seq` (+ resume command)
+'   restore       layout snapshots and native agent session resume after a
+'                 server restart; tmux keeps nothing once its server dies
+'   control       typed socket API: pane read --source visible|recent|detection,
+'                 send-text, send-keys, agent wait
+'   reach         mouse first-class; one window over several SSH machines
+'
+' ── WHY NOT FOR PROVEO ─────────────────────────────────────────────────────
+'   blind to sbx  [Inference] the host pane runs proveo and sbx; the agent runs
+'                 in the VM, so process detection names proveo, and report-agent
+'                 needs the host's herdr binary and socket, which the guest
+'                 cannot reach. agent-activity.puml already bridges this.
+'   overlap       herdr is a whole workspace UI with its own agent sidebar and
+'                 notifications; proveo's dashboard is that surface. Attaching
+'                 opens herdr's window, not one agent's session.
+'   coverage      proveo calls attach, switch-client, send-keys, capture-pane,
+'                 new/kill/has-session, display-message, wait-for, list-clients
+'                 and pipe-pane (schedule transcripts). [Unverified] no pipe-pane
+'                 equivalent in the 0.9.5 CLI reference; the socket API may have one.
+'   maturity      pre-1.0 and eight months old: API churn; tmux is already on
+'                 every proveo host and drives the e2e suite.
+'
+' ── DECIDED 2026-11-27: keep tmux ──────────────────────────────────────────
+' Offered: tmux + forward proveo's guest activity to herdr's report-agent when
+' a run sits in a herdr pane (HERDR_ENV=1); tmux only; a PROVEO_RUN_MUX=herdr
+' spike; replace tmux. Chosen: "keep tmux", recorded here.
+' REVISIT when herdr reaches 1.0, or when operators run proveo inside herdr:
+' then the cheap bridge is report-agent fed by internal/activity markers, with
+' proveo's resume command (`proveo run <agent> --instance <id> --continue`).
+title EXPERIMENT — herdr or tmux under proveo's run sessions
+
+package "host" as HOST <<host>> {
+  component "tmux\nproveo-run-* · proveo-sched-*" as TMUX <<app>>
+  component "herdr server\nPTY + ghostty-vt per pane" as HERDR <<error>>
+  component "proveo dashboard\nagent states · attach" as DASH <<app>>
+}
+package "sbx microVM" as VM <<async>> {
+  component "the agent\nclaude · codex · opencode" as AGENT <<app>>
+  component "activity marker\n/dev/shm" as MARK <<app>>
+}
+
+DASH ARROW_MAIN TMUX : attach · send-keys ·\ncapture-pane · pipe-pane
+TMUX ARROW_MAIN AGENT : proveo run → sbx run
+AGENT ARROW_MAIN MARK
+MARK ARROW_MAIN DASH : proveo-entrypoint activity
+HERDR ARROW_ERROR AGENT : process and hook detection\nstop at the VM edge
+HERDR ARROW_OPTIONAL DASH : a second agent sidebar
+
+note bottom of HERDR
+  **Not a tmux wrapper.** Its own server,
+  PTYs and terminal emulator; tmux shows up
+  only as passthrough and prefix keys.
+end note
+
+note bottom of MARK
+  **State already crosses the VM edge.**
+  proveo reads the guest's marker; herdr's
+  detection sees only the host's proveo and
+  sbx processes.
+end note
+
+note bottom of DASH
+  **One agent sidebar is enough.** herdr
+  would add a second UI beside the proveo
+  dashboard, not a lighter tmux.
+end note
+@enduml

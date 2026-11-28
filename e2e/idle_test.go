@@ -17,6 +17,7 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/envflag"
 	"github.com/proveo-ca/proveo/internal/termtext"
+	"github.com/proveo-ca/proveo/internal/ui"
 )
 
 // sandboxNameIn finds the name of target's sandbox in a run's output: sbx's create block and the ide row print it.
@@ -83,7 +84,7 @@ func withoutPlanLine(raw, target string) string {
 func TestReachedPromptForSkipsTheAgentPlanLine(t *testing.T) {
 	t.Parallel()
 	const target = "opencode"
-	plan := "\x1b[38;2;203;219;42m● \x1b[0m\x1b[38;2;138;138;138mopencode 1.4.0 — starting\x1b[0m\r\n"
+	plan := "\x1b[38;2;203;219;42m● \x1b[0m" + ui.ANSI(ui.ColorMuted) + "opencode 1.4.0 — starting\x1b[0m\r\n"
 	for _, tc := range []struct {
 		name, raw string
 		want      bool
@@ -103,7 +104,7 @@ func TestReachedPromptForSkipsTheAgentPlanLine(t *testing.T) {
 func TestSandboxNameInSkipsTheRunID(t *testing.T) {
 	t.Parallel()
 	out := "\x1b[38;2;94;114;232m● \x1b[0mlog: ~/.proveo/logs/proveo-1794425966-86193.log\r\n" +
-		"● ide: ssh \x1b[38;2;138;138;138mproveo-claudecode-26e20865.sbx\x1b[0m\r\n"
+		"● ide: ssh " + ui.ANSI(ui.ColorMuted) + "proveo-claudecode-26e20865.sbx\x1b[0m\r\n"
 	if got := sandboxNameIn(out, "claudecode"); got != "proveo-claudecode-26e20865" {
 		t.Errorf("sandboxNameIn = %q, want the sandbox, not the run ID in the log path", got)
 	}

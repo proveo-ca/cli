@@ -11,6 +11,7 @@ import (
 
 	"github.com/proveo-ca/proveo/internal/proveohome"
 	"github.com/proveo-ca/proveo/internal/sbx"
+	"github.com/proveo-ca/proveo/internal/workspace"
 )
 
 func (i *Instance) PrepareWorkspace(runDir string, print bool) (work, bundle string, err error) {
@@ -110,13 +111,19 @@ func (in Input) instanceMounts(mounts []sbx.Mount) []sbx.Mount {
 		src, dest = in.Instance.Repo, in.InstanceCloneRoot
 	}
 	out := []sbx.Mount{{Host: dest}}
+	shared := map[string]bool{}
+	for _, l := range in.Links {
+		if l.Action == workspace.LinkMounted && !in.ReadOnlyShares {
+			shared[canonicalInstancePath(l.Target)] = true
+		}
+	}
 	for _, m := range mounts {
 		if within(canonicalInstancePath(m.Host), src) {
 			continue
 		}
 		if within(canonicalInstancePath(m.Host), canonicalInstancePath(in.HomeRoot)) ||
 			within(canonicalInstancePath(m.Host), canonicalInstancePath(in.RunDir)) ||
-			m.Host == in.OutputDir {
+			m.Host == in.OutputDir || shared[canonicalInstancePath(m.Host)] {
 			out = append(out, m)
 		} else {
 			m.ReadOnly = true
@@ -136,8 +143,7 @@ func (in Input) instanceMounts(mounts []sbx.Mount) []sbx.Mount {
 	return out
 }
 
-const instanceCheckoutScript = `
-repo=$1 base=$2 branch=$3 bundle=$4 scope=$5
+const instanceCheckoutScript = `repo=$1 base=$2 branch=$3 bundle=$4 scope=$5
 if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
   if ! git -C "$repo" cat-file -e "$base^{commit}" 2>/dev/null; then
     head=$(git bundle list-heads "$bundle")
@@ -146,5 +152,9 @@ if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
   git -C "$repo" branch "$branch" "$base"
 fi
 git -C "$repo" switch "$branch"
+case "$branch" in proveo/*)
+  git -C "$repo" config "branch.$branch.remote" .
+  git -C "$repo" config "branch.$branch.merge" "refs/heads/$branch"
+esac
 if [ -n "$scope" ]; then git -C "$repo" sparse-checkout set --cone -- "$scope"; fi
 `

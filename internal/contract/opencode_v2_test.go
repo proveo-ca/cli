@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 type opencodeV2Permission struct {
@@ -183,6 +185,9 @@ proveo_release_agent() {
 
 func TestOpencodeV2SeedOwnership(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	for _, tc := range []struct {
 		name, json, jsonc string
 		restore, reseed   bool

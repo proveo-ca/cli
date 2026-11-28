@@ -1,36 +1,6 @@
 # allow_builds (npm:wrangler) runs only its list from mise 2026.10.17.
 min_version = "2026.10.17"
 
-# Top-level tests `mise run test --baseline` skips; reasons live in the SPEC.
-# SPEC: _spec/_devops/unit-baseline.puml
-[vars]
-unit_baseline = """\
-  TestAConfigSaveNoLongerCarriesProjects|\
-  TestARestorePastTheArgumentLimitPlacesEveryFile|\
-  TestARestoreThatFailsMidFileNeverTruncatesTheHost|\
-  TestAdbMirrorStartsWithTheSocketAddress|\
-  TestClaudeProjectKeyMatchesClaudeCode|\
-  TestCodexDaemonStateNeverCrossesTheSandbox|\
-  TestConfigSyncComparesSubSecondMtimes|\
-  TestConfigSyncCopiesInBulk|\
-  TestConfigSyncLeavesTheStateDirsToTheStateSync|\
-  TestConfigSyncNeverCarriesADeniedFileOut|\
-  TestConfigSyncNeverGlobsTheSkipListAgainstTheCwd|\
-  TestConfigSyncRoundTripsTheHarnessConfiguration|\
-  TestConfigSyncSkipsTransientPathsBothWays|\
-  TestOpenCodeCredentialHookWaitsForHistory|\
-  TestOpenCodeNativeGitSyncPluginLifecycle|\
-  TestOpenCodeSeedProgressFixtures|\
-  TestOpencodeV2SeedOwnership|\
-  TestProjectsAndTodosRoundTripOnPlainDirectories|\
-  TestStateRestoreCopiesOnlyThisWorkspacesProjects|\
-  TestStateRestoreNeverRevertsANewerGuestTurn|\
-  TestStateSaveRefusesWithoutThisBootsRestore|\
-  TestTwoWorkspacesSharingOneStoreKeepEachOthersTurns|\
-  TestVMLocalPathsNeverCrossEitherSync|\
-  TestWithoutStateDirsTheKitVolumesTravelAsState\
-  """
-
 # Go is pinned here and in go.mod (`toolchain go1.26.10`); keep the two byte-equal.
 # internal/contract TestMiseGoPinMatchesGoModToolchain fails when they drift.
 # SPEC: _spec/_runtimes/toolchain-provisioning.puml
@@ -82,17 +52,16 @@ run = "mise run lint ::: test{% if usage.no_race %} --no-race{% endif %}"
 
 # SPEC: _spec/_devops/unit-baseline.puml
 [tasks.test]
-description = "Go unit + contract tests with -race, then the coverage percent and cov/coverage.out (no Docker / no integration tags)"
+description = "Go unit + contract tests with -race, then the coverage percent and cov/coverage.out (no integration tags; off Linux the guest-lib tests run in proveo/base-node:local)"
 dir = "{{config_root}}"
 usage = '''
 flag "--no-race" help="run without the race detector (a toolchain without cgo)"
-flag "--baseline" help="skip the [vars] unit_baseline tests, the ones already red"
 arg "[go_test_args]..." var=#true default="./..." help="packages, or go test flags after --"
 '''
 run = [
   "rm -rf cov/unit",
   "mkdir -p cov/unit",
-  "go test {% if not usage.no_race %}-race {% endif %}{% if usage.baseline %}-skip={{ ('^(' ~ vars.unit_baseline ~ ')$') | quote }} {% endif %}-cover -covermode=atomic{% for a in usage.go_test_args %} {{ a | quote }}{% endfor %} -args -test.gocoverdir={{ config_root | quote }}/cov/unit",
+  "go test {% if not usage.no_race %}-race {% endif %}-cover -covermode=atomic{% for a in usage.go_test_args %} {{ a | quote }}{% endfor %} -args -test.gocoverdir={{ config_root | quote }}/cov/unit",
   "go tool covdata percent -i=cov/unit",
   "go tool covdata textfmt -i=cov/unit -o=cov/coverage.out",
 ]
@@ -136,7 +105,7 @@ run = "go run ./internal/maintain/e2e {% if usage.print %}-print {% endif %}{% i
 description = "Build harness image(s) as :local with buildx --load (bases serially, then harness waves concurrently); --cli first go installs proveo and proveo-entrypoint into GOPATH/bin"
 dir = "{{config_root}}"
 usage = '''
-arg "[target]" help="a registry target, or all; optional with --cli" {
+arg "[target]..." var=#true help="registry targets, or all; optional with --cli" {
   choices "all" "base" "base-node" "base-node-browser" "claudecode" "claudecode-browser" "claudecode-solidity" "codex" "codex-browser" "cursor" "cursor-browser" "hermes" "opencode" "opencode-browser"
 }
 flag "--cli" help="first go install proveo and proveo-entrypoint into GOPATH/bin (version dev@<sha>)"
@@ -144,7 +113,7 @@ flag "--tag <tag>" default="local" help="image tag to build (:latest is refused 
 flag "--no-cache" help="pass --no-cache to docker buildx build"
 flag "--print" help="print the wave plan instead of running it"
 '''
-run = "go run ./internal/maintain/fleet -tag={{ usage.tag | quote }} {% if usage.no_cache %}-no-cache {% endif %}{% if usage.print %}-print {% endif %}{% if usage.cli %}-cli {% endif %}build{% if usage.target %} {{ usage.target | quote }}{% endif %}"
+run = "go run ./internal/maintain/fleet -tag={{ usage.tag | quote }} {% if usage.no_cache %}-no-cache {% endif %}{% if usage.print %}-print {% endif %}{% if usage.cli %}-cli {% endif %}build{% for t in usage.target %} {{ t | quote }}{% endfor %}"
 
 # SPEC: _spec/internal/maintain/image-build-deploy.puml, _spec/internal/cdn/distribution-update.puml
 [tasks.deploy]
@@ -152,7 +121,7 @@ description = "Promote :local to the tag and buildx --push amd64+arm64 (bases se
 dir = "{{config_root}}"
 tools = { goreleaser = "2.17.0" }
 usage = '''
-arg "[target]" help="a registry target, or all; optional with --cli" {
+arg "[target]..." var=#true help="registry targets, or all; optional with --cli" {
   choices "all" "base" "base-node" "base-node-browser" "claudecode" "claudecode-browser" "claudecode-solidity" "codex" "codex-browser" "cursor" "cursor-browser" "hermes" "opencode" "opencode-browser"
 }
 flag "--cli <version>" help="publish and tag an explicit vX.Y.Z from an approved origin/main commit"
@@ -160,4 +129,4 @@ flag "--yes" help="--cli: skip the local release confirmation"
 flag "--tag <tag>" default="latest" help="image tag to publish (promoted from the :local build)"
 flag "--print" help="print the plan instead of running it"
 '''
-run = "go run ./internal/maintain/fleet -tag={{ usage.tag | quote }} {% if usage.print %}-print {% endif %}{% if usage.cli %}-cli -cli-version={{ usage.cli | quote }} {% endif %}{% if usage.yes %}-yes {% endif %}deploy{% if usage.target %} {{ usage.target | quote }}{% endif %}"
+run = "go run ./internal/maintain/fleet -tag={{ usage.tag | quote }} {% if usage.print %}-print {% endif %}{% if usage.cli %}-cli -cli-version={{ usage.cli | quote }} {% endif %}{% if usage.yes %}-yes {% endif %}deploy{% for t in usage.target %} {{ t | quote }}{% endfor %}"

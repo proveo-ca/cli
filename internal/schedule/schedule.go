@@ -36,7 +36,7 @@ type Job struct {
 	Args       []string `yaml:"args,omitempty"` // extra `proveo run` flags
 	Workdir    string   `yaml:"workdir,omitempty"`
 	PromptFile string   `yaml:"prompt_file"`
-	Mode       string   `yaml:"mode,omitempty"` // goal | loop | plain
+	Mode       string   `yaml:"mode,omitempty"` // goal | loop | plain | attended
 	Budget     string   `yaml:"budget,omitempty"`
 	CatchUp    string   `yaml:"catch_up,omitempty"`
 	Timezone   string   `yaml:"tz,omitempty"`
@@ -92,9 +92,9 @@ func (j Job) validate() error {
 		return fmt.Errorf("instance and new are exclusive, task requires new, and instance selection requires a target")
 	}
 	switch j.Mode {
-	case "", "goal", "loop", "plain":
+	case "", "goal", "loop", "plain", ModeAttended:
 	default:
-		return fmt.Errorf("mode %q: want goal, loop or plain", j.Mode)
+		return fmt.Errorf("mode %q: want goal, loop, plain or attended", j.Mode)
 	}
 	if _, err := j.Location(); err != nil {
 		return err

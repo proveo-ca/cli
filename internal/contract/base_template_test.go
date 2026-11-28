@@ -307,10 +307,10 @@ func TestE2EIsTheOneE2ETask(t *testing.T) {
 // imageTasks are the tasks that reach the fleet main, each with its exact run line.
 var imageTasks = map[string]string{
 	"build": "go run ./internal/maintain/fleet -tag={{ usage.tag | quote }} {% if usage.no_cache %}-no-cache {% endif %}" +
-		"{% if usage.print %}-print {% endif %}{% if usage.cli %}-cli {% endif %}build{% if usage.target %} {{ usage.target | quote }}{% endif %}",
+		"{% if usage.print %}-print {% endif %}{% if usage.cli %}-cli {% endif %}build{% for t in usage.target %} {{ t | quote }}{% endfor %}",
 	"deploy": "go run ./internal/maintain/fleet -tag={{ usage.tag | quote }} {% if usage.print %}-print {% endif %}" +
 		"{% if usage.cli %}-cli -cli-version={{ usage.cli | quote }} {% endif %}{% if usage.yes %}-yes {% endif %}" +
-		"deploy{% if usage.target %} {{ usage.target | quote }}{% endif %}",
+		"deploy{% for t in usage.target %} {{ t | quote }}{% endfor %}",
 	"test-images": "go run ./internal/maintain/fleet {% if usage.print %}-print {% endif %}test{% if usage.target %} {{ usage.target | quote }}{% endif %}",
 }
 
@@ -349,8 +349,8 @@ func TestImageTasksRunTheFleetMain(t *testing.T) {
 		}
 	}
 	for name, lines := range map[string][]string{
-		"build":       {`arg "[target]"`, `flag "--cli"`, `flag "--tag <tag>" default="local"`},
-		"deploy":      {`arg "[target]"`, `flag "--cli <version>"`, `flag "--yes"`, `flag "--tag <tag>" default="latest"`},
+		"build":       {`arg "[target]..." var=#true`, `flag "--cli"`, `flag "--tag <tag>" default="local"`},
+		"deploy":      {`arg "[target]..." var=#true`, `flag "--cli <version>"`, `flag "--yes"`, `flag "--tag <tag>" default="latest"`},
 		"test-images": {`arg "[target]"`},
 	} {
 		for _, line := range lines {

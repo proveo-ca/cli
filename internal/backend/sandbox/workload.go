@@ -14,6 +14,7 @@ type Workload struct {
 	Files      map[string][]byte
 	Entrypoint []string // the ENTRYPOINT sbx launches: the recipe's, else the image's
 	Report     Report   // what Spec decided that its caller prints
+	Err        error    // why the descriptor cannot run: the launch stops at the kit step
 }
 
 // Allow is the workload's network-policy@1 runtime allow list.

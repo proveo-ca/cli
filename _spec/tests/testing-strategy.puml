@@ -50,7 +50,7 @@ title Testing strategy — layers 1, 2 and 4, speed traded for fidelity (layer 3
 ' verb that replaced it (2026-11-12; maintainer tooling is mise tasks:
 ' _spec/cmd/proveo/usage.puml).
 '   test ............ rm -rf cov/unit, mkdir -p cov/unit, go test [-race]
-'                     [--baseline's -skip] -cover -covermode=atomic
+'                     -cover -covermode=atomic
 '                     [go_test_args, default ./...] -args
 '                     -test.gocoverdir={{ config_root | quote }}/cov/unit,
 '                     then go tool covdata percent and textfmt

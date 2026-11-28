@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,12 +21,15 @@ import (
 )
 
 type taskMetadata struct {
-	id, key, excerpt, pr string
-	linear               linearIssue
-	at                   time.Time
+	id, key, excerpt string
+	pr               prInfo   // the first PR, with every PR's tickets and the first plan; or why none was read
+	prs              []prInfo // every PR the task's branches have
+	branches         string   // the working branches the PRs were read for
+	linear           linearIssue
+	at               time.Time
 }
 
-type linearIssue struct{ Identifier, Title, Description, URL string }
+type linearIssue struct{ Identifier, Title, Description, URL, CreatedAt string }
 
 var linearID = regexp.MustCompile(`^[A-Z][A-Z0-9]*-[0-9]+$`)
 var linearIDInLabel = regexp.MustCompile(`(?i)\b[A-Z][A-Z0-9]*-[0-9]+\b`)
@@ -50,27 +55,33 @@ func linearIdentifier(t Task) string {
 }
 
 func metadataKey(t Task) string {
-	return t.ID + "\x00" + t.Ticket + "\x00" + t.Repo + "\x00" + t.Branch
+	return t.ID + "\x00" + t.Ticket + "\x00" + t.Repo + "\x00" + t.Branch + "\x00" + t.Tip
 }
 
 func (m *dashModel) readMetadata(t Task) tea.Cmd {
 	linear := linearIdentifier(t)
-	if t.ID == "" || (t.Ticket == "" && t.Branch == "" && linear == "") || m.metadataPending || !m.details || m.sbxTab {
+	if t.ID == "" || m.metadataPending || m.sbxTab || t.Review != nil {
 		return nil
 	}
 	cacheKey := metadataKey(t)
-	if cached, ok := m.metadata[cacheKey]; ok && time.Since(cached.at) < 2*time.Minute {
+	if cached, ok := m.metadata[cacheKey]; ok && time.Since(cached.at) < time.Minute {
 		return nil
 	}
+	cwd := m.CWD
 	m.metadataPending = true
 	return func() tea.Msg {
-		meta := taskMetadata{id: t.ID, key: cacheKey, at: time.Now()}
+		meta := taskMetadata{id: t.ID, key: cacheKey, at: time.Now(), branches: strings.Join(t.Branches, ",")}
 		meta.excerpt = issueExcerpt(t.Ticket)
-		if linear != "" {
-			meta.linear = readLinearIssue(linear)
-			meta.excerpt = meta.linear.Description
+		meta.prs, meta.pr = branchPRs(t, cwd)
+		if linear == "" && len(meta.pr.Tickets) > 0 {
+			linear = meta.pr.Tickets[0]
 		}
-		meta.pr = branchPR(t)
+		if linear != "" {
+			meta.linear = readLinearIssue(linearToken(cwd), linear)
+			if meta.linear.Description != "" {
+				meta.excerpt = meta.linear.Description
+			}
+		}
 		return meta
 	}
 }
@@ -91,51 +102,84 @@ func issueExcerpt(ticket string) string {
 	return ""
 }
 
-func readLinearIssue(id string) linearIssue {
-	token := os.Getenv("LINEAR_API_KEY")
+func readLinearIssue(token, id string) linearIssue {
 	if token == "" || id == "" {
 		return linearIssue{}
 	}
-	body, _ := json.Marshal(map[string]any{"query": "query($id: String!) { issue(id: $id) { identifier title description url } }", "variables": map[string]string{"id": id}})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	var v struct{ Issue linearIssue }
+	if linearQuery(token, "query($id: String!) { issue(id: $id) { identifier title description url createdAt } }", map[string]string{"id": id}, 3*time.Second, &v) != nil {
+		return linearIssue{}
+	}
+	return v.Issue
+}
+
+// linearToken is LINEAR_API_KEY from the dashboard's environment, else the workspace .env, which proveo keeps host-only.
+func linearToken(cwd string) string { return tokenFor(cwd, "LINEAR_API_KEY") }
+
+// linearQuery posts one GraphQL query to Linear and decodes its data into out.
+var linearQuery = func(token, query string, vars any, timeout time.Duration, out any) error {
+	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.linear.app/graphql", bytes.NewReader(body))
 	if err != nil {
-		return linearIssue{}
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return linearIssue{}
+		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var v struct {
-		Data struct{ Issue linearIssue }
+		Data   json.RawMessage
+		Errors []struct{ Message string }
 	}
-	if resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 128*1024)).Decode(&v) == nil {
-		return v.Data.Issue
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&v); err != nil {
+		return fmt.Errorf("linear answered %s", resp.Status)
 	}
-	return linearIssue{}
+	if len(v.Errors) > 0 {
+		return errors.New("linear: " + v.Errors[0].Message)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("linear answered %s", resp.Status)
+	}
+	return json.Unmarshal(v.Data, out)
 }
 
-func branchPR(t Task) string {
-	if t.Repo == "" || t.Branch == "" {
-		return ""
+// branchPRs is every PR of the task's branches, and the first one with all their tickets and the first plan.
+func branchPRs(t Task, cwd string) ([]prInfo, prInfo) {
+	if t.Git == "GitLab" {
+		pr := gitlabMR(t)
+		if pr.Number == 0 {
+			return nil, pr
+		}
+		return []prInfo{pr}, pr
 	}
-	switch t.Git {
-	case "GitHub":
-		b, err := providerCommand(t.Repo, "gh", "pr", "list", "--head", t.Branch, "--state", "all", "--limit", "1", "--json", "number,isDraft")
-		var p []struct {
-			Number  int
-			IsDraft bool
-		}
-		if err == nil && json.Unmarshal(b, &p) == nil && len(p) > 0 {
-			if p[0].IsDraft {
-				return fmt.Sprintf("Draft #%d", p[0].Number)
+	prs, note := taskPRs(t, cwd)
+	if len(prs) == 0 {
+		return nil, prInfo{Note: note}
+	}
+	first := prs[0]
+	for _, p := range prs[1:] {
+		for _, id := range p.Tickets {
+			if !slices.Contains(first.Tickets, id) {
+				first.Tickets = append(first.Tickets, id)
 			}
-			return fmt.Sprintf("#%d", p[0].Number)
 		}
+		if first.Plan == "" {
+			first.Plan = p.Plan
+		}
+	}
+	return prs, first
+}
+
+func gitlabMR(t Task) prInfo {
+	switch t.Git {
 	case "GitLab":
 		b, err := providerCommand(t.Repo, "glab", "mr", "list", "--source-branch", t.Branch, "--all", "--output", "json")
 		var p []struct {
@@ -143,13 +187,11 @@ func branchPR(t Task) string {
 			Draft bool
 		}
 		if err == nil && json.Unmarshal(b, &p) == nil && len(p) > 0 {
-			if p[0].Draft {
-				return fmt.Sprintf("Draft !%d", p[0].IID)
-			}
-			return fmt.Sprintf("!%d", p[0].IID)
+			return prInfo{Number: p[0].IID, State: "OPEN", Draft: p[0].Draft}
 		}
+		return prInfo{}
 	}
-	return ""
+	return prInfo{}
 }
 
 func providerCommand(dir, bin string, args ...string) ([]byte, error) {

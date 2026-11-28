@@ -158,7 +158,9 @@ title Seed and launch — the one startup step both backends run, and how the ag
 ' _proveo_in_sbx holds (SANDBOX_NAME, SANDBOX_ID or SANDBOX_VM_ID — F18,
 ' 2026-10-17) AND PROVEO_WORKDIR is set: a bare `sbx run -t` of the image (ladder rungs 1-2)
 ' has no proveo kit, so no seed will ever mark the boot. It gives up after
-' PROVEO_INSTRUCTIONS_WAIT (30s) with a warning, and never hangs a launch. (The
+' "Raise it everywhere" (2026-11-26): a headless review of the pluvo monorepo exited 1
+' at 30s, setup and SSH verification still running on a loaded host.
+' PROVEO_INSTRUCTIONS_WAIT (120s since 2026-11-26) with a warning, and never hangs a launch. (The
 ' deleted docker backend seeded in the entrypoint before exec, so it never waited.)
 ' PROVEO_SEED_REFUSED stops a managed launch with PROVEO_WORKDIR set.
 ' A bare sbx launch ignores that marker. --cwd still answers on a refusal.

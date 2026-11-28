@@ -247,6 +247,9 @@ func TestOpenCodeHistoryArgsTargetTheEngine(t *testing.T) {
 }
 
 func TestOpenCodeCredentialHookWaitsForHistory(t *testing.T) {
+	if testx.InLinux(t) {
+		return
+	}
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq unavailable")
 	}

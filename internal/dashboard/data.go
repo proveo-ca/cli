@@ -3,9 +3,7 @@ package dashboard
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,12 +19,20 @@ import (
 
 type Task struct {
 	ID, Title, Agent, Phase, Ticket, Source, Git, Prompt, Reason string
+	Outcome                                                      string
 	Instance, Sandbox, VMID, Branch, Repo, Base, Tip, Workdir    string
 	Host                                                         string
 	PR                                                           string
 	Revision                                                     string
 	LastPush, Updated                                            time.Time
 	Live, Guest                                                  bool
+	Branches                                                     []string         // the running sandbox's working branches, its own checkout first
+	Review                                                       *ReviewRequest   // a ghost: a review request no run has taken
+	Ports                                                        []sbx.ListedPort // the sandbox's published ports, from sbx ls
+	Session                                                      string           // the host tmux session a `proveo run` hosts this sandbox's agent in
+	Job                                                          string           // the schedule job this task runs; empty for an instance alone
+	DashboardJob                                                 bool             // the dashboard made the job, so clean up may forget it
+	Report, Summary                                              string           // the report the run that ended it left on the host, and its RESULT line
 	DependsOn                                                    []string
 	State                                                        schedule.QueueState
 }
@@ -37,7 +43,6 @@ type Data struct {
 	Tasks         []Task
 	Capacity      sbx.Capacity
 	CapacityError string
-	Files         []Change
 }
 
 func Read(home, state, cwd string) (Data, error) {
@@ -67,7 +72,10 @@ func Read(home, state, cwd string) (Data, error) {
 			continue
 		}
 		task := Task{ID: name, Title: name, Agent: job.Target, Phase: job.Phase, Ticket: job.Ticket,
-			Source: taskSource(job), State: schedule.Queued, DependsOn: job.DependsOn}
+			Source: taskSource(job), State: schedule.Queued, DependsOn: job.DependsOn, Job: name}
+		if _, err := os.Stat(filepath.Join(home, "dashboard-jobs", name, "job.json")); err == nil {
+			task.DashboardJob = true
+		}
 		if origin, ok := c.Jobs[name]; ok && task.Source == "Local" {
 			task.Source = taskSource(origin)
 		}
@@ -84,9 +92,7 @@ func Read(home, state, cwd string) (Data, error) {
 		if task.Live {
 			task.State = schedule.Running
 		}
-		if res := schedule.LastResult(home, name); res != nil && task.Updated.IsZero() && !task.Live {
-			task.State, task.Reason, task.Updated = schedule.Attention, res.Detail, res.Finished
-		}
+		task = withResult(task, schedule.LastResult(home, name))
 		if task.Phase == "" {
 			task.Phase = "Spec"
 			if task.State == schedule.Attention {
@@ -97,6 +103,9 @@ func Read(home, state, cwd string) (Data, error) {
 		if i := matchingInstance(instances, inventory, name, job); i >= 0 {
 			setInstance(&task, instances[i], inventory)
 			seen[instances[i].ID] = true
+			if task.Live {
+				task.State = schedule.Running
+			}
 		}
 		if task.Revision != "" && task.Tip != "" && task.Revision != task.Tip && task.Phase != "Spec" {
 			task.Phase = "Spec revision"
@@ -113,18 +122,18 @@ func Read(home, state, cwd string) (Data, error) {
 		}
 		task := Task{ID: i.ID, Title: label, Agent: i.Target, Phase: "Review", State: schedule.Attention}
 		setInstance(&task, i, inventory)
-		if task.Guest {
+		if task.Guest || task.Live {
 			task.State, task.Phase = schedule.Running, "Working"
 		}
 		d.Tasks = append(d.Tasks, task)
 	}
 	d.Tasks = append(d.Tasks, discoveredSandboxes(cwd, instances, inventory)...)
 	slices.SortFunc(d.Tasks, sortTasks)
-	d.Files = workspaceFiles(cwd)
 	return d, nil
 }
 
 func discoveredSandboxes(cwd string, instances []sandbox.Instance, rows []sbx.Listed) []Task {
+	host, _ := os.Hostname()
 	var discovered []Task
 	for _, row := range rows {
 		if row.ID == "" || !row.Running() || len(row.Workspaces) == 0 ||
@@ -134,9 +143,13 @@ func discoveredSandboxes(cwd string, instances []sandbox.Instance, rows []sbx.Li
 		if slices.ContainsFunc(instances, func(i sandbox.Instance) bool { return i.VMID == row.ID }) {
 			continue
 		}
+		session := liveSession(row.Name)
 		discovered = append(discovered, Task{
-			ID: "sbx:" + row.ID, Title: row.Name, Sandbox: row.Name, VMID: row.ID,
-			Agent: row.Agent, Phase: "Working", State: schedule.Running, Reason: "Discovered from the local inventory",
+			ID: "sbx:" + row.ID, Title: row.Name, Sandbox: row.Name, VMID: row.ID, Host: host, Guest: true,
+			Workdir: strings.TrimSuffix(row.Workspaces[0], ":ro"),
+			Agent:   row.Agent, Phase: "Working", State: schedule.Running, Reason: "Discovered from the local inventory",
+			Ports:   row.Ports,
+			Session: session, Live: session != "",
 		})
 	}
 	return discovered
@@ -196,6 +209,12 @@ func setInstance(t *Task, i sandbox.Instance, rows []sbx.Listed) {
 	t.Instance, t.Sandbox, t.Base, t.Repo, t.Workdir = i.ID, i.Name, i.Base, i.Repo, i.GuestWorkspace()
 	t.VMID, t.Host = i.VMID, i.Host
 	t.Guest = instanceLive(i, rows)
+	if k := slices.IndexFunc(rows, func(r sbx.Listed) bool { return r.Name == i.Name && (i.VMID == "" || r.ID == i.VMID) }); k >= 0 {
+		t.Ports = rows[k].Ports
+	}
+	if s := liveSession(i.Name); s != "" {
+		t.Session, t.Live = s, true
+	}
 	if i.Isolated() && i.Repo != "" {
 		t.Branch = i.Branch()
 		t.Tip = carriedTip(i)
@@ -238,96 +257,6 @@ func carriedTip(i sandbox.Instance) string {
 	return ""
 }
 
-func Changes(t Task) ([]Change, error) {
-	if t.Base == "" || t.Tip == "" || t.Repo == "" {
-		return nil, nil
-	}
-	out, err := git(t.Repo, "diff", "--name-status", "-z", "-M", t.Base, t.Tip)
-	if err != nil {
-		return nil, err
-	}
-	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
-	var changes []Change
-	for len(fields) >= 2 {
-		kind, path := fields[0], fields[1]
-		fields = fields[2:]
-		c := Change{Kind: kind, Path: path}
-		if strings.HasPrefix(kind, "R") || strings.HasPrefix(kind, "C") {
-			if len(fields) == 0 {
-				return nil, fmt.Errorf("truncated git change for %s", path)
-			}
-			c.OldPath, c.Path, fields = path, fields[0], fields[1:]
-		}
-		changes = append(changes, c)
-	}
-	slices.SortFunc(changes, func(a, b Change) int { return strings.Compare(a.Path, b.Path) })
-	return changes, nil
-}
-
-func Preview(cwd string, t Task, c Change, diff bool) (string, error) {
-	if !filepath.IsLocal(filepath.FromSlash(c.Path)) {
-		return "", fmt.Errorf("path lies outside the workspace")
-	}
-	if c.Kind != "" && t.Tip != "" {
-		if diff {
-			args := []string{"--literal-pathspecs", "diff", "--no-ext-diff", "-M", t.Base, t.Tip, "--", c.Path}
-			if c.OldPath != "" {
-				args = append(args, c.OldPath)
-			}
-			return git(t.Repo, args...)
-		}
-		tip := t.Tip
-		if c.Kind == "D" {
-			tip = t.Base
-		}
-		return git(t.Repo, "show", tip+":"+c.Path)
-	}
-	root, err := os.OpenRoot(cwd)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = root.Close() }()
-	path := filepath.FromSlash(c.Path)
-	info, err := root.Stat(path)
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("preview requires a regular file")
-	}
-	f, err := root.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 128*1024))
-	return string(b), err
-}
-
-func workspaceFiles(cwd string) []Change {
-	var out []Change
-	_ = filepath.WalkDir(cwd, func(path string, e fs.DirEntry, err error) error {
-		if len(out) >= 3000 {
-			return fs.SkipAll
-		}
-		if err != nil {
-			return nil
-		}
-		if e.IsDir() {
-			if path != cwd && slices.Contains([]string{".git", "node_modules", "vendor", ".venv"}, e.Name()) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if rel, err := filepath.Rel(cwd, path); err == nil {
-			out = append(out, Change{Path: rel})
-		}
-		return nil
-	})
-	slices.SortFunc(out, func(a, b Change) int { return strings.Compare(a.Path, b.Path) })
-	return out
-}
-
 func readText(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -343,4 +272,29 @@ func git(dir string, args ...string) (string, error) {
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
 	return strings.TrimSuffix(string(out), "\n"), err
+}
+
+// withResult folds a job's last result into its task: all of it when the queue holds nothing newer,
+// only the outcome when the result ended the run the queue still shows.
+func withResult(task Task, res *schedule.Result) Task {
+	if res == nil || task.Live {
+		return task
+	}
+	switch {
+	case task.Updated.IsZero():
+		task.State, task.Reason, task.Updated, task.Outcome = schedule.Attention, res.Detail, res.Finished, res.Outcome
+		task.Report, task.Summary = res.Report, res.Summary
+	case task.State == schedule.Attention && !res.Finished.Before(task.Updated):
+		task.Outcome, task.Report, task.Summary = res.Outcome, res.Report, res.Summary
+	}
+	return task
+}
+
+// liveSession is the host tmux session a `proveo run` hosts sandbox name's agent in, while that session lives.
+var liveSession = func(name string) string {
+	s := sandbox.SessionOf(name)
+	if s == "" || !schedule.NewTmux(s, nil).Alive() {
+		return ""
+	}
+	return s
 }

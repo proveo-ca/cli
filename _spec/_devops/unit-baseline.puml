@@ -1,131 +1,80 @@
 @startuml
 !include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
 skinparam noteTextAlignment left
-title The unit baseline — green means no new failing test
-' purpose: how a branch proves it broke nothing while the unit suite is already red on the host it is built on
+title The unit baseline, retired — guest-lib tests run in the Linux lane
+' purpose: why the unit suite needs no skip list, and how a macOS host runs the tests that drive the guest shell lib
 ' covers: mise.toml
 ' covers: internal/contract/mise_gates_test.go
+' covers: internal/testx/linux_lane.go
 '   the decision ............ _spec/_plans/tui-upgrades-delivery.puml (DECISIONS, D12)
-'   the gate it stands in ... _spec/_plans/tui-upgrades-delivery.puml (the standing gate)
 '   the full gate ........... _spec/_devops/release-gate.puml
+'   the lib under test ...... _spec/internal/sbx/state-sync.puml
 ' Notes are capped at 5 lines x 50 columns; one idea per anchor.
+' status: RETIRED 2026-11-25. `mise run test` has no --baseline flag and
+' mise.toml has no [vars] unit_baseline. TestUnitLaneRunsEveryTest keeps
+' them out.
 '
-' ── WHY THIS EXISTS ────────────────────────────────────────────────────────
-' MEASURED 2026-11-10 at 0f34a714 (= main), darwin/arm64, with and without
-' -race: `go test -count=1 ./...` fails 15 tests in 3 of 47 packages. None
-' sits in a TUI package. Two fail on any host: envreg.go:153 puts
-' PROVEO_GITHUB_TRANSPORT in the wrong block, and probe_test.go:30 names a
-' `:latest` tag outside imagetest.Resolve. Thirteen trace to this macOS host:
-' /bin/bash is 3.2, `flock` is absent, and a unix socket path under the test
-' temp dir exceeds 104 bytes. The release gate runs `go test ./...` in its
-' in-sandbox Linux half, where those thirteen are expected to pass.
-' [Unverified] That they pass on Linux: no Linux run exists yet.
-' `mise run ci` therefore exits non-zero on this host before any change, and
-' a red suite cannot say whether a slice broke something.
-' The Executor, 2026-11-10: "Since the failures are not TUI related, let Green
-' be 'no new failing tests'".
+' ── WHAT THE BASELINE WAS (2026-11-10 to 2026-11-25) ─────────────────────
+' `go test ./...` was red on macOS before any change, so a branch could not
+' tell old red from new. The Executor chose "no new failing tests" on
+' 2026-11-10: `mise run test --baseline` added
+'   -skip='^(<[vars] unit_baseline>)$'
+' over a sorted list of top-level test names. It grew to 25 rows: 24 macOS
+' tooling failures and one flake.
 '
-' ── WHAT THE GATE DOES (2026-11-17) ───────────────────────────────────────
-' `mise run test --baseline` adds one Tera-toggled flag to the unit line:
-'   go test [-race] [-skip='^(<[vars] unit_baseline>)$'] -cover
-'     -covermode=atomic [go_test_args] -args -test.gocoverdir=<repo>/cov/unit
-' HISTORY, 2026-11-12 to 2026-11-17: a separate baseline task ran
-'   go test [-race] -count=1 -skip='^(<[vars] unit_baseline>)$' [go_test_args]
-' DECIDED 2026-11-17: the flattening folded it into test as --baseline, so
-' one task owns the unit lane and its coverage data.
-' The list lives in mise.toml [vars] unit_baseline: one backslash-continued
-' string, one name per line, joined by |. NOT CHOSEN: a TOML array ([vars]
-' rejects arrays, MEASURED on mise 2026.10.17); one 700-column line. -skip drops exactly those top-level
-' tests; every other failure, a build error or a panic outside a test fails
-' go test, and go test's exit code is the verdict.
-'   --no-race ........... drops -race, for a toolchain without cgo
-'   --baseline .......... adds the anchored -skip
-'   [go_test_args]... ... packages replace ./...; go test flags pass after --
-' LOST ON 2026-11-12, BY DESIGN: a listed test never runs here, so the gate
-' prints no "passes here" note, and a row is a bare test name with no package
-' scope (-skip is unscoped). A stale row stays silent until someone reads
-' `mise run test` without --baseline, which runs every test. TestUnitBaselineRowsNameRealTests keeps each
-' row a top-level test defined in exactly one tracked _test.go, so a row
-' cannot skip a second test of the same name.
-' HISTORY, 2026-11-10 to 2026-11-12: the gate was a Go program over
-' `go test -race -count=1 -json ./...`. It listed a failing top-level test as
-' "package Test", a test-less package failure as "package (package)", and
-' diffed them against a unit-baseline.txt: a failure outside the list exited
-' 1, a listed test that passed printed a note and exited 0, so a row could
-' pass on one host type without turning the gate red on the other.
-' Two rows left after their failures were repaired. The registry now lists
-' PROVEO_GITHUB_TRANSPORT in sorted internal order. The image reference
-' contract checks image-tagged suites. Untagged resolver fixtures may use
-' :latest as test data.
-' THE GATE DOES NOT RETRY, SO ONE KNOWN FLAKE IS LISTED. MEASURED 2026-11-10:
-' TestAdbMirrorStartsWithTheSocketAddress failed in 2 of 8 full runs and passed
-' 6 of 6 alone. At main it passed 3 of 3 full runs. Its helper starts a stub in
-' the background, sleeps a fixed 50ms and then reads the stub's log
-' (internal/contract/host_adb_lib_test.go:42-44); under a loaded full run the
-' stub has not written yet. The branch adds tests and so adds load; it does
-' not touch that code. The row is the 16th in the list, and the first that is
-' a flake rather than a failure. A retry inside the gate would also hide a
-' test that fails only in the full run's order, so the gate has none.
-' [Inference] The fixed sleep is the cause; the timing was read, not traced.
-' RE-RECORDED UNDER go1.26.10, 2026-11-10 (delivery plan, B12). The full run
-' failed the same 15 tests; the flake row passed in that run. The list did
-' not change.
-' RENAMED 2026-11-14 (_spec/internal/sbx/state-sync.puml, decision 3): the row
-' TestConfigSyncPrunesTheVolumesStateOwns became
-' TestConfigSyncLeavesTheStateDirsToTheStateSync, the same config-sync check
-' on PROVEO_STATE_DIRS instead of /proc/mounts; it fails on this macOS host
-' for the same reason (bash 3.2, no GNU find -printf). The eleven lib tests
-' the stopgap added in internal/contract/state_sync_test.go fail here for
-' that reason too, and each has a row. MEASURED 2026-11-14 on this host:
-' with the old list the contract package failed ten of them (the eleventh,
-' TestWithoutStateDirsTheKitVolumesTravelAsState, came later and fails
-' alone), and with the rows `mise run baseline ./internal/contract/` (today
-' `mise run test --baseline ./internal/contract/`) passes.
-' The list holds 25 rows: 24 failures and the flake.
+' ── WHY THE ROWS WERE RED (MEASURED 2026-11-25, darwin/arm64) ─────────────
+' 22 rows drive packages/lib/*.sh, which targets the Linux guest. macOS gave
+' them /bin/bash 3.2 and BSD tools: no find -printf, no cp --parents -t, no
+' xargs -d, no mv -T, no flock, and bash 3.2 counts an emoji in bytes.
+' The same tests passed in golang:1.26.7 (Debian, bash 5.2) and in
+' proveo/base-node:local (Ubuntu 26.04, bash 5.3, node 22): 22 of 22.
+' TestOpenCodeSeedProgressFixtures already passed on macOS; its row was stale.
+' TestAdbMirrorStartsWithTheSocketAddress slept a fixed 50ms before reading a
+' background stub's log. It now polls for the line it expects, up to 5s.
 '
-' Pinned by internal/contract/mise_gates_test.go:
-'   TestUnitBaselineRowsNameRealTests       sorted, unique, one test each, and
-'                                           the anchored pattern matches each
-'                                           name alone
-'   TestBaselineSkipsExactlyTheListedTests  the exact go test line and the
-'                                           --no-race, --baseline and args usage
-'   TestUnitLanesOfferNoRace                -race only behind --no-race
+' ── THE LINUX LANE ─────────────────────────────────────────────────────────
+' A guest-lib test starts with `if testx.InLinux(t) { return }`.
+'   linux host ........ returns false; the test runs in place
+'   other host ........ go test -c for GOOS=linux once per package, then
+'                       docker run proveo/base-node:local with the module
+'                       mounted read-only at its own path, --network none,
+'                       -run '^<TestName>$'; a FAIL fails the host test and a
+'                       SKIP inside skips it
+'   no docker/image ... t.Skip naming what is missing
+' PROVEO_LINUX_LANE=inside marks the delegated run; PROVEO_LINUX_LANE_IMAGE
+' picks another image. Both are registered in internal/envreg.
+' MEASURED 2026-11-25: `go test -count=1 -race ./...` passed on this macOS
+' host with no skip list; internal/contract plus internal/sbx took about 16s.
+' NOT CHOSEN: Homebrew GNU tools (host change, drifts from the guest);
+' porting the lib to bash 3.2 and BSD (rewrites the guest copy path); a
+' linux build tag (the tests would never run on a Mac).
 
-component """mise run test --baseline\ngo test -race -skip='^(<list>)$' ./...""" as RUN <<app>>
-database """[vars] unit_baseline""\nmise.toml · 24 failures · 1 flake" as LIST <<db>>
-component "any failure, build error\nor panic · exit 1" as NEW <<error>>
-component "the 'passes here' note\nand per-package scope\nLOST 2026-11-12" as FIXED <<error>>
-component """mise run ci""\nred on this host at main" as CI <<error>>
+component """mise run test\ngo test -race -cover ./...""" as RUN <<app>>
+component "guest-lib test\nif testx.InLinux(t)" as LIBTEST <<app>>
+node "proveo/base-node:local\nbash 5.3 · GNU · flock · node" as IMAGE <<host>>
+component "[vars] unit_baseline\n25 rows · RETIRED" as LIST <<error>>
+component "no Docker or image\nt.Skip, named" as SKIP <<async>>
 
-LIST ARROW_MAIN RUN : -skip, anchored
-RUN ARROW_MAIN NEW : go test's exit code
-FIXED ARROW_ERROR LIST : a listed test never runs here
-CI ARROW_ERROR RUN : cannot tell old red from new
+RUN ARROW_MAIN LIBTEST
+LIBTEST ARROW_MAIN IMAGE : off Linux
+LIBTEST ARROW_OPTIONAL SKIP : nothing to run it in
+LIST ARROW_ERROR RUN : no -skip remains
 
 note bottom of LIST
-  **Host-shaped, so it only shrinks by hand.**
-  24 rows are macOS tooling failures.
-  A row leaves when its test passes on both
-  host types, not when one host says so.
+  **A skip list hides drift as well as red.**
+  Every row now passes on its target toolchain,
+  so the list and the flag that read it are gone.
 end note
 
-note bottom of NEW
-  **A build error counts.** go test fails a
-  package that does not compile, and -skip
-  names tests, never packages, so a slice
-  cannot break a package and read green.
+note bottom of IMAGE
+  **The lane runs the guest's own toolchain.**
+  Testing the lib under macOS tools measured the
+  host, not the code that ships into the sandbox.
 end note
 
-note bottom of FIXED
-  **A stale row stays silent.** The gate
-  skips a listed test instead of running it,
-  so only plain test shows a row that passes.
-end note
-
-note bottom of CI
-  **Why not fix the fifteen first.** None is in
-  a TUI package, and thirteen need a Linux
-  host to judge. The owner chose to gate on
-  "no new failure" instead.
+note bottom of SKIP
+  **A missing image is a skip, not a pass.**
+  The message names Docker or the build command,
+  so a Mac without either still reads honestly.
 end note
 @enduml

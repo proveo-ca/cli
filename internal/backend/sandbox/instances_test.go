@@ -240,3 +240,43 @@ func TestInstanceCleanupKeepsUnknownVMsAndRefusesReusedNames(t *testing.T) {
 		t.Errorf("RemoveKept with replacement VM = %v, want ownership refusal", err)
 	}
 }
+
+func TestAJobsInstanceIsFoundAndForgottenWithItsMounts(t *testing.T) {
+	state, home, ws := t.TempDir(), t.TempDir(), t.TempDir()
+	write := func(name, id, job string) {
+		t.Helper()
+		i := &Instance{Name: name, ID: id, Workspace: ws, Job: job, Legacy: true, dir: instanceDir(state, name)}
+		if err := i.save(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(home, "instances", id, "toolchains"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("claudecode-review-399-075c174e3d", "075c174e3de172d05ca2", "claudecode-59e09913e73a")
+	write("codex-mine-1111", "1111aaaa", "codex-other")
+	i, err := JobInstance(state, "claudecode-59e09913e73a")
+	if err != nil || i == nil || i.Name != "claudecode-review-399-075c174e3d" {
+		t.Fatalf("instance = %+v, %v", i, err)
+	}
+	if err := i.Forget(home); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{instanceDir(state, "claudecode-review-399-075c174e3d"), filepath.Join(home, "instances", "075c174e3de172d05ca2")} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Errorf("%s survived: %v", gone, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "instances", "1111aaaa")); err != nil {
+		t.Errorf("another job's instance was touched: %v", err)
+	}
+	if none, err := JobInstance(state, "no-such-job"); none != nil || err != nil {
+		t.Errorf("a job without an instance = %+v, %v", none, err)
+	}
+	if byID, err := InstanceByID(state, "1111aaaa"); err != nil || byID == nil || byID.Name != "codex-mine-1111" {
+		t.Errorf("instance by ID = %+v, %v", byID, err)
+	}
+	if none, err := InstanceByID(state, "075c174e3de172d05ca2"); none != nil || err != nil {
+		t.Errorf("a forgotten instance is still found by ID: %+v, %v", none, err)
+	}
+}

@@ -33,7 +33,7 @@ func TestDashboardMatchesStockSbxOnTmux(t *testing.T) {
 		"PROVEO_STATE_ROOT="+filepath.Join(home, "state"), "sh", "-c", `cd "$1" && exec "$2"`, "sh", work, bin); err != nil {
 		t.Fatal(err)
 	}
-	waitDashboardPane(t, embedded, "Review queue")
+	waitDashboardPane(t, embedded, "Task Dashboard")
 	if err := embedded.SendKeys("C-g", "Tab"); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestDashboardMatchesStockSbxOnTmux(t *testing.T) {
 	if err := embedded.SendKeys("C-g", "Tab"); err != nil {
 		t.Fatal(err)
 	}
-	waitDashboardPane(t, embedded, "Review queue")
+	waitDashboardPane(t, embedded, "Task Dashboard")
 	if err := embedded.SendKeys("C-g", "Tab"); err != nil {
 		t.Fatal(err)
 	}

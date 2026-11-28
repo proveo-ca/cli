@@ -260,6 +260,12 @@ _git_push() {
   esac
 }
 
+case "$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)" in proveo/*)
+  _git_sync_emit allow ""
+  exit 0
+  ;;
+esac
+
 if git rev-parse '@{u}' >/dev/null 2>&1; then
   ahead="$(git rev-list --count '@{u}..HEAD' 2>/dev/null || printf '0')"
   if (( ahead > 0 )); then

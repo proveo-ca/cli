@@ -21,6 +21,11 @@
 ' covers: internal/choiceui/attach_confirm.go
 ' covers: internal/schedule/dashboard_job.go
 ' covers: internal/schedule/phase.go
+' covers: internal/run/queue.go
+' covers: internal/run/queue_test.go
+' covers: cmd/proveo/queue_run.go
+' covers: cmd/proveo/queue_run_test.go
+' covers: internal/schedule/attended_test.go
 ' covers: e2e/dashboard_native_tmux_test.go
 ' covers: e2e/dashboard_sbx_tmux_test.go
 ' status: The HTML prototype is index.html in this directory. The native
@@ -66,6 +71,17 @@
 ' Shared writable direct mode permits one writer over overlapping host paths.
 ' Reject a second writer or require a private copy. Distinct VMs can still
 ' share dependencies through read-only mounts and contend for host ports.
+' CHOSEN BRANCH (2026-11-27): an instance records WorkBranch when its run passed
+' --branch; Branch() then names it instead of proveo/<name>, and allocation
+' fetches it from origin and starts from its tip when origin has it. A proveo/*
+' branch's upstream is itself in the checkout, so it stays local.
+' LINKED SHARES (2026-11-27, chosen "Always writable"): an escaping symlink the
+' workspace plan mounts, such as the monorepo's _spec -> ~/Syncd/pluvo/_spec,
+' keeps the workspace's mode in an isolated instance instead of being forced
+' read-only; the seed demands _spec writable, so the forced mode made every new
+' instance exit 1 ("_spec is read-only, so edits cannot reach the host"). Parallel
+' instances may edit the same spec file; Syncd keeps conflict copies. A run with
+' --read-only-shares (reviews) still mounts them read-only (instanceMounts).
 '
 ' RESUME AND RETENTION
 ' Save instance records and a host index under the existing state root.
@@ -157,6 +173,85 @@
 ' A confirmed exit and an external SIGINT take the same shutdown path. Close
 ' the dashboard-owned sbx client with a bounded wait, restore terminal
 ' state, and exit with status 130. Keep running sandboxes and scheduled jobs.
+' TASK DETAILS, MEASURED AND FIXED 2026-11-25 (macOS, sbx v0.54.0):
+'   usage ..... the probe pinned -u agent -w <computed guest path> and ran only
+'               for instances with a Workdir and Host, so a discovered sandbox
+'               always read "—". Now: sbx exec SANDBOX -- sh -c probe, no user
+'               or workdir, behind verifiedGuest (sbx ls says running) so a
+'               stopped VM never restarts; CPU cores busy of nproc, RAM used of
+'               MemTotal, disk, /proc/uptime. A discovered sandbox is Guest with
+'               the host's name and its first sbx ls workspace as Workdir.
+'               sbx inspect and sbx ls report no usage (checked).
+'   files ..... Files listed the host checkout. Now the task's sandbox:
+'               guest git ls-files (find outside git), else git ls-tree of the
+'               carried tip, else of the base. Changes read the guest's diff
+'               against the base plus untracked files, or its git status.
+'               Guest git runs with GIT_OPTIONAL_LOCKS=0: the agent works there.
+'   base ...... Changes are a PR's view: the diff from where the branch left its
+'               base, uncommitted work and untracked files included, the way
+'               `git diff origin/dev...HEAD` reads (never HEAD..origin/dev, which
+'               adds what landed on dev since). The base is, in order: the PR's
+'               baseRefName from gh; else the candidate with the fewest commits
+'               since its merge base among the host repo's origin/HEAD and
+'               origin/dev, develop, main, master, trunk, skipping origin/<own
+'               branch>; else the recorded launch commit. A PR found later
+'               re-reads the changes against its base.
+'               MEASURED 2026-11-25: inside an sbx clone origin is GitHub but
+'               origin/HEAD names the task's own branch (rs-ashby-tipalti), so
+'               the clone's default is never trusted; origin/dev was 11 commits
+'               back, origin/main 55. The dashboard read 33 files vs origin/dev;
+'               gh pr view 3949 reported baseRefName dev and 33 changedFiles.
+'   PR ........ gh pr list --head <branch> --state all (fork PRs dropped, open
+'               first), once per working branch; every branch keeps its PR, so a
+'               stacked pair shows both. No commit lookup: gh api .../commits/
+'               <sha>/pulls named PRs that merely contain a shared commit.
+'   work ...... the branches come from where the agent works, not from the
+'               mount: sbx exec starts in the workspace, so the probe cds to /
+'               first or it counts itself. It reads /proc/*/cwd, ranks the git
+'               top levels of claude, codex, opencode, cursor-agent and hermes
+'               processes first, the rest by process count, and lists each
+'               top's nested worktrees after it; the mount is the fallback. The
+'               carried proveo/<instance> branch is asked last.
+'               MEASURED 2026-11-25, five running sandboxes: 1b3fcb7f claude in
+'               worktrees/dev on rs-cloud-accounts-ui (#3975) with nested
+'               .claude/worktrees/rs-cloud-revoke-reach (#3974), its mount on
+'               rs-ashby-tipalti (#3949, another sandbox's PR) holding only the
+'               probe; 9995ea77 worktrees/hotfix rs-projector (#3976);
+'               36915573 worktrees/main rs-teamwork (#3937); 8abaedd2 monorepo
+'               rs-ashby-tipalti (#3949). The usage probe carries this read, so
+'               every running sandbox is sampled in turn on a 2 s tick: the
+'               selected one when its sample is 5 s old, else the next one
+'               whose sample is 15 s old, else none.
+'   activity .. the same probe reads each agent's own state and proveo's hook
+'               markers; idle and waiting agents move to Attention required.
+'               See _spec/packages/lib/agent-activity.puml.
+'               No gh or no auth shows "install gh for PR status" or
+'               "gh auth login for PR status", as Claude Code's footer does.
+'               Cached a minute per task, branch and tip. MEASURED: PR #3949
+'               found for a discovered monorepo sandbox through its guest branch.
+'               Sources: Claude Code CHANGELOG 2.1.20, 2.1.145, 2.1.248, 2.1.251,
+'               2.1.326 and code.claude.com/docs/en/interactive-mode#pr-review-status;
+'               Codex codex-rs/tui/src/branch_summary.rs (gh pr view, then the
+'               head commit's pulls); OpenCode shows the branch only;
+'               cli.github.com/manual/gh_pr_list.
+'   PR scan ... the PR's title, body, head branch and files name the work.
+'               Linear: linear.app links, closing words (Fixes, Closes, Resolves,
+'               Part of, Related to, Refs), the title, a user/abc-123 branch,
+'               then bare IDs in prose ("Requested in CONN-116 and CONN-114"),
+'               look-alikes such as UTF-8 and SHA-256 dropped. The first is
+'               fetched from Linear when LINEAR_API_KEY is set. Plan: the body's
+'               "Plan: <link or path>" line, which AGENTS.md now asks every PR
+'               description to end with; else a _spec/_plans path or link; else
+'               a changed _spec/_plans file. Any .md is a plan. A discovered
+'               sandbox takes its PR's title. Every card's PR is read one at a
+'               time and cached a minute. MEASURED: PR #3949 gave its title,
+'               CONN-116 and CONN-114.
+'   ticket .... a sandbox name like proveo-claudecode-36915573 read as ticket
+'               CLAUDECODE-36915573; a ticket label now needs a real ticket.
+' Restore the start termios with an input flush (TCSAFLUSH), not a plain set.
+' MEASURED 2026-11-25 on macOS: Ctrl+C on the sbx tab quit with terminal
+' replies still queued, the canonical restore set PENDIN, and the shell would
+' retype them; TestNativeDashboardTabsOnTmux saw it as stty drift.
 ' If the sbx client exits independently, show its status in Proveo. Never
 ' start a fallback shell in the sbx pane.
 ' Proveo joins agent, Git and task data. Discover running sandboxes that
@@ -188,7 +283,15 @@
 ' the queue row.
 ' Fit complete visual rows into the prompt preview. Mark overflow and
 ' allow the reader to scroll the prompt.
-' New instance opens a wizard for agent, optional task, and initial prompt.
+' New instance hands the terminal to `proveo run --queue`: the same harness
+' list (running tasks left out), scope page and choice card as `proveo run`.
+' DECIDED 2026-11-25 by the Executor: same card, queued, then attach.
+' The card's answers reach the settings cache, and the scheduled run replays
+' them under --yes; flags the operator typed, and the scope, ride as job Args.
+' The job is mode attended: no budget, no report stop, an opening prompt only
+' if one was given. It waits up to 20s for admission, then attaches; Ctrl+B d
+' returns to the dashboard. Still queued, it says why and hands back.
+' Prompt-first overnight work stays with schedule.yml and the CLI.
 ' A task can supply a prompt template. Review the chosen target, sandbox
 ' name, and prompt before launch. Store the submitted prompt with the
 ' instance's first attempt. Task details displays that snapshot even if
@@ -215,7 +318,9 @@
 ' use the sequences documented in proveo attach --help.
 ' Enter on a file opens the editor pane across the center and right.
 ' Keep the tree visible. Read changed files from the recorded tip and
-' deleted files from the base. Toggle between the file and its patch.
+' deleted files from the base. Read both sides whole and colour them: p file
+' or diff, u unified, i side by side, [ ] previous or next file; see
+' dashboard-terminal-design.puml (preview).
 ' Mark deleted files in Changes with Proveo's red D and a struck-through
 ' filename.
 ' Preserve filename extensions and identifier suffixes when clipping.
@@ -238,7 +343,7 @@
 ' affected verification. The operator controls posting and merging the PR.
 ' View 1 groups Attention required, Working and Queued. Place n new
 ' instance in an outlined item below the queued tasks. It opens the
-' same wizard by shortcut or item activation. View 2 draws
+' same proveo run --queue by shortcut or item activation. View 2 draws
 ' prerequisite-to-dependent paths and explicit extra edges. Validate IDs
 ' and cycles before dispatch. Order the paths deterministically. Fold
 ' long sections into a count such as "3 tasks", with expansion on demand.

@@ -44,6 +44,7 @@ type Deps struct {
 	ProvisionConfirm func(question string) bool
 	PreflightImages  func(man manifest.Manifest, image ImageRequest) (string, error)
 	EnsureDesktop    func() (launch []string, installed bool, err error) // installs Hermes Desktop when missing; installed is this run's install
+	Queue            func(QueueRequest) error                            // submits a --queue run instead of launching it
 }
 
 type ImageRequest struct {
@@ -104,6 +105,12 @@ func Do(p Params, d Deps) (err error) {
 	}
 	if err := choosePages(&rs, &p, d); err != nil {
 		return err
+	}
+	if p.Queue {
+		if d.Queue == nil {
+			return errors.New("--queue is unavailable in this build")
+		}
+		return d.Queue(QueueRequest{Target: p.Target, Task: p.Task, Prompt: p.Prompt, Args: queueArgs(p, rs.Workspace.ScopeLabel, rs.Workspace.RepoRoot)})
 	}
 	cdpEnv, cdpFact, cdpItems, err := startHostCDP(&p)
 	if err != nil {
@@ -869,17 +876,15 @@ func decideClone(p *Params, ws workspace.MountSpec) (on bool, whyOff string, err
 	return true, "", nil
 }
 
-// stageCloneEnv stages the project .env a clone lacks; broker runs drop the provider keys sbx's proxy holds.
+// stageCloneEnv stages the project .env a clone lacks without the host-only keys; broker runs also drop the provider
+// keys sbx's proxy holds.
 func stageCloneEnv(rs *Spec, p *Params) string {
 	src := workspace.ProjectEnvFile(rs.Workspace.WS.InputDir, rs.Workspace.WS.RepoRoot)
 	if src == "" {
 		return ""
 	}
 	dir := filepath.Join(rs.RunDir, "sbx", "project-env")
-	var strip []string
-	if !p.forwards() {
-		strip = provider.KeyVars()
-	}
+	strip := cloneEnvStrip(p.forwards())
 	if p.PrintOnly {
 		return filepath.Join(dir, ".env")
 	}
@@ -895,6 +900,15 @@ func stageCloneEnv(rs *Spec, p *Params) string {
 	rs.Backend.CloneEnvBase = filepath.Join(rs.RunDir, "sbx", "project-env.base")
 	rs.Backend.CloneEnvHost, rs.Backend.CloneStrip, rs.Backend.CloneDropped = src, strip, dropped
 	return path
+}
+
+// cloneEnvStrip are the keys the staged .env drops: the host-only ones always, the provider keys unless the run forwards them.
+func cloneEnvStrip(forwards bool) []string {
+	strip := slices.Clone(credentials.HostOnlyVars)
+	if !forwards {
+		strip = append(strip, provider.KeyVars()...)
+	}
+	return strip
 }
 
 func cloneOffHint(whyOff string) string {
@@ -1020,7 +1034,8 @@ func launchSandbox(rs *Spec, p *Params, d Deps, cdpEnv []string) error {
 		Target: p.Target, Image: p.Image, AuthVar: p.AuthVar,
 		AgentVersion: rs.Backend.AgentVersion,
 		Clone:        rs.Backend.Clone, CloneOff: rs.Backend.CloneOff, Extra: p.Extra,
-		RepoRoot: rs.Workspace.WS.RepoRoot, OutputDir: p.Output,
+		ReadOnlyShares: p.ReadOnlyShares,
+		RepoRoot:       rs.Workspace.WS.RepoRoot, OutputDir: p.Output,
 		Browser: browserOn, BrowserProfile: p.BrowserProfile,
 		Ports: ports, InterfaceItems: rs.Interface, InterfaceFacts: rs.InterfaceFacts,
 		AndroidApps: androidApps(p), AndroidEnv: adbEnv,

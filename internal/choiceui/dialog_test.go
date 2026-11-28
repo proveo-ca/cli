@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/proveo-ca/proveo/internal/ui"
 )
 
 var sgr = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
@@ -425,7 +427,7 @@ func TestEveryDialogIsACardWithItsLossLinesMarked(t *testing.T) {
 			!strings.HasPrefix(rows[last], g.frameBL) || !strings.HasSuffix(rows[last], g.frameBR) {
 			t.Fatalf("%s: no rounded frame:\n%s", name, plain(raw))
 		}
-		if !strings.Contains(raw, "\x1b[38;2;138;138;138m"+g.frameTL) {
+		if !strings.Contains(raw, ui.ANSI(ui.ColorMuted)+g.frameTL) {
 			t.Errorf("%s: the frame is not grey: %q", name, strings.SplitN(raw, "\n", 2)[0])
 		}
 		body := slices.Clone(d.lines)
@@ -506,5 +508,16 @@ func TestOffAndASCIIDialogsDrawThePlainSet(t *testing.T) {
 		if strings.ContainsAny(box, "╭╮╰╯│─├┤↵←→") {
 			t.Errorf("tier %d draws a Unicode rune:\n%s", tier, box)
 		}
+	}
+}
+
+func TestAButtonOutsideADialogIsTheDialogsButton(t *testing.T) {
+	d := newDialog("t", nil, 0, dialogButton{Label: "Verdict", Key: 'v'})
+	d.glyphs = ui.GlyphsSafe
+	if got, want := Button("Verdict", 'v', false, ui.GlyphsSafe), d.button(d.buttons[0], false); got != want {
+		t.Errorf("Button = %q, the dialog draws %q", got, want)
+	}
+	if got := plain(Button("Verdict", 'v', true, ui.GlyphsSafe)); got != " Verdict ↵ " {
+		t.Errorf("selected = %q", got)
 	}
 }

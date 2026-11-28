@@ -92,7 +92,7 @@ sbx port publication and egress, sandbox stop and resume, and the Hermes Desktop
 
 | Lane | How |
 |------|-----|
-| Unit + contract | `mise run test`: `go test -race -cover -covermode=atomic ./... -args -test.gocoverdir=<repo>/cov/unit` (`--no-race` without cgo, `--baseline` skips the known-red list) |
+| Unit + contract | `mise run test`: `go test -race -cover -covermode=atomic ./... -args -test.gocoverdir=<repo>/cov/unit` (`--no-race` without cgo; off Linux the guest-lib tests run in `proveo/base-node:local` via `testx.InLinux`) |
 | Report | the same `mise run test`, after a green go test: `go tool covdata percent -i=cov/unit` and `textfmt -i=cov/unit -o=cov/coverage.out` |
 
 `go tool covdata` reads `cov/unit` directly; no merge step. Publish percent/HTML as CI

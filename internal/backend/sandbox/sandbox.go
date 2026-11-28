@@ -958,6 +958,9 @@ const CloneEnvVar = "PROVEO_CLONE_ENV"
 // CloneVar marks a clone workspace, so the seed records the clone's base.
 const CloneVar = "PROVEO_CLONE_WORKSPACE"
 
+// GitSyncVar switches the per-turn git-sync hook; a read-only run sets it off, so a review neither commits nor pushes.
+const GitSyncVar = "PROVEO_GIT_SYNC"
+
 // SharesVar carries rel=rw|ro pairs, '|'-separated, the seed asserts before it releases the agent.
 // SPEC: _spec/internal/sbx/clone-workspace.puml
 const SharesVar = "PROVEO_SHARES"
@@ -969,7 +972,7 @@ func shares(in Input, binds []sbx.Mount) string {
 		return ""
 	}
 	mode := "rw"
-	if len(binds) > 0 && binds[0].ReadOnly && !in.Clone {
+	if len(binds) > 0 && binds[0].ReadOnly && !in.Clone || in.ReadOnlyShares {
 		mode = "ro"
 	}
 	var pairs []string
@@ -1142,6 +1145,7 @@ type Input struct {
 	Desktop                bool     // Hermes Desktop drives the sandbox over SSH instead of this terminal
 	DesktopLaunch          []string // opens Hermes Desktop on the host
 	Clone                  bool
+	ReadOnlyShares         bool   // declare linked shares ro, so the seed releases a read-only run
 	CloneOff               string // why a clone could not apply, when the default asked for one
 	CloneKnown             bool   // Clone is the sandbox's own mode: this run created it, or teardown asked it
 	RepoRoot               string // host repository root: where a clone's commits are fetched back to
@@ -1514,12 +1518,16 @@ func Spec(in Input) (sbx.RunConfig, Workload, [][2]string) {
 		}
 	}
 	sort.Strings(allow)
-	var err error
-	if caps, err = sbx.WithRuntimeAllow(caps, allow); err == nil {
-		caps, err = sbx.WithLifecycle(caps, sbx.LifecycleV3{Startup: startupHooks(in, !hasUp, hookEnv(in, cfg.Env))})
+	merged, err := sbx.WithRuntimeAllow(caps, allow)
+	if err == nil {
+		merged, err = sbx.WithLifecycle(merged, sbx.LifecycleV3{Startup: startupHooks(in, !hasUp, hookEnv(in, cfg.Env))})
 	}
+	var mergeErr error
 	if err != nil {
-		report.Notes = append(report.Notes, Item{Warn: true, Text: "workload capabilities — not merged", Detail: []string{err.Error()}})
+		report.Notes = append(report.Notes, Item{Fail: true, Text: "workload capabilities — not merged", Detail: []string{err.Error()}})
+		mergeErr = fmt.Errorf("workload capabilities could not be merged, so the seed would never release the agent: %w", err)
+	} else {
+		caps = merged
 	}
 	w := Workload{
 		Report: report,
@@ -1532,6 +1540,7 @@ func Spec(in Input) (sbx.RunConfig, Workload, [][2]string) {
 		Recipe:     recipe,
 		Files:      up.Files,
 		Entrypoint: entrypoint,
+		Err:        mergeErr,
 	}
 	if len(recipe.Entrypoint) > 0 {
 		w.Entrypoint = recipe.Entrypoint
@@ -1700,11 +1709,15 @@ func Run(in Input) (runResultErr error) {
 	start := ui.NewSteps(startSteps)
 	var kitDir string
 	if err := start.DoAs(stepKit, stepKit, func() (err error) {
+		if w.Err != nil {
+			return w.Err
+		}
 		kitDir, err = sbx.WriteWorkloadV3(cfg.KitDir, w.Descriptor, w.Recipe, w.Files)
 		return err
 	}); err != nil {
 		return err
 	}
+	recordSession(cfg.Name)
 	receipt := receiptOf(cfg, in.Image, workloadBytes(kitDir), in.Sid, sbx.LocalImageID(in.Image))
 	receipt.OutputDir = in.OutputDir
 	if named {
@@ -2632,6 +2645,9 @@ func launchEnv(in Input, agent string, env []string, mounts []sbx.Mount) []strin
 		EnvHostOS+"="+hostOS)
 	if v := shares(in, binds); v != "" {
 		out = append(out, SharesVar+"="+v)
+	}
+	if in.ReadOnlyShares {
+		out = append(out, GitSyncVar+"=off")
 	}
 	if in.InstanceCloneRoot != "" {
 		out = append(out, gitConfigEnv(in.InstanceCloneRoot, in.GitTransport)...)

@@ -74,7 +74,7 @@ func prepareInstance(rs *Spec, p *Params, d Deps) (func(), error) {
 	}
 	req := sandbox.InstanceRequest{
 		State: realPathOf(StateDir()), Target: p.Target, Workspace: effective, Repo: repo,
-		New: p.NewInstance, ID: p.Instance, Task: p.Task, Print: p.PrintOnly,
+		New: p.NewInstance, ID: p.Instance, Task: p.Task, Branch: p.Branch, Print: p.PrintOnly,
 		Job: os.Getenv("PROVEO_SCHEDULE_JOB"),
 	}
 	if !p.PrintOnly || p.Instance != "" {

@@ -8,13 +8,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
-func NewDashboardJob(home, cwd, target, label, ticket, prompt string) (string, Job, error) {
+// NewAttendedJob snapshots an operator's run: the card's flags as Args and an optional opening prompt.
+func NewAttendedJob(home, cwd, target, label string, args []string, prompt string) (string, Job, error) {
+	return newJob(home, prompt, Job{Target: target, New: true, Task: strings.TrimSpace(label), Workdir: cwd,
+		Args: args, Mode: ModeAttended, Phase: "Session"})
+}
+
+func newJob(home, prompt string, j Job) (string, Job, error) {
 	var id [6]byte
 	_, _ = rand.Read(id[:])
-	key := safe(target) + "-" + hex.EncodeToString(id[:])
+	key := safe(j.Target) + "-" + hex.EncodeToString(id[:])
 	dir := filepath.Join(home, "dashboard-jobs", key)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
 		return "", Job{}, err
@@ -22,8 +29,7 @@ func NewDashboardJob(home, cwd, target, label, ticket, prompt string) (string, J
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return "", Job{}, err
 	}
-	j := Job{Target: target, New: true, Task: strings.TrimSpace(label), Ticket: ticket, Workdir: cwd,
-		PromptFile: filepath.Join(dir, "prompt"), Phase: "Spec"}
+	j.PromptFile = filepath.Join(dir, "prompt")
 	if j.Task == "" {
 		j.Task = key
 	}
@@ -72,4 +78,49 @@ func loadDashboardJobs(home string, c *Config) error {
 		c.Jobs[entry.Name()] = j
 	}
 	return nil
+}
+
+// ReviewArgs are what every review run adds to `proveo run`: linked shares read-only, and the host Chrome its live checks drive.
+var ReviewArgs = []string{"--read-only-shares", "--addon", "chrome"}
+
+// ReviewBudget is how long a review run may take: a review map and a demo recording outrun the default budget.
+const ReviewBudget = "90m"
+
+// NewReviewJob snapshots a headless review of a pull request: the PR as the ticket, the rendered prompt as plain input.
+func NewReviewJob(home, cwd, target, prURL, label, prompt string) (string, Job, error) {
+	if !strings.Contains(prURL, "/pull/") {
+		return "", Job{}, fmt.Errorf("%q is not a pull request URL", prURL)
+	}
+	if strings.TrimSpace(prompt) == "" {
+		return "", Job{}, fmt.Errorf("a review needs a prompt")
+	}
+	return newJob(home, prompt, Job{Target: target, New: true, Task: strings.TrimSpace(label), Ticket: prURL, Workdir: cwd,
+		Mode: "plain", Phase: "Review", Budget: ReviewBudget, Args: slices.Clone(ReviewArgs)})
+}
+
+// DropReviewJob forgets a dashboard review job: its queue entry and its job snapshot. The logs stay.
+func DropReviewJob(home, name string) (Job, error) {
+	j, err := ReadJobSnapshot(filepath.Join(home, "dashboard-jobs", name, "job.json"))
+	if err != nil {
+		return Job{}, err
+	}
+	if j.Phase != "Review" || !strings.Contains(j.Ticket, "/pull/") {
+		return Job{}, fmt.Errorf("%s is not a review job", name)
+	}
+	return DropDashboardJob(home, name)
+}
+
+// DropDashboardJob forgets any job the dashboard made: its queue entry and its job snapshot. The logs stay.
+func DropDashboardJob(home, name string) (Job, error) {
+	dir := filepath.Join(home, "dashboard-jobs", name)
+	j, err := ReadJobSnapshot(filepath.Join(dir, "job.json"))
+	if err != nil {
+		return Job{}, err
+	}
+	if err := queueTxn(home, func(q []QueueItem) ([]QueueItem, error) {
+		return slices.DeleteFunc(q, func(item QueueItem) bool { return item.Name == name }), nil
+	}); err != nil {
+		return Job{}, err
+	}
+	return j, os.RemoveAll(dir)
 }

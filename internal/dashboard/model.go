@@ -1,51 +1,98 @@
-// SPEC: _spec/_experiments/dashboard/workspace-instances.puml
+// SPEC: _spec/_experiments/dashboard/workspace-instances.puml, _spec/_paradigms/dashboard-terminal-design.puml
 package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/proveo-ca/proveo/internal/choiceui"
 	"github.com/proveo-ca/proveo/internal/schedule"
+	"github.com/proveo-ca/proveo/internal/ui"
 )
 
 type Options struct {
 	CWD, Home, State, Binary string
-	Targets                  []string
-	Launch                   func(target, task, ticket, prompt string) (string, error)
 	StartupError             error
 }
 
 type dashModel struct {
 	Options
-	data                                                                      Data
-	width, height, sbxSplit                                                   int
-	view, focus, selected, file, detailScroll, previewScroll, detailPlacement int
-	showFiles, details, preview, patch, graphExpanded, help                   bool
-	exit, sbxTab, prefix                                                      bool
-	child                                                                     childTerminal
-	status                                                                    string
-	confirm, exitConfirm                                                      *choiceui.Confirmation
-	attachID                                                                  string
-	changes                                                                   []Change
-	previewText                                                               string
-	previewPath                                                               string
-	previewRequest                                                            uint64
-	guest                                                                     guestSample
-	guestPending                                                              bool
-	freshPending                                                              bool
-	metadataPending                                                           bool
-	metadata                                                                  map[string]taskMetadata
-	wizard                                                                    *newWizard
+	data                                              Data
+	width, height, sbxSplit                           int
+	view, focus, selected, previewScroll              int
+	showFiles, details, preview, patch, graphExpanded bool
+	helpModal                                         *choiceui.Confirmation
+	reviewModal                                       *choiceui.ReviewStart
+	reviewFor                                         Task // the ghost the review card starts
+	reviews                                           []ReviewRequest
+	reviewStarting                                    map[string]bool      // PR URLs a review is being queued for
+	dropping                                          map[string]bool      // failed review runs being cleaned up
+	dropFailed                                        map[string]bool      // failed review runs whose clean-up failed; never retried this session
+	reviewFailures                                    map[string]string    // why the last review of a PR URL failed
+	portsFor                                          string               // the task whose ports the open notice lists
+	diagramSource                                     bool                 // a diagram shows its source, not its sketch
+	ending                                            map[string]bool      // ended runs a retry or clean-up is under way for
+	onConfirm                                         func() tea.Cmd       // what accepting the open confirm does; nil attaches
+	report                                            *reportDoc           // the ended run report the right pane shows
+	reportScroll, reportAt                            int                  // the report row at the top, the selected reference (-1 none)
+	previewLine                                       int                  // the line a report reference opens the file at
+	previewLineFor                                    uint64               // the preview request that line belongs to
+	opener                                            func(string) error   // hands a file to the OS viewer; nil uses open or xdg-open
+	clipboard                                         func(string) error   // the host clipboard tool; nil uses pbcopy, wl-copy or xclip
+	leftPane, rightPane                               rect                 // where the panes sat on screen at the last draw, for the mouse
+	sel                                               reportSelection      // the report rows a drag or v marks
+	links                                             []linkSpot           // the hyperlinks of the last frame drawn, for a click to copy
+	pointer                                           point                // where the last press or release landed; reset by any key
+	tip                                               tooltip              // the note over the dashboard, such as Copied to clipboard
+	configRead                                        bool                 // dashboard.yml has been read at least once
+	configCache                                       configCache          // dashboard.yml as last read
+	taskPicker                                        *choiceui.TaskPicker // the new-instance card: pick a task, edit its prompt
+	pickGen                                           int                  // which opening of the picker a source's answer belongs to
+	pickCache                                         map[string]pickCached
+	promptTemp                                        string // the prompt file a new instance was handed; removed when it returns
+	tipSeq                                            int
+	verdictModal                                      *choiceui.ReviewStart
+	verdictPR                                         verdictTarget // the PR the open verdict card judges
+	exit, sbxTab, prefix, alert                       bool
+	child                                             childTerminal
+	childBlankAt                                      time.Time // when the sbx frame last went blank
+	childPainted                                      bool      // sbx has drawn at least once
+	changesLoad, filesLoad                            treeLoad
+	loadTicking                                       bool
+	quietReads                                        bool // the next reads refresh the same task in the background
+	status                                            string
+	tree                                              *fileTree
+	glyphs                                            ui.GlyphTier
+	lay                                               layout
+	clock                                             func() time.Time
+	confirm, exitConfirm                              *choiceui.Confirmation
+	attachID                                          string
+	changes                                           []Change
+	taskFiles                                         []Change
+	changesBase, changesMB                            string
+	changesLive                                       bool
+	filesSource                                       string
+	pop                                               popAnchor
+	cardPos                                           map[int]cardPos
+	previewDoc                                        previewDoc
+	split                                             bool // the diff shows before | after side by side
+	previewPath                                       string
+	previewRequest                                    uint64
+	guest                                             guestSample
+	samples                                           map[string]guestSample
+	sampleAt                                          int
+	guestPending                                      bool
+	freshPending                                      bool
+	metadataPending                                   bool
+	metadata                                          map[string]taskMetadata
+	runner                                            func(binary string, args ...string) tea.Cmd
 }
 
 type dataEvent struct {
@@ -54,9 +101,27 @@ type dataEvent struct {
 }
 type changesEvent struct {
 	id, revision string
-	rows         []Change
+	set          ChangeSet
 	err          error
+	req          uint64
 }
+type filesEvent struct {
+	id, source string
+	rows       []Change
+	err        error
+	req        uint64
+}
+
+// treeLoad is one in-flight read of the tree's list: which request, and since when.
+type treeLoad struct {
+	req     uint64
+	pending bool
+	quiet   bool // a background refresh of rows already shown
+	since   time.Time
+	err     string // why the last read for this task failed
+}
+
+type loadTickEvent struct{}
 type resultEvent struct {
 	message string
 	err     error
@@ -70,15 +135,33 @@ type freshEvent struct {
 	ready bool
 }
 
-func Run(ctx context.Context, opts Options) (bool, error) {
-	model := &dashModel{Options: opts, width: 80, height: 24, status: "Loading workspace", metadata: make(map[string]taskMetadata)}
+func newModel(opts Options, glyphs ui.GlyphTier) *dashModel {
+	m := &dashModel{Options: opts, width: 80, height: 24, status: "Loading workspace", metadata: make(map[string]taskMetadata), glyphs: glyphs}
 	if opts.StartupError != nil {
-		model.status = opts.StartupError.Error()
+		m.fail(opts.StartupError)
 	}
+	return m
+}
+
+func (m *dashModel) now() time.Time {
+	if m.clock != nil {
+		return m.clock()
+	}
+	return time.Now()
+}
+
+func (m *dashModel) say(s string) { m.status, m.alert = s, false }
+
+func (m *dashModel) fail(err error) { m.status, m.alert = err.Error(), true }
+
+func Run(ctx context.Context, opts Options) (bool, error) {
+	model := newModel(opts, ui.GlyphTierFrom(os.Getenv))
+	tty := saveTTY(os.Stdin)
 	final, err := tea.NewProgram(model, tea.WithContext(ctx), tea.WithoutSignalHandler()).Run()
 	if model.child != nil {
 		model.child.Close()
 	}
+	tty.restore()
 	if ctx.Err() != nil {
 		return true, nil
 	}
@@ -88,7 +171,9 @@ func Run(ctx context.Context, opts Options) (bool, error) {
 	return final.(*dashModel).exit, nil
 }
 
-func (m *dashModel) Init() tea.Cmd { return tea.Batch(m.readData(), nextGuestPoll()) }
+func (m *dashModel) Init() tea.Cmd {
+	return tea.Batch(m.readData(), nextGuestPoll(), m.readReviews(), nextReviewPoll())
+}
 
 func (m *dashModel) readData() tea.Cmd {
 	home, state, cwd := m.Home, m.State, m.CWD
@@ -106,14 +191,24 @@ func nextPoll() tea.Cmd {
 }
 
 func nextGuestPoll() tea.Cmd {
-	return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return guestPollEvent{} })
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return guestPollEvent{} })
 }
 
 func (m *dashModel) task() Task {
 	if m.selected < len(m.data.Tasks) {
-		return m.data.Tasks[m.selected]
+		return m.withGuestWork(m.data.Tasks[m.selected])
 	}
 	return Task{}
+}
+
+// withGuestWork points t at the checkout its agent works in, as the last sample found it.
+func (m *dashModel) withGuestWork(t Task) Task {
+	s, ok := m.samples[t.ID]
+	if !ok || len(s.work) == 0 || s.sandbox != t.Sandbox || s.vmid != t.VMID {
+		return t
+	}
+	t.Workdir, t.Branches = s.work[0].path, branches(s.work)
+	return t
 }
 
 func (m *dashModel) taskOrder() []int {
@@ -125,7 +220,11 @@ func (m *dashModel) taskOrder() []int {
 	}
 	if m.view != 1 {
 		slices.SortStableFunc(order, func(a, b int) int {
-			return taskGroup(m.data.Tasks[a].State) - taskGroup(m.data.Tasks[b].State)
+			ta, tb := m.data.Tasks[a], m.data.Tasks[b]
+			if g := m.groupOf(ta) - m.groupOf(tb); g != 0 {
+				return g
+			}
+			return tb.Updated.Compare(ta.Updated)
 		})
 	}
 	return order
@@ -133,15 +232,25 @@ func (m *dashModel) taskOrder() []int {
 
 func taskGroup(state schedule.QueueState) int {
 	switch state {
-	case schedule.Attention:
+	case reviewState:
 		return 0
-	case schedule.Reserved, schedule.Running, schedule.Settling:
+	case schedule.Attention:
 		return 1
-	case schedule.Complete:
-		return 3
-	default:
+	case schedule.Reserved, schedule.Running, schedule.Settling:
 		return 2
+	case schedule.Complete:
+		return 4
+	default:
+		return 3
 	}
+}
+
+// groupLabels name the queue's groups in order, Review requests on top.
+func (m *dashModel) groupLabels() []string {
+	if m.view == 2 {
+		return []string{"Review requests", "Recent outcomes", "In progress", "Waiting for dispatch", "Completed"}
+	}
+	return []string{"Review requests", "Attention required", "Working", "Queued", "Completed"}
 }
 
 func (m *dashModel) selectVisible() {
@@ -155,99 +264,201 @@ func (m *dashModel) selectVisible() {
 	}
 }
 
-func (m *dashModel) closeDetails() {
-	m.details, m.detailScroll = false, 0
-	if m.focus == 2 && !m.preview {
-		m.focus = 0
-	}
-}
+func (m *dashModel) closeDetails() { m.details = false }
 
 func (m *dashModel) receiveData(d Data) tea.Cmd {
 	id := m.task().ID
 	m.data = d
-	i := slices.IndexFunc(d.Tasks, func(t Task) bool { return t.ID == id })
-	if i >= 0 {
+	m.data.Tasks = m.withGhosts(d.Tasks)
+	i := slices.IndexFunc(m.data.Tasks, func(t Task) bool { return t.ID == id })
+	switch {
+	case i >= 0:
 		m.selected = i
-	} else {
+	case id == "":
+		m.selected = len(m.data.Tasks)
+	default:
 		m.closeDetails()
-		m.selected = max(0, min(m.selected, len(d.Tasks)-1))
+		m.selected = max(0, min(m.selected, len(m.data.Tasks)-1))
 	}
 	m.selectVisible()
 	if m.status == "Loading workspace" {
-		m.status = ""
+		m.say("")
 	}
+	drop := m.dropFailedReviews()
 	t := m.task()
 	if t.ID != id {
-		return tea.Batch(m.readChanges(t), m.readGuest(t), m.readMetadata(t), nextPoll())
+		return tea.Batch(m.readChanges(t), m.readFiles(t), m.readGuest(t), m.nextMetadata(), nextPoll(), drop)
 	}
-	return tea.Batch(m.readChanges(t), m.readMetadata(t), nextPoll())
+	m.quietReads = true
+	defer func() { m.quietReads = false }()
+	return tea.Batch(m.readChanges(t), m.readFiles(t), m.nextMetadata(), nextPoll(), drop)
 }
 
 func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch event := msg.(type) {
 	case dataEvent:
 		if event.err != nil {
-			m.status = event.err.Error()
+			m.fail(event.err)
 			return m, nextPoll()
 		}
 		return m, m.receiveData(event.data)
 	case pollEvent:
 		return m, m.readData()
 	case guestPollEvent:
-		return m, tea.Batch(m.readGuest(m.task()), nextGuestPoll())
+		return m, tea.Batch(m.nextSample(), nextGuestPoll())
 	case freshEvent:
 		m.freshPending = false
 		current := m.task()
 		if !m.sbxTab && event.ready && current.ID == event.task.ID && current.VMID == event.task.VMID {
 			t := event.task
-			return m, foreground("sbx", "exec", "-i", "-t", "-u", "agent", "-w", t.Workdir, t.Sandbox, "--", "fresh", ".")
+			return m, m.handoffTo("Opening Fresh", t.Sandbox+" · "+t.Workdir, "", "Back from Fresh",
+				"sbx", "exec", "-i", "-t", "-u", "agent", "-w", t.Workdir, t.Sandbox, "--", "fresh", ".")
 		}
 		return m, nil
 	case guestSample:
 		m.guestPending = false
-		if event.id == m.task().ID && event.sandbox == m.task().Sandbox && event.vmid == m.task().VMID {
+		if m.samples == nil {
+			m.samples = map[string]guestSample{}
+		}
+		if event.available {
+			m.samples[event.id] = event
+		} else {
+			delete(m.samples, event.id)
+		}
+		if t := m.task(); event.id == t.ID && event.sandbox == t.Sandbox && event.vmid == t.VMID {
 			if event.available || m.guest.vmid != event.vmid {
 				m.guest = event
 			} else {
 				m.guest.fresh = false
 			}
+		}
+		return m, nil
+	case reviewsEvent:
+		if event.err == nil {
+			m.reviews = event.reviews
+			m.regroup()
+		}
+		return m, nil
+	case reviewPollEvent:
+		return m, tea.Batch(m.readReviews(), nextReviewPoll())
+	case verdictEvent:
+		if event.err != nil {
+			m.fail(fmt.Errorf("review of #%d: %w", event.number, event.err))
 			return m, nil
 		}
-		return m, m.readGuest(m.task())
-	case changesEvent:
-		if event.id == m.task().ID && event.revision == m.task().Tip {
-			m.changes = event.rows
-			if event.err != nil {
-				m.status = event.err.Error()
+		m.say(fmt.Sprintf("%s #%d", verdictDone[event.choice], event.number))
+		for key, meta := range m.metadata {
+			if slices.ContainsFunc(meta.prs, func(p prInfo) bool { return p.Number == event.number }) {
+				delete(m.metadata, key)
 			}
+		}
+		return m, tea.Batch(m.readReviews(), m.nextMetadata())
+	case portsEvent:
+		if m.confirm != nil && m.portsFor == event.id {
+			if i := slices.IndexFunc(m.data.Tasks, func(t Task) bool { return t.ID == event.id }); i >= 0 {
+				m.confirm = m.portsNotice(m.data.Tasks[i], event.labels, event.live)
+			}
+		}
+		return m, nil
+	case endedEvent:
+		delete(m.ending, event.id)
+		if event.err != nil {
+			m.fail(fmt.Errorf("%s: %w", event.verb, event.err))
+			return m, m.readData()
+		}
+		if event.verb == "retry" {
+			m.say("Started again; it waits in the queue for a slot")
+		} else {
+			m.say("Cleaned up")
+		}
+		return m, tea.Batch(m.readData(), m.readReviews())
+	case reviewDroppedEvent:
+		delete(m.dropping, event.id)
+		if event.err != nil {
+			if m.dropFailed == nil {
+				m.dropFailed = map[string]bool{}
+			}
+			m.dropFailed[event.id] = true
+			m.fail(fmt.Errorf("clean-up of the failed review: %w", event.err))
+			return m, m.readData()
+		}
+		m.say("The failed review was cleaned up; its pull request is back in Review requests")
+		return m, m.readData()
+	case reviewQueuedEvent:
+		if event.err != nil {
+			delete(m.reviewStarting, event.url)
+			m.fail(fmt.Errorf("review of #%d: %w", event.number, event.err))
+			return m, nil
+		}
+		m.say(fmt.Sprintf("Review of #%d queued as %s", event.number, event.name))
+		return m, m.readData()
+	case loadTickEvent:
+		m.loadTicking = false
+		return m, m.loadTick()
+	case filesEvent:
+		if event.req == m.filesLoad.req {
+			m.filesLoad.pending, m.filesLoad.err = false, errText(event.err)
+		}
+		if event.id == m.task().ID {
+			m.taskFiles, m.filesSource = event.rows, event.source
+		}
+		return m, nil
+	case changesEvent:
+		if event.req == m.changesLoad.req {
+			m.changesLoad.pending, m.changesLoad.err = false, errText(event.err)
+		}
+		if event.id == m.task().ID && event.revision == m.task().Tip {
+			m.changes = event.set.Rows
+			m.changesBase, m.changesMB, m.changesLive = event.set.Base, event.set.MergeBase, event.set.Live
 		}
 		return m, nil
 	case taskMetadata:
 		m.metadataPending = false
 		m.metadata[event.key] = event
-		if event.id != m.task().ID {
-			return m, m.readMetadata(m.task())
+		if t := m.task(); event.id == t.ID && event.pr.Base != "" && m.changesBase != event.pr.Base && m.changesBase != "origin/"+event.pr.Base {
+			return m, tea.Batch(m.readChanges(t), m.nextMetadata())
 		}
+		return m, m.nextMetadata()
+	case tasksEvent:
+		m.receiveTasks(event)
 		return m, nil
 	case resultEvent:
-		m.status = event.message
+		if m.promptTemp != "" {
+			_ = os.Remove(m.promptTemp)
+			m.promptTemp = ""
+		}
+		m.say(event.message)
 		if event.err != nil {
-			m.status = event.err.Error()
+			m.fail(event.err)
 		}
 		return m, nil
 	case previewEvent:
 		if !m.preview || event.request != m.previewRequest {
 			return m, nil
 		}
-		m.previewText = event.text
+		m.previewDoc = event.doc
+		if m.previewLine > 0 && m.previewLineFor == event.request {
+			m.previewDoc.mark, m.previewScroll = m.previewLine, max(0, m.previewLine-4)
+		}
+		m.previewLine = 0
+		return m, m.sketch(event.request, event.doc)
+	case sketchEvent:
+		if m.preview && event.request == m.previewRequest && m.previewDoc.path == event.path {
+			m.previewDoc.sketch, m.previewDoc.sketchNote = event.rows, event.note
+		}
+		return m, nil
+	case externalEvent:
 		if event.err != nil {
-			m.previewText = event.err.Error()
+			m.fail(fmt.Errorf("open %s: %w", event.label, event.err))
+		} else {
+			m.say("Opened " + event.label + " in the system viewer")
 		}
 		return m, nil
 	case paintEvent:
 		if m.child != nil {
 			if why, done := m.child.Status(); done {
-				m.status, m.sbxTab, m.child = why, false, nil
+				m.say(why)
+				m.sbxTab, m.child, m.childBlankAt, m.childPainted = false, nil, time.Time{}, false
 			}
 		}
 		if m.child != nil {
@@ -274,30 +485,79 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.confirm != nil {
 			m.confirm.Update(event)
 		}
+		if m.helpModal != nil {
+			m.helpModal = choiceui.NewHelp("Keys", helpSections(), m.width, m.height)
+		}
+		if m.reviewModal != nil {
+			m.reviewModal.Update(event)
+		}
+		if m.taskPicker != nil {
+			m.taskPicker.Update(event)
+		}
+		if m.verdictModal != nil {
+			m.verdictModal.Update(event)
+		}
 		if m.exitConfirm != nil {
 			m.exitConfirm.Update(event)
-		}
-		if m.wizard != nil {
-			m.wizard.prompt.SetWidth(max(1, m.width-8))
 		}
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.key(event)
 	case tea.PasteMsg:
+		if m.taskPicker != nil {
+			m.taskPicker.Update(event)
+			return m, nil
+		}
+		if m.verdictModal != nil {
+			m.verdictModal.Update(event)
+			return m, nil
+		}
+		if m.reviewModal != nil {
+			m.reviewModal.Update(event)
+			return m, nil
+		}
 		if m.sbxTab && m.child != nil {
 			m.child.Input(event)
-		} else if !m.sbxTab && m.wizard != nil {
-			return m, m.wizard.edit(event)
 		}
-	case tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg, tea.MouseMotionMsg:
+	case tea.MouseWheelMsg:
 		if m.sbxTab && m.child != nil {
 			m.child.Input(event)
+			return m, nil
 		}
+		if !m.sbxTab && m.noModal() {
+			switch mouse := event.Mouse(); mouse.Button {
+			case tea.MouseWheelUp:
+				return m, m.wheel(mouse.X, mouse.Y, -1)
+			case tea.MouseWheelDown:
+				return m, m.wheel(mouse.X, mouse.Y, 1)
+			}
+		}
+	case tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg:
+		if m.sbxTab && m.child != nil {
+			m.child.Input(event)
+			return m, nil
+		}
+		if !m.sbxTab && m.noModal() {
+			return m, m.mouse(event)
+		}
+	case copiedEvent:
+		if event.err != nil {
+			m.fail(fmt.Errorf("copy %s: %w", event.what, event.err))
+			return m, nil
+		}
+		m.say("Copied " + event.what + " to the clipboard")
+		return m, m.showTip("Copied to clipboard", event.at)
+	case tipDoneEvent:
+		if event.id == m.tip.id {
+			m.tip = tooltip{}
+		}
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	m.pointer = point{}
 	if m.exitConfirm != nil {
 		if done, exit := m.exitConfirm.Update(msg); done {
 			m.exitConfirm = nil
@@ -328,9 +588,10 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if m.sbxTab && m.child == nil {
 				child, err := startChild(m.width, max(1, m.height-1))
 				if err != nil {
-					m.status = "sbx unavailable · " + err.Error()
+					m.fail(fmt.Errorf("sbx unavailable · %w", err))
 				}
 				m.child = child
+				m.childBlankAt, m.childPainted = time.Time{}, false
 				if child != nil {
 					return m, repaint()
 				}
@@ -353,30 +614,96 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.confirm = nil
-		if attach && slices.ContainsFunc(m.data.Tasks, func(t Task) bool { return t.ID == m.attachID && t.Live }) {
-			return m, foreground(m.Binary, "attach", m.attachID)
+		m.portsFor = ""
+		then := m.onConfirm
+		m.onConfirm = nil
+		if then != nil {
+			if attach {
+				return m, then()
+			}
+			return m, nil
+		}
+		if i := slices.IndexFunc(m.data.Tasks, func(t Task) bool { return (t.ID == m.attachID || t.Session == m.attachID) && t.Live }); attach && i >= 0 {
+			t := m.data.Tasks[i]
+			title := safeText(m.titleFor(t))
+			return m, m.handoffTo("Attaching to "+title, strings.Join(nonEmpty(t.Sandbox, agentLabel(t.Agent)), " · "),
+				hint("Ctrl+B d", "detaches back here"), "Back from "+title, m.Binary, "attach", m.attachID)
 		}
 		return m, nil
 	}
-	if m.wizard != nil {
-		return m, m.wizardKey(msg)
-	}
-	if m.help {
-		m.help = false
+	if m.verdictModal != nil {
+		if done, submit := m.verdictModal.Update(msg); done {
+			choice, body := m.verdictModal.Result()
+			m.verdictModal = nil
+			if submit {
+				m.say("Submitting the review…")
+				return m, m.submitVerdict(m.verdictPR, choice, body)
+			}
+		}
 		return m, nil
+	}
+	if m.taskPicker != nil {
+		if done, start := m.taskPicker.Update(msg); done {
+			task, prompt, branch := m.taskPicker.Result()
+			m.taskPicker = nil
+			if start {
+				return m, m.startInstance(task, prompt, branch)
+			}
+		}
+		return m, nil
+	}
+	if m.reviewModal != nil {
+		if done, start := m.reviewModal.Update(msg); done {
+			template, notes := m.reviewModal.Result()
+			m.reviewModal = nil
+			if start {
+				return m, m.startReview(m.reviewFor, template, notes)
+			}
+		}
+		return m, nil
+	}
+	if m.helpModal != nil {
+		if done, _ := m.helpModal.Update(msg); done || k == "?" {
+			m.helpModal = nil
+		}
+		return m, nil
+	}
+	if m.focus == 1 && m.tree != nil && m.tree.editing {
+		return m, m.filterKey(msg)
+	}
+	if m.report != nil && !m.preview && m.focus == 2 {
+		if cmd, ok := m.reportKey(k); ok {
+			return m, cmd
+		}
+	}
+	if m.preview && m.focus == 2 {
+		if cmd, ok := m.readingKey(k); ok {
+			return m, cmd
+		}
+	}
+	if m.focus == 1 && (k == "n" || k == "p") {
+		return m, m.treeOpen(k)
 	}
 	switch k {
 	case "n":
-		m.wizard = startWizard(m.Targets, m.width)
+		return m, m.openTaskPicker()
 	case "1", "2", "3":
 		m.view = int(k[0] - '1')
 		m.selectVisible()
-		return m, tea.Batch(m.readChanges(m.task()), m.readGuest(m.task()), m.readMetadata(m.task()))
-	case "4":
-		m.detailPlacement = (m.detailPlacement + 1) % 3
-		m.status = []string{"Task details · lower-right split", "Task details · accordion", "Task details · left pane"}[m.detailPlacement]
+		return m, tea.Batch(m.readChanges(m.task()), m.readFiles(m.task()), m.readGuest(m.task()), m.readMetadata(m.task()))
 	case "f", "g":
-		m.showFiles, m.focus, m.file, m.preview = k == "f", 1, 0, false
+		m.showFiles, m.focus, m.preview, m.tree, m.details = k == "f", 1, false, nil, false
+		return m, m.readFiles(m.task())
+	case "/":
+		m.focus, m.preview = 1, false
+		m.fileTree().editing = true
+	case "left", "right", "-", "=", "`":
+		switch {
+		case m.focus == 1:
+			m.treeKey(k)
+		case k == "left" || k == "right":
+			return m, m.move(k)
+		}
 	case "t":
 		if m.preview || m.task().ID == "" {
 			return m, nil
@@ -386,25 +713,23 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.details = true
-		if m.detailPlacement == 2 && m.focus == 1 {
-			m.focus = 0
-		}
 		return m, tea.Batch(m.readGuest(m.task()), m.readMetadata(m.task()))
 	case "c":
-		m.status = "Disk reservation per sandbox " + m.data.Capacity.Reservation
+		msg := "Disk reservation per sandbox " + m.data.Capacity.Reservation
 		if m.data.CapacityError != "" {
-			m.status += " · " + m.data.CapacityError
+			msg += " · " + m.data.CapacityError
 		}
+		m.say(msg)
 	case "tab", "shift+tab":
-		panes := 2
-		if m.details || m.preview {
-			panes++
+		m.details = false
+		switch {
+		case m.focus != 1:
+			m.focus = 1
+		case m.preview || m.report != nil:
+			m.focus = 2
+		default:
+			m.focus = 0
 		}
-		step := 1
-		if k == "shift+tab" {
-			step = -1
-		}
-		m.focus = (m.focus + panes + step) % panes
 	case "up", "down", "pgup", "pgdown":
 		return m, m.move(k)
 	case " ", "space":
@@ -412,14 +737,54 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m, m.enter()
 	case "esc":
-		m.preview, m.help = false, false
-		if m.focus == 2 && !m.details {
-			m.focus = 1
+		switch {
+		case m.details:
+			m.closeDetails()
+		case m.preview && m.report != nil:
+			m.preview, m.focus = false, 2
+		case m.preview:
+			m.preview, m.focus = false, 1
+		case m.focus == 1 && m.tree != nil && m.tree.filter != "":
+			m.tree.filter = ""
+		case m.focus != 0:
+			m.focus = 0
 		}
 	case "p":
+		if m.focus == 0 && !m.preview {
+			return m, m.openPorts(m.task())
+		}
+	case "s":
+		if t := m.task(); m.focus == 0 && !m.preview && m.endedRun(t) && m.canFollowUp(t) {
+			m.openFollowUp(t)
+		}
+	case "r":
+		if m.focus == 0 && !m.preview {
+			return m, m.retry(m.task())
+		}
+	case "x":
+		if m.focus == 0 && !m.preview {
+			m.openCleanUp(m.task())
+		}
+	case "v":
+		m.openVerdict()
+	case "a":
+		if r, ok := m.runningReview(); ok {
+			m.attachTask(r)
+		}
+	case "u", "i":
 		if m.preview {
-			m.patch = !m.patch
-			return m, m.openFile()
+			m.patch, m.split, m.previewScroll = true, k == "i", 0
+		}
+	case "[", "]":
+		if m.focus == 1 || m.preview {
+			delta := 1
+			if k == "[" {
+				delta = -1
+			}
+			if n := m.fileTree().step(delta); n != nil {
+				m.preview, m.previewScroll, m.focus, m.details = true, 0, 2, false
+				return m, m.openFile()
+			}
 		}
 	case "e":
 		if t := m.task(); !m.freshPending && t.Guest && m.guest.fresh && m.guest.id == t.ID && m.guest.sandbox == t.Sandbox && m.guest.vmid == t.VMID {
@@ -427,7 +792,7 @@ func (m *dashModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return freshEvent{t, verifiedGuest(t)} }
 		}
 	case "?":
-		m.help = true
+		m.helpModal = choiceui.NewHelp("Keys", helpSections(), m.width, m.height)
 	}
 	return m, nil
 }
@@ -450,141 +815,431 @@ func foreground(binary string, args ...string) tea.Cmd {
 }
 
 func (m *dashModel) readChanges(t Task) tea.Cmd {
-	return func() tea.Msg {
-		c, err := Changes(t)
-		return changesEvent{t.ID, t.Tip, c, err}
+	if n, ok := reviewPR(t); ok {
+		if m.quietReads && m.changesLoad.pending {
+			return nil
+		}
+		req, cwd := m.changesLoad.start(m.now(), m.quietReads), m.CWD
+		return tea.Batch(func() tea.Msg {
+			h, err := fetchPR(cwd, n)
+			if err != nil {
+				if r := t.Review; r != nil {
+					rows := make([]Change, 0, len(r.Files))
+					for _, p := range r.Files {
+						rows = append(rows, Change{Kind: "M", Path: p})
+					}
+					return changesEvent{t.ID, t.Tip, ChangeSet{Rows: rows, Base: "origin/" + r.Base}, nil, req}
+				}
+				return changesEvent{t.ID, t.Tip, ChangeSet{}, err, req}
+			}
+			base := h.base
+			if base == "" && t.Review != nil {
+				base = t.Review.Base
+			}
+			set, err := Changes(prView(t, h), base, h.repo)
+			return changesEvent{t.ID, t.Tip, set, err, req}
+		}, m.loadTick())
 	}
+	prBase, cwd := m.metadata[metadataKey(t)].pr.Base, m.CWD
+	if m.quietReads && m.changesLoad.pending {
+		return nil
+	}
+	req := m.changesLoad.start(m.now(), m.quietReads)
+	return tea.Batch(func() tea.Msg {
+		set, err := Changes(t, prBase, cwd)
+		return changesEvent{t.ID, t.Tip, set, err, req}
+	}, m.loadTick())
 }
 
 func (m *dashModel) files() []Change {
 	if m.showFiles {
-		return m.data.Files
+		return m.taskFiles
 	}
 	return m.changes
 }
 
+// fileTree is the pane's tree for the current list; state survives a rebuild of the same list.
+func (m *dashModel) fileTree() *fileTree {
+	files := m.files()
+	key := "changes\x00" + m.task().ID
+	if m.showFiles {
+		key = "files\x00" + m.task().ID
+	}
+	t := m.tree
+	if t == nil || t.key != key {
+		t = &fileTree{key: key, open: map[string]bool{}}
+		m.tree = t
+	}
+	if t.root == nil || !slices.Equal(t.src, files) {
+		t.src, t.root = files, buildFileTree(files)
+		if len(t.open) == 0 {
+			t.decided = false
+		}
+	}
+	return t
+}
+
+func (m *dashModel) treeKey(k string) {
+	t := m.fileTree()
+	switch k {
+	case "left":
+		t.fold()
+	case "right":
+		t.unfold()
+	case "-":
+		t.setAll(false)
+	case "=":
+		t.setAll(true)
+	case "`":
+		t.flat = !t.flat
+	}
+}
+
+func (m *dashModel) filterKey(msg tea.KeyPressMsg) tea.Cmd {
+	t := m.fileTree()
+	switch k := msg.String(); k {
+	case "esc":
+		t.filter, t.editing = "", false
+	case "enter":
+		t.editing = false
+	case "backspace":
+		if r := []rune(t.filter); len(r) > 0 {
+			t.filter = string(r[:len(r)-1])
+		}
+	case "up", "down", "pgup", "pgdown":
+		return m.move(k)
+	default:
+		if msg.Text == "" || msg.Mod&(tea.ModCtrl|tea.ModAlt) != 0 {
+			return nil
+		}
+		t.filter += msg.Text
+	}
+	t.refilter()
+	return nil
+}
+
 func (m *dashModel) move(key string) tea.Cmd {
 	delta := 1
-	if key == "up" || key == "pgup" {
+	if key == "up" || key == "pgup" || key == "left" {
 		delta = -1
 	}
 	if strings.HasPrefix(key, "pg") {
 		delta *= max(1, m.height/3)
 	}
 	switch {
-	case m.preview && m.focus != 1:
+	case m.preview && m.focus == 2:
 		m.previewScroll = max(0, m.previewScroll+delta)
 	case m.focus == 1:
-		m.file = max(0, min(m.file+delta, len(m.files())-1))
-	case m.focus == 2:
-		m.detailScroll = max(0, m.detailScroll+delta)
+		m.fileTree().move(delta)
 	default:
 		order := m.taskOrder()
 		if len(order) == 0 {
 			return nil
 		}
-		m.selected = order[max(0, min(slices.Index(order, m.selected)+delta, len(order)-1))]
-		m.file, m.detailScroll, m.preview = 0, 0, false
-		m.changes = nil
+		m.selected = m.neighbor(key, delta, order)
+		m.preview = false
+		m.changes, m.taskFiles, m.filesSource = nil, nil, ""
+		m.changesLoad.err, m.filesLoad.err = "", ""
 		t := m.task()
-		return tea.Batch(m.readChanges(t), m.readGuest(t), m.readMetadata(t))
+		return tea.Batch(m.readChanges(t), m.readFiles(t), m.readGuest(t), m.readMetadata(t))
 	}
 	return nil
 }
 
 func (m *dashModel) enter() tea.Cmd {
-	if m.focus == 1 && len(m.files()) > 0 {
-		m.preview, m.patch, m.previewScroll, m.focus = true, false, 0, 2
-		return m.openFile()
+	if m.focus == 1 {
+		t := m.fileTree()
+		switch n := t.selected(); {
+		case n == nil:
+		case n.dir:
+			t.toggle(n)
+		default:
+			m.preview, m.patch, m.previewScroll, m.focus = true, false, 0, 2
+			return m.openFile()
+		}
+		return nil
 	}
-	if t := m.task(); t.Live {
-		m.attachID = t.ID
-		m.confirm = choiceui.NewAttachConfirm(safeText(t.Agent), safeText(t.Title), m.width, m.height)
+	if t := m.task(); t.Review != nil {
+		m.openReview(t)
+		return nil
+	}
+	switch t := m.task(); {
+	case t.Live:
+		m.attachTask(t)
+	case m.endedRun(t) && t.Report != "":
+		m.openReport(t)
+	case m.endedRun(t):
+		m.openFollowUp(t)
+	case t.ID != "" && m.groupOf(t) == 1:
+		m.confirm = m.followUpNotice(t)
 	}
 	return nil
 }
 
 type previewEvent struct {
 	request uint64
-	text    string
-	err     error
+	doc     previewDoc
 }
 
 func (m *dashModel) openFile() tea.Cmd {
-	files := m.files()
-	if len(files) == 0 {
+	n := m.fileTree().selected()
+	if n == nil || n.dir {
 		return nil
 	}
-	cwd, t, file, patch := m.CWD, m.task(), files[min(m.file, len(files)-1)], m.patch
-	m.previewPath, m.previewText = file.Path, ""
+	t, file, mb, cwd := m.task(), n.change, m.changesMB, m.CWD
+	m.previewPath, m.previewDoc = file.Path, previewDoc{path: file.Path, note: "reading…"}
 	m.previewRequest++
 	request := m.previewRequest
 	return func() tea.Msg {
-		text, err := Preview(cwd, t, file, patch)
-		return previewEvent{request, text, err}
-	}
-}
-
-type newWizard struct {
-	step   int
-	values [3]string
-	input  textinput.Model
-	prompt textarea.Model
-}
-
-func startWizard(targets []string, w int) *newWizard {
-	a := &newWizard{input: textinput.New(), prompt: textarea.New()}
-	if len(targets) > 0 {
-		a.input.SetValue(targets[0])
-	}
-	a.input.Focus()
-	a.prompt.SetWidth(max(1, w-8))
-	a.prompt.SetHeight(5)
-	return a
-}
-
-func (a *newWizard) edit(msg tea.Msg) (cmd tea.Cmd) {
-	if a.step < 3 {
-		a.input, cmd = a.input.Update(msg)
-	} else if a.step == 3 {
-		a.prompt, cmd = a.prompt.Update(msg)
-	}
-	return cmd
-}
-
-func (m *dashModel) wizardKey(msg tea.KeyPressMsg) tea.Cmd {
-	a := m.wizard
-	switch {
-	case msg.String() == "esc":
-		m.wizard = nil
-	case a.step < 3 && msg.String() == "enter":
-		value := strings.TrimSpace(a.input.Value())
-		if a.step == 0 && !slices.Contains(m.Targets, value) {
-			m.status = "Choose a harness from the list"
-			return nil
-		}
-		a.values[a.step], a.step = value, a.step+1
-		a.input.SetValue("")
-		if a.step == 3 {
-			return a.prompt.Focus()
-		}
-	case a.step == 3 && msg.String() == "ctrl+s":
-		if strings.TrimSpace(a.prompt.Value()) == "" {
-			m.status = "Enter an initial prompt"
-		} else {
-			a.step++
-		}
-	case a.step == 4 && msg.String() == "enter":
-		m.wizard = nil
-		return func() tea.Msg {
-			if m.Launch == nil {
-				return resultEvent{err: errors.New("instance launch unavailable")}
+		if n, ok := reviewPR(t); ok {
+			if h, err := fetchPR(cwd, n); err == nil {
+				t = prView(t, h)
 			}
-			job, err := m.Launch(a.values[0], a.values[1], a.values[2], a.prompt.Value())
-			return resultEvent{message: fmt.Sprintf("%s · queued", job), err: err}
 		}
-	default:
-		return a.edit(msg)
+		sides, err := ReadSides(t, file, mb)
+		if err != nil {
+			return previewEvent{request, previewDoc{path: file.Path, note: safeText(err.Error())}}
+		}
+		return previewEvent{request, newPreviewDoc(file.Path, sides)}
+	}
+}
+
+// readFiles lists the selected task's sandbox files while the Files view is up.
+func (m *dashModel) readFiles(t Task) tea.Cmd {
+	if !m.showFiles || t.ID == "" {
+		return nil
+	}
+	if m.quietReads && m.filesLoad.pending {
+		return nil
+	}
+	req, cwd := m.filesLoad.start(m.now(), m.quietReads), m.CWD
+	return tea.Batch(func() tea.Msg {
+		if n, ok := reviewPR(t); ok {
+			h, err := fetchPR(cwd, n)
+			if err != nil {
+				return filesEvent{t.ID, "", nil, err, req}
+			}
+			rows, _, err := TaskFiles(prView(t, h))
+			return filesEvent{t.ID, fmt.Sprintf("PR #%d head %s", n, short(h.sha)), rows, err, req}
+		}
+		rows, source, err := TaskFiles(t)
+		return filesEvent{t.ID, source, rows, err, req}
+	}, m.loadTick())
+}
+
+// neighbor is the task a move lands on: left and right step through the order, up and down
+// take the nearest card in the row above or below, and the graph moves line by line.
+func (m *dashModel) neighbor(key string, delta int, order []int) int {
+	at := slices.Index(order, m.selected)
+	linear := order[max(0, min(at+delta, len(order)-1))]
+	from, ok := m.cardPos[m.selected]
+	if !ok || key == "left" || key == "right" {
+		return linear
+	}
+	steps := 1
+	if strings.HasPrefix(key, "pg") {
+		steps = max(1, m.height/(2*m.cardHeight()))
+	}
+	sel := m.selected
+	for range steps {
+		best, bestLine, bestCol := -1, 0, 0
+		for _, i := range order {
+			p, ok := m.cardPos[i]
+			if !ok || (delta > 0 && p.line <= from.line) || (delta < 0 && p.line >= from.line) {
+				continue
+			}
+			gap, col := abs(p.line-from.line), abs(p.col-from.col)
+			if best < 0 || gap < bestLine || (gap == bestLine && col < bestCol) {
+				best, bestLine, bestCol = i, gap, col
+			}
+		}
+		if best < 0 {
+			break
+		}
+		sel, from = best, m.cardPos[best]
+	}
+	return sel
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// nextMetadata reads the selected task's PR and ticket, else the next task whose copy is stale; one at a time.
+func (m *dashModel) nextMetadata() tea.Cmd {
+	if cmd := m.readMetadata(m.task()); cmd != nil {
+		return cmd
+	}
+	for _, i := range m.taskOrder() {
+		if cmd := m.readMetadata(m.withGuestWork(m.data.Tasks[i])); cmd != nil {
+			return cmd
+		}
 	}
 	return nil
+}
+
+// nextSample probes the selected task's sandbox when its sample is old, else the next running sandbox in turn.
+func (m *dashModel) nextSample() tea.Cmd {
+	if m.guestPending {
+		return nil
+	}
+	t := m.task()
+	if s, ok := m.samples[t.ID]; t.Guest && (!ok || time.Since(s.at) > 5*time.Second) {
+		return m.readGuest(t)
+	}
+	order := m.taskOrder()
+	for range order {
+		m.sampleAt = (m.sampleAt + 1) % max(1, len(order))
+		other := m.data.Tasks[order[m.sampleAt]]
+		if s, ok := m.samples[other.ID]; other.Guest && (!ok || time.Since(s.at) > 15*time.Second) {
+			return m.readGuest(other)
+		}
+	}
+	return nil
+}
+
+// nonEmpty keeps the parts that say something.
+func nonEmpty(parts ...string) []string {
+	var out []string
+	for _, p := range parts {
+		if p = safeText(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// start begins a read and returns its request; the pending clock keeps running across back-to-back reads.
+func (l *treeLoad) start(now time.Time, quiet bool) uint64 {
+	l.req++
+	if !l.pending {
+		l.since, l.quiet = now, quiet
+	} else if !quiet {
+		l.quiet = false
+	}
+	l.pending = true
+	return l.req
+}
+
+// loadTick animates the tree's loading card while a read is in flight.
+func (m *dashModel) loadTick() tea.Cmd {
+	if m.loadTicking || (!m.changesLoad.pending && !m.filesLoad.pending) {
+		return nil
+	}
+	m.loadTicking = true
+	return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg { return loadTickEvent{} })
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return safeText(err.Error())
+}
+
+// readingKey is a key while a file has focus: n and p step to the next and previous file, d toggles the diff.
+func (m *dashModel) readingKey(k string) (tea.Cmd, bool) {
+	switch k {
+	case "n", "p", "]", "[":
+		delta := 1
+		if k == "p" || k == "[" {
+			delta = -1
+		}
+		if n := m.fileTree().step(delta); n != nil {
+			m.previewScroll, m.details = 0, false
+			return m.openFile(), true
+		}
+		return nil, true
+	case "d":
+		m.patch, m.previewScroll = !m.patch, 0
+		return nil, true
+	case "s":
+		if isDiagram(m.previewPath) {
+			m.diagramSource, m.previewScroll = !m.diagramSource, 0
+			return nil, true
+		}
+	case "o":
+		if isDiagram(m.previewPath) {
+			return m.openDiagram(), true
+		}
+	}
+	return nil, false
+}
+
+// helpSections are the dashboard's keys as the ? modal lists them.
+func helpSections() []choiceui.HelpSection {
+	return []choiceui.HelpSection{
+		{Title: "Tasks", Keys: [][2]string{
+			{"↑↓ wheel", "move through tasks"}, {"1 2 3", "dashboard, graph, schedule"}, {"↵", "attach, or read a run's report"}, {"s r x", "follow up · retry · clean up"},
+			{"t", "task details"}, {"click link", "copy it"}, {"p", "sbx ports of a sandbox"}, {"v", "verdict on its PR"}, {"n", "new instance"}, {"c", "host capacity"},
+		}},
+		{Title: "Files", Keys: [][2]string{
+			{"f g", "files · changes"}, {"Tab", "tasks or files"}, {"↵", "open file or fold"},
+			{"n p", "open next / previous file"}, {"/", "filter files"}, {"← → - =", "fold, collapse, expand"}, {"`", "tree or flat list"},
+		}},
+		{Title: "Reading a file or report", Keys: [][2]string{
+			{"n p", "next · previous file or reference"}, {"↵", "open the reference under ›"}, {"o", "open as SVG or in the viewer"},
+			{"s", "diagram source · follow up"}, {"v y Y", "select rows · copy · copy all"}, {"a", "attach the agentic review"}, {"d", "file or diff"}, {"u i", "unified · side by side"}, {"↑↓", "scroll"},
+		}},
+		{Title: "Anywhere", Keys: [][2]string{
+			{"e", "Fresh in the sandbox"}, {"Ctrl+G Tab", "proveo or sbx"}, {"Esc", "back"}, {"Ctrl+C", "quit"},
+		}},
+	}
+}
+
+// followUpNotice says why Enter cannot attach to an attention task: its agent's session is live in another terminal, or the run ended.
+func (m *dashModel) followUpNotice(t Task) *choiceui.Confirmation {
+	agent := agentLabel(t.Agent)
+	if st := m.statusOf(t); st.label != "" {
+		agent += " · " + strings.ToLower(st.label[:1]) + st.label[1:]
+	}
+	where := []string{}
+	if t.Sandbox != "" {
+		where = append(where, "Sandbox  "+safeText(t.Sandbox))
+	}
+	where = append(where, "Agent    "+safeText(agent))
+	if t.Guest {
+		return choiceui.NewNotice("Follow up in its own terminal", append([]string{
+			"proveo can't attach: this agent's session is live in another terminal.",
+			"Follow up in the terminal tab where `proveo run` started it.", "",
+		}, where...), m.width, m.height)
+	}
+	return choiceui.NewNotice("Nothing to attach to", append([]string{
+		"This run has ended, so no session is left to follow up in.",
+		"t shows its details; n starts a new instance.", "",
+	}, where...), m.width, m.height)
+}
+
+// treeOpen is n or p from the tree: with no file open, the file under the cursor, else the first file after it;
+// with a file open, the next or previous one.
+func (m *dashModel) treeOpen(k string) tea.Cmd {
+	t := m.fileTree()
+	if n := t.selected(); !m.preview && n != nil && !n.dir {
+		m.preview, m.previewScroll, m.focus, m.details = true, 0, 2, false
+		return m.openFile()
+	}
+	delta := 1
+	if k == "p" {
+		delta = -1
+	}
+	if t.step(delta) == nil {
+		return nil
+	}
+	m.preview, m.previewScroll, m.focus, m.details = true, 0, 2, false
+	return m.openFile()
+}
+
+// attachTask asks before handing the terminal to t's live session: its own tmux session, or its job's.
+func (m *dashModel) attachTask(t Task) {
+	if !t.Live {
+		return
+	}
+	m.attachID = t.ID
+	if t.Session != "" {
+		m.attachID = t.Session
+	}
+	m.confirm = choiceui.NewAttachConfirm(safeText(t.Agent), safeText(t.Title), m.width, m.height)
 }

@@ -17,8 +17,13 @@ skinparam noteTextAlignment left
 ' D5: task identity, dependency folding, phase revisions and Git previews
 ' run locally. Provider and live push data depend on configured clients.
 ' D6: tmux fixtures cover color, attach, cancel, detach, guest-only Fresh,
-' wizard, resize, tab switch, Ctrl+C and terminal restore.
+' new instance, resize, tab switch, Ctrl+C and terminal restore.
 ' Stock-child parity is pending.
+' D6 2026-11-25: task details are a no-scroll popover (the split, accordion
+' and left pane are retired); Files and Changes read the task's sandbox.
+' D6 upgrade 2026-11-25: size tiers (too small, single, portrait, short),
+' two-row sbx-dense task items and a compacted, filterable change tree.
+' Design notes: _spec/_paradigms/dashboard-terminal-design.puml.
 ' D7: rerun live verification on Apple Silicon or Linux with KVM, an
 ' authenticated sbx, and the required images. The current Linux verifier
 ' has no /dev/kvm. Its CLI reads settings, and inventory requires sign-in.
@@ -247,9 +252,9 @@ skinparam noteTextAlignment left
 ' that invoked it. Ctrl+B d detaches direct attach. Ctrl+B L switches back
 ' from an existing tmux client. The attached agent receives its own input.
 ' Restore selection, focus and scroll in both cases.
-' New instance wizard confirms agent, optional task, name and opening prompt.
-' Submit the wizard's snapshot through the same runner as CLI and schedule.
-' Gate: add e2e/dashboard_native_tmux_test.go for bare CLI, all views, wizard,
+' New instance runs `proveo run --queue`: the CLI's own card, an attended
+' job through the same queue as CLI and schedule, then attach (2026-11-25).
+' Gate: add e2e/dashboard_native_tmux_test.go for bare CLI, all views, n,
 ' attach/cancel/detach, details, diff and guest-only Fresh. Exercise two
 ' tmux clients to verify which one attach switches. Drive 120×40, 80×24
 ' and a live resize. Test ANSI cells, clipping, keys and pane state.

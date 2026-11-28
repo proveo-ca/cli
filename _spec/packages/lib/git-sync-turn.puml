@@ -45,6 +45,17 @@
 ' FK: note right of HOOK; words=30 syllables=55; FK 11.9
 ' FK: note over HOOK (N_RECURSE); words=32 syllables=55; FK 10.9
 ' FK: note over OC (N_RACE); words=32 syllables=58; FK 12.0
+' INSTANCE BRANCHES STAY LOCAL (2026-11-27, "there is a pushed branch with
+' proveo/claudecode-feat-integ-26d02feee4, what is this"): with no upstream the
+' hook ran `git push -u origin HEAD`, so every isolated instance published its
+' proveo/<instance> branch on its first turn; four reached RainTechnologiesInc/
+' Pluvo, one carrying a review's live-app screenshots (sf6.png, sf7.png). Now:
+' the hook never pushes a proveo/* branch; the instance checkout (a kit command,
+' host-side, so images built before this hold too) points a proveo/* branch's
+' upstream at itself, so nothing is ahead; a read-only run (reviews) gets
+' PROVEO_GIT_SYNC=off: no commits, no pushes. Turns still commit locally and come
+' home under refs/proveo/ at teardown. A branch the operator chose at start
+' (task-picker.puml: a PR's head, a Linear id) is pushed as before.
 ' Historical startup measurement: sbx launched OpenCode six seconds before the plugin
 ' seed copied it. The current release boundary includes native config and agents,
 ' not just the older hooks-only marker; tool provisioning need not gate release.

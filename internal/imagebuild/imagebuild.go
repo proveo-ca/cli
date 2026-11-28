@@ -341,15 +341,7 @@ func (b *Builder) CacheFlags(push bool, argv []string) []string {
 	if !ok {
 		return nil
 	}
-	root := b.env("PROVEO_BUILDKIT_CACHE_DIR")
-	if root == "" {
-		base := b.env("XDG_CACHE_HOME")
-		if base == "" {
-			base = filepath.Join(b.env("HOME"), ".cache")
-		}
-		root = filepath.Join(base, "proveo", "buildkit")
-	}
-	dest := filepath.Join(root, RefRepo(ref))
+	dest := filepath.Join(b.cacheRoot(), RefRepo(ref))
 	if err := b.MkdirAll(dest, 0o755); err != nil {
 		b.UI.Warnf("buildkit cache dir %s is not writable; building without a named cache", dest)
 		return nil
@@ -359,6 +351,36 @@ func (b *Builder) CacheFlags(push bool, argv []string) []string {
 		flags = append(flags, "--cache-to=type=local,dest="+dest+",mode=max")
 	}
 	return flags
+}
+
+// cacheRoot is where BuildKit caches and build locks live: PROVEO_BUILDKIT_CACHE_DIR, else <cache home>/proveo/buildkit.
+func (b *Builder) cacheRoot() string {
+	if root := b.env("PROVEO_BUILDKIT_CACHE_DIR"); root != "" {
+		return root
+	}
+	base := b.env("XDG_CACHE_HOME")
+	if base == "" {
+		base = filepath.Join(b.env("HOME"), ".cache")
+	}
+	return filepath.Join(base, "proveo", "buildkit")
+}
+
+// lockImage serialises rebuilds of one image across concurrent builds; it is a no-op when no absolute cache root exists.
+func (b *Builder) lockImage(name string) func() {
+	root := b.cacheRoot()
+	if !filepath.IsAbs(root) {
+		return func() {}
+	}
+	dir := filepath.Join(root, "locks")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return func() {}
+	}
+	unlock, err := lockFile(filepath.Join(dir, name+".lock"))
+	if err != nil {
+		b.UI.Warnf("could not lock the %s rebuild (%v); concurrent builds may race on it", name, err)
+		return func() {}
+	}
+	return unlock
 }
 
 var registryDNS = regexp.MustCompile(`(?i)temporary failure in name resolution|lookup registry-1\.docker\.io|no such host|server misbehaving`)

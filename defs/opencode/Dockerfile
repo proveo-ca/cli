@@ -78,6 +78,7 @@ RUN node --no-warnings -e 'const { backup } = require("node:sqlite"); if (typeof
 COPY --chmod=0755 packages/lib/proveo-seed /usr/local/bin/proveo-seed
 COPY --chmod=0755 packages/lib/hooks/git-sync-turn.sh /opt/proveo/hooks/git-sync-turn.sh
 COPY packages/lib/hooks/proveo-git-sync-turn.js /opt/proveo/hooks/proveo-git-sync-turn.js
+COPY packages/lib/hooks/proveo-activity.js /opt/proveo/hooks/proveo-activity.js
 COPY --chmod=0755 defs/opencode/entrypoint.sh /entrypoint.sh
 COPY --chmod=0755 packages/lib/proveo-await-seed /usr/local/bin/proveo-await-seed
 RUN install -d /opt/proveo/shims \

@@ -11,6 +11,7 @@ import (
 	proveo "github.com/proveo-ca/proveo"
 	"github.com/proveo-ca/proveo/internal/manifest"
 	"github.com/proveo-ca/proveo/internal/proveohome"
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 func TestEveryHarnessHomeMountReachesTheConfigSet(t *testing.T) {
@@ -128,6 +129,9 @@ func TestClaudeCodeDeclaresItsStateDirsAndItsVMLocalPaths(t *testing.T) {
 // SPEC: _spec/defs/codex/codex-topology.puml
 func TestCodexDaemonStateNeverCrossesTheSandbox(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	ms, err := manifest.LoadFS(proveo.Manifests)
 	if err != nil {

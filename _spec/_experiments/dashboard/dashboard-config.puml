@@ -1,0 +1,50 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: <proveo home>/dashboard.yml is the operator's own dashboard settings; its link rules filter Task Details
+' covers: internal/dashboard/linkrules.go
+' covers: internal/dashboard/linkrules_test.go
+' covers: internal/dashboard/popover.go
+' covers: internal/dashboard/pr.go
+' covers: internal/dashboard/model.go
+'
+' "blocklist *blacksmith.sh in the links at the PR description shown on task
+' details, minus blacksmith.sh/track/run-proof; make this blocklist config
+' intentional; not buried in code" (2026-11-27).
+' WHY A FILE: the rule is the operator's org's CI (Blacksmith), not proveo's, so
+' proveo ships no rules and the operator owns them. agent-settings.yml is no
+' home for it: proveo rewrites that file with remembered choices and their
+' fingerprints. dashboard.yml is hand-written; proveo only reads it.
+' FORMAT (yaml, unknown keys refused):
+'   links:
+'     block: [{host: "*blacksmith.sh"}]
+'     allow: [{host: "*blacksmith.sh", path: /track/run-proof}]
+' host is a path.Match glob on the link's host, case-folded; * spans dots, so
+' "*blacksmith.sh" takes blacksmith.sh and every subdomain. path, when set, is a
+' prefix of the link's path. A block match hides the link unless an allow rule
+' matches too. MEASURED 2026-11-27 in the pluvo PR bodies: app.blacksmith.sh
+' (9 links), backend.blacksmith.sh/track/proof-report (4), pr-comments-assets
+' images (already dropped as images), and the run proof on a subdomain:
+' dashboardbackend.blacksmith.sh/track/run-proof (5), hence host and path apart.
+' WHERE: prLinksFor, when Task Details draws; prLinks keeps 32 candidates so a
+' run of blocked links cannot crowd the five shown ones out.
+' TASKS (2026-11-27): a tasks.sources list replaces the new-instance picker's
+' default sources (task_sources.yml); see task-picker.puml for the kinds.
+' LIVE: the file is read again whenever its modification time changes. A broken
+' file (bad yaml, unknown key, a rule with no host, a bad glob) applies no rules
+' and says why in the footer.
+title dashboard.yml — the operator's dashboard settings
+
+file "<proveo home>/dashboard.yml\nhand-written · never rewritten" as CFG <<host>>
+component "Task Details\nup to five PR links" as DETAILS <<app>>
+component "prLinks\n32 candidates from the PR body" as BODY <<app>>
+
+BODY ARROW_MAIN DETAILS : candidates
+CFG ARROW_MAIN DETAILS : links.block / links.allow,\nre-read on change
+
+note right of CFG
+  **The operator's rules, not proveo's.**
+  Org-specific noise, such as one CI's
+  dashboards, is filtered by a file the
+  operator owns and can read.
+end note
+@enduml

@@ -1,0 +1,55 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: a PlantUML file previews as a plantuml -tutxt text sketch, its source on s, a rendered SVG on o
+' covers: internal/dashboard/diagram.go
+' covers: internal/dashboard/diagram_test.go
+' covers: internal/dashboard/highlight.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/view.go
+'
+' "Another missing piece is the ability to render .puml files in a TUI (complex
+' graphics, is this possible?)" Chosen 2026-11-26: "Text sketch + open SVG".
+' MEASURED 2026-11-26, PlantUML 1.2026.9 on this host:
+'   -tutxt draws component and state diagrams (ended-runs, review-requests)
+'   as boxes, but keeps only a label's first line, drops arrow labels,
+'   arrowheads and colours, and prints **bold** literally;
+'   a sequence diagram with notes (run-session.puml) crashes with
+'   UnsupportedOperationException in teoz NoteTile; plain sequences draw well;
+'   -pipe takes about 1 s each way; a syntax error exits 200 with
+'   ERROR / <line> / <message> on stderr.
+' Pixels are out in this terminal: Alacritty speaks no image protocol, and
+' [Inference] half blocks give a 150x46 pane about 150x92 pixels, too few for
+' diagram text. Kitty graphics through tmux needs Ghostty, kitty or WezTerm,
+' allow-passthrough and Unicode placeholders, which Bubble Tea does not draw.
+' HOW: opening a .puml, .plantuml, .pu, .iuml or .wsd file shows its source at
+' once and runs `plantuml -tutxt -pipe -charset UTF-8` in the background, from
+' the file's folder in the task's checkout so relative !include lines resolve
+' (the identity include is fetched over the network). The sketch replaces the
+' source when it lands, with **bold** drawn bold and padded so boxes keep
+' their edges; sketches are cached per folder and source. The title says
+' "sketch · plantuml -tutxt drops arrow labels and colours". A failure keeps
+' the source and titles it "file · no sketch: <line N: message | plantuml
+' crashed: <Exception> in <class> | plantuml is not on PATH>". s swaps sketch
+' and source; d still shows the diff; o renders `plantuml -tsvg` into
+' $TMPDIR/proveo-diagrams/<name>-<8 hex>.svg and hands it to the OS viewer.
+' A 30 s timeout bounds each plantuml run.
+title Diagram preview — a text sketch in the pane, the real drawing outside
+
+participant "file preview\n.puml opened" as PREVIEW <<app>>
+participant "plantuml -tutxt\n-pipe · 30 s" as SKETCH <<async>>
+participant "plantuml -tsvg\n$TMPDIR/proveo-diagrams" as SVG <<async>>
+participant "OS viewer\nopen · xdg-open" as OS <<host>>
+
+PREVIEW -> SKETCH : source, from its folder
+SKETCH --> PREVIEW : box sketch, or why not
+PREVIEW -> PREVIEW : s sketch / source
+PREVIEW -> SVG : o
+SVG -> OS : the .svg
+
+note over SKETCH
+  **The sketch is a map, not the diagram.**
+  It shows the boxes and how they connect;
+  the SVG carries the labels, arrows and
+  colours the text drops.
+end note
+@enduml

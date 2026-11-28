@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/proveo-ca/proveo/internal/backend/sandbox"
 	"github.com/proveo-ca/proveo/internal/sbx"
@@ -43,24 +44,24 @@ func TestChangesPreviewRenameAndDeletion(t *testing.T) {
 	run("mv", "old name.txt", "new name.txt")
 	run("commit", "-qm", "carried")
 	task := Task{Base: base, Tip: run("rev-parse", "HEAD"), Repo: work}
-	changes, err := Changes(task)
-	if err != nil || len(changes) != 2 {
-		t.Fatalf("changes = %+v, %v", changes, err)
+	set, err := Changes(task, "", "")
+	changes := set.Rows
+	if err != nil || len(changes) != 2 || set.Base != "launch" || set.MergeBase != base {
+		t.Fatalf("changes = %+v, %v", set, err)
 	}
 	for _, c := range changes {
-		got, err := Preview(work, task, c, false)
+		got, err := ReadSides(task, c, set.MergeBase)
 		if err != nil {
 			t.Fatal(err)
 		}
 		switch c.Kind {
 		case "D":
-			if got != "only on base" {
-				t.Errorf("deleted preview = %q", got)
+			if got.Before != "only on base" || got.After != "" {
+				t.Errorf("deleted sides = %+v", got)
 			}
 		case "R100":
-			patch, err := Preview(work, task, c, true)
-			if got != "renamed content" || err != nil || !strings.Contains(patch, "rename from old name.txt") {
-				t.Errorf("renamed preview = %q, patch = %q, error = %v", got, patch, err)
+			if got.Before != "renamed content" || got.After != "renamed content" {
+				t.Errorf("renamed sides = %+v; the base side reads the old name", got)
 			}
 		default:
 			t.Errorf("unexpected change %+v", c)
@@ -100,8 +101,12 @@ func TestDashboardDiscoversRunningWorkspaceWithoutClaimingTheSandbox(t *testing.
 		{ID: "stopped", Status: "stopped", Workspaces: []string{work}},
 	}
 	got := discoveredSandboxes(work, []sandbox.Instance{{VMID: "managed"}}, rows)
-	if len(got) != 1 || got[0].Sandbox != "codex-prv-284" || got[0].Live || got[0].Guest || got[0].Instance != "" {
+	host, _ := os.Hostname()
+	if len(got) != 1 || got[0].Sandbox != "codex-prv-284" || got[0].Live || got[0].Instance != "" {
 		t.Fatalf("discovery = %+v", got)
+	}
+	if !got[0].Guest || got[0].Host != host || got[0].Workdir != work {
+		t.Errorf("a running discovered sandbox must be readable for usage and files: %+v", got[0])
 	}
 	if id := linearIdentifier(got[0]); id != "PRV-284" {
 		t.Errorf("Linear key = %q", id)
@@ -120,5 +125,23 @@ func TestTaskGraphFoldsChainAndKeepsBlocker(t *testing.T) {
 	line := m.graphLine(newTaskGraph(tasks), tasks[4], 36)
 	if !strings.Contains(line, "3 tasks") || !strings.Contains(line, "blocked by d") {
 		t.Errorf("folded graph line = %q", line)
+	}
+}
+
+func TestAQueuedRunTakesTheOutcomeOfTheResultThatEndedIt(t *testing.T) {
+	submitted := time.Date(2026, 11, 26, 9, 16, 34, 0, time.UTC)
+	failed := &schedule.Result{Outcome: "failed", Detail: "the agent exited 1 before it was ready", Finished: submitted.Add(2 * time.Minute)}
+	queued := Task{State: schedule.Attention, Reason: "the agent exited 1 before it was ready: …", Updated: submitted}
+	if got := withResult(queued, failed); got.Outcome != "failed" || got.Reason != queued.Reason || !got.Updated.Equal(submitted) {
+		t.Errorf("queued attention task = %+v; it takes only the outcome", got)
+	}
+	if got := withResult(queued, &schedule.Result{Outcome: "failed", Finished: submitted.Add(-time.Hour)}); got.Outcome != "" {
+		t.Errorf("an older run's result marked the queued one %q", got.Outcome)
+	}
+	if got := withResult(Task{State: schedule.Queued}, failed); got.State != schedule.Attention || got.Outcome != "failed" || got.Reason != failed.Detail {
+		t.Errorf("a job with no queue entry = %+v", got)
+	}
+	if got := withResult(Task{State: schedule.Running, Live: true}, failed); got.Outcome != "" {
+		t.Error("a live run took a finished result")
 	}
 }

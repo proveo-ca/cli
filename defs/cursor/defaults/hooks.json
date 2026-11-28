@@ -4,12 +4,16 @@
     "beforeShellExecution": [
       { "command": "/opt/cursor/defaults/hooks/audit-shell.sh" }
     ],
+    "beforeSubmitPrompt": [
+      { "command": "/usr/local/bin/proveo-entrypoint activity cursor busy", "timeout": 5 }
+    ],
     "stop": [
       {
         "command": "/opt/proveo/hooks/git-sync-turn.sh",
         "timeout": 90,
         "loop_limit": 1
-      }
+      },
+      { "command": "/usr/local/bin/proveo-entrypoint activity cursor idle", "timeout": 5 }
     ]
   }
 }

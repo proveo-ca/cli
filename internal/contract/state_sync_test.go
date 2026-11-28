@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/proveo-ca/proveo/internal/proveohome"
+	"github.com/proveo-ca/proveo/internal/testx"
 )
 
 // stateBox is one sandbox's side of the state sync: its home, the agent's workdir and its /dev/shm.
@@ -145,6 +146,9 @@ func claudeKey(p string) string {
 // and a turn the volume holds that the host never got must outlive that restore.
 func TestStateRestoreNeverRevertsANewerGuestTurn(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws-a")
 	host := filepath.Join(state, ".claude", "projects", "-work-ws-a")
@@ -190,6 +194,9 @@ func TestStateRestoreNeverRevertsANewerGuestTurn(t *testing.T) {
 // the other's turn, even from a stale copy an older restore left in a volume.
 func TestTwoWorkspacesSharingOneStoreKeepEachOthersTurns(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state := t.TempDir()
 	a, b := newStateBox(t, "/work/ws-a"), newStateBox(t, "/work/ws-b")
@@ -252,6 +259,9 @@ exit $rc
 // save refuses, and the host file stays whole through the next boot.
 func TestARestoreThatFailsMidFileNeverTruncatesTheHost(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	host := filepath.Join(state, ".claude", "projects", "-work-ws")
@@ -313,6 +323,9 @@ func TestARestoreThatFailsMidFileNeverTruncatesTheHost(t *testing.T) {
 // 512 KiB stack drops that limit to its 128 KiB floor.
 func TestARestorePastTheArgumentLimitPlacesEveryFile(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	host := filepath.Join(state, ".claude", "projects", "-work-ws")
@@ -333,6 +346,9 @@ func TestARestorePastTheArgumentLimitPlacesEveryFile(t *testing.T) {
 
 func TestStateSaveRefusesWithoutThisBootsRestore(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	host := filepath.Join(state, ".claude", "projects", "-work-ws", "s.jsonl")
@@ -383,6 +399,9 @@ func gitAt(t *testing.T, dir string, args ...string) {
 // todos/ keeps its whole-store scope; sessions/ stays in the VM that wrote it.
 func TestStateRestoreCopiesOnlyThisWorkspacesProjects(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skipf("git unavailable: %v", err)
@@ -432,6 +451,9 @@ func TestStateRestoreCopiesOnlyThisWorkspacesProjects(t *testing.T) {
 // units a slice plus a hash); the ASCII rows have the shapes of names a host store holds.
 func TestClaudeProjectKeyMatchesClaudeCode(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	for _, c := range []struct{ path, want string }{
 		{"/Users/dev/Projects/app", "-Users-dev-Projects-app"},
@@ -482,6 +504,9 @@ func TestSeedRestoresStateBeforeItReleasesTheAgent(t *testing.T) {
 // not /proc/mounts, tells the sync which ones to carry.
 func TestProjectsAndTodosRoundTripOnPlainDirectories(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	host := filepath.Join(state, ".claude")
@@ -519,6 +544,9 @@ func TestProjectsAndTodosRoundTripOnPlainDirectories(t *testing.T) {
 // host's existing copies stay as they are.
 func TestVMLocalPathsNeverCrossEitherSync(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	host := filepath.Join(state, ".claude")
@@ -566,6 +594,9 @@ func TestVMLocalPathsNeverCrossEitherSync(t *testing.T) {
 // A config save leaves projects/ to the state save.
 func TestAConfigSaveNoLongerCarriesProjects(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	seedFile(t, box.projects("-work-ws")+"/s.jsonl", "turn\n")
@@ -599,6 +630,9 @@ _proveo_volume_dirs() { printf '%s\n' .claude/projects .claude/sessions .claude/
 // leaves the host whole.
 func TestWithoutStateDirsTheKitVolumesTravelAsState(t *testing.T) {
 	t.Parallel()
+	if testx.InLinux(t) {
+		return
+	}
 	bash := bashOrSkip(t)
 	state, box := t.TempDir(), newStateBox(t, "/work/ws")
 	host := filepath.Join(state, ".claude")

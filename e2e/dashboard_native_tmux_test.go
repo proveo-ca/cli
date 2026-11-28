@@ -60,7 +60,7 @@ exec cat`
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitDashboardPane(t, sess, "Review queue")
+	waitDashboardPane(t, sess, "Task Dashboard")
 	keys := func(keys ...string) {
 		t.Helper()
 		if err := sess.SendKeys(keys...); err != nil {
@@ -75,10 +75,17 @@ exec cat`
 	waitDashboardPane(t, sess, "Task graph")
 	keys("3")
 	waitDashboardPane(t, sess, "Schedule")
-	keys("1", "f", "Enter")
-	waitDashboardPane(t, sess, "Dashboard file preview marker")
+	keys("1", "f")
+	if frame := waitDashboardPane(t, sess, "Esc back to tasks"); strings.Contains(frame, "README.md") || !strings.Contains(frame, "Select a task to see its") || !strings.Contains(frame, "Files") {
+		t.Fatalf("Files must list the task's sandbox, never the host checkout, and offer the way back:\n%s", frame)
+	}
 	keys("Escape")
-	waitDashboardPane(t, sess, "Review queue")
+	if !waitUntil(5*time.Second, func() bool {
+		frame, err := sess.Capture()
+		return err == nil && strings.Contains(frame, "Task Dashboard") && !strings.Contains(frame, "Esc back to tasks")
+	}) {
+		t.Fatal("Esc did not return focus to the tasks")
+	}
 	keys("C-g", "Tab")
 	frame := waitDashboardPane(t, sess, "Stock child pane 120")
 	firstSplit := dashboard.SbxDivider(frame, 120)
@@ -90,11 +97,11 @@ exec cat`
 		t.Errorf("styled sbx capture: %q, %v", styled, err)
 	}
 	keys("C-g", "Tab")
-	assertDashboardDivider(t, waitDashboardPane(t, sess, "Review queue"), firstSplit)
+	assertDashboardDivider(t, waitDashboardPane(t, sess, "Task Dashboard"), firstSplit)
 	keys("C-c")
 	waitDashboardPane(t, sess, "Cancel ↵")
 	keys("Enter")
-	assertDashboardDivider(t, waitDashboardPane(t, sess, "Review queue"), firstSplit)
+	assertDashboardDivider(t, waitDashboardPane(t, sess, "Task Dashboard"), firstSplit)
 	if _, err := tmux("resize-window", "-t", sess.Name, "-x", "80", "-y", "24"); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +112,7 @@ exec cat`
 		t.Fatalf("resized child divider at %d columns, want 23\n%s", secondSplit, frame)
 	}
 	keys("C-g", "Tab")
-	assertDashboardDivider(t, waitDashboardPane(t, sess, "Review queue"), secondSplit)
+	assertDashboardDivider(t, waitDashboardPane(t, sess, "Task Dashboard"), secondSplit)
 	keys("C-g", "Tab")
 	waitDashboardPane(t, sess, "Stock child pane 80")
 	keys("C-c")
@@ -116,9 +123,9 @@ exec cat`
 func assertDashboardDivider(t *testing.T, frame string, want int) {
 	t.Helper()
 	for line := range strings.SplitSeq(frame, "\n") {
-		if left, right, ok := strings.Cut(line, "│"); ok && strings.Contains(right, "Review queue") {
-			if got := ansi.StringWidth(left); got != want {
-				t.Errorf("Proveo divider at %d columns, want %d", got, want)
+		if left, _, ok := strings.Cut(line, "╭─ Task Dashboard"); ok {
+			if got := ansi.StringWidth(left) - 1; got != want {
+				t.Errorf("the gap between Proveo's panes at %d columns, want %d", got, want)
 			}
 			return
 		}
@@ -126,7 +133,7 @@ func assertDashboardDivider(t *testing.T, frame string, want int) {
 	t.Fatalf("review queue has no divider:\n%s", frame)
 }
 
-func TestNativeDashboardAttachAndWizardOnTmux(t *testing.T) {
+func TestNativeDashboardAttachAndNewInstanceOnTmux(t *testing.T) {
 	requireTmux(t)
 	bin, home, work, tools := buildProveo(t), t.TempDir(), t.TempDir(), t.TempDir()
 	prompt := filepath.Join(work, "prompt.txt")
@@ -212,17 +219,18 @@ esac
 		keys("Enter")
 	}
 	frame := waitDashboardPane(t, sess, "e Fresh")
-	for _, hidden := range []string{"Task details", "Original review prompt", "Attention required", "Queued", "1 2 3"} {
+	for _, hidden := range []string{"Task details", "Original review prompt", "Attention required", "1 2 3"} {
 		if strings.Contains(frame, hidden) {
 			t.Errorf("unexpected %q before opening task details:\n%s", hidden, frame)
 		}
 	}
-	keys("4")
-	if frame := waitDashboardPane(t, sess, "Task details · accordion"); strings.Contains(frame, "Original review prompt") {
-		t.Fatalf("changing placement opened task details:\n%s", frame)
+	if queued, button := strings.Index(frame, "Queued"), strings.Index(frame, "new instance"); queued < 0 || button < queued {
+		t.Errorf("the new instance card should sit under the Queued heading, shown even with nothing queued:\n%s", frame)
 	}
-	keys("4", "4", "t")
-	waitDashboardPane(t, sess, "Original review prompt")
+	keys("t")
+	if card := waitDashboardPane(t, sess, "Original review prompt"); !strings.Contains(card, "╭") || !strings.Contains(card, "Usage") {
+		t.Fatalf("t should open the details card over the queue:\n%s", card)
+	}
 	keys("t")
 	if frame := waitDashboardPane(t, sess, "See details"); strings.Contains(frame, "Original review prompt") {
 		t.Fatalf("closing task details left the prompt visible:\n%s", frame)
@@ -232,7 +240,7 @@ esac
 	keys("Enter")
 	waitDashboardPane(t, sess, "Cancel ↵")
 	keys("Enter")
-	waitDashboardPane(t, sess, "Review queue")
+	waitDashboardPane(t, sess, "Task Dashboard")
 	keys("Enter", "Left")
 	waitDashboardPane(t, sess, "Attach ↵")
 	keys("Enter")
@@ -256,14 +264,14 @@ esac
 	if !strings.Contains(got, "-u\nagent\n-w\n"+filepath.Join(instanceDir, "workspace")+"\n"+sandboxName+"\n") {
 		t.Errorf("Fresh guest argv = %q", got)
 	}
-	waitDashboardPane(t, sess, "Review queue")
+	waitDashboardPane(t, sess, "Task Dashboard")
 	if err := os.Remove(guest); err != nil {
 		t.Fatal(err)
 	}
 	keys("e")
 	if !waitUntil(12*time.Second, func() bool {
 		frame, err := sess.Capture()
-		return err == nil && strings.Contains(frame, "Review queue") && !strings.Contains(frame, "e Fresh")
+		return err == nil && strings.Contains(frame, "Task Dashboard") && !strings.Contains(frame, "e Fresh")
 	}) {
 		t.Fatal("Fresh remained visible after the guest disappeared")
 	}
@@ -272,34 +280,19 @@ esac
 	}
 
 	keys("n")
-	waitDashboardPane(t, sess, "New instance")
-	keys("C-a", "C-k")
-	enterText("codex")
-	waitDashboardPane(t, sess, "Task label")
-	enterText("Verify clone isolation")
-	waitDashboardPane(t, sess, "Ticket URL")
+	tasks := waitDashboardPane(t, sess, "type to filter the tasks")
+	for _, want := range []string{"New instance", "Blank session", "Plans", "Pull requests", "Linear"} {
+		if !strings.Contains(tasks, want) {
+			t.Errorf("n should open the task picker with its default sources; it lacks %q:\n%s", want, tasks)
+		}
+	}
 	keys("Enter")
-	waitDashboardPane(t, sess, "Review launch")
-	if err := sess.SendText("Check the three isolated branches."); err != nil {
-		t.Fatal(err)
+	picker := waitDashboardPane(t, sess, "run> ")
+	if !strings.Contains(picker, "codex") || strings.Contains(picker, job) {
+		t.Errorf("n should open proveo run --queue on its harness list, without running tasks:\n%s", picker)
 	}
-	keys("C-s")
-	waitDashboardPane(t, sess, "Queue instance")
-	keys("Enter")
-	if !waitUntil(10*time.Second, func() bool {
-		queue, err := schedule.ReadQueue(home)
-		return err == nil && len(queue) == 1 && queue[0].State == schedule.Queued &&
-			queue[0].Job.Task == "Verify clone isolation" && queue[0].Job.New
-	}) {
-		t.Fatal("new-instance wizard did not persist an isolated submission")
-	}
-	queue, err := schedule.ReadQueue(home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := readIn(filepath.Dir(queue[0].Job.PromptFile), "prompt"); got != "Check the three isolated branches." {
-		t.Errorf("persisted wizard prompt = %q", got)
-	}
+	keys("Escape")
+	waitDashboardPane(t, sess, "Task Dashboard")
 	keys("C-c")
 	waitDashboardPane(t, sess, "Exit Proveo?")
 	keys("Right")

@@ -77,6 +77,19 @@
 ' the fleet main routes `all` to the image gate instead.
 ' DECIDED 2026-11-17: test-defs folded into test-images [target]
 ' (TestFleetMainTestWithoutATargetIsTheImageGate).
+' SEVERAL TARGETS (2026-11-27, after `mise run build --cli claudecode
+' claudecode-browser codex codex-browser` failed "unexpected word"): build and
+' deploy take [target]... and the fleet main joins them; maintain.Select splits
+' on spaces or commas, checks every name before honouring all, and keeps
+' registry order, so one wave plan builds each image once, harnesses before
+' their variants (TestFleetMainBuildsSeveralTargetsInOneWavePlan).
+' SHARED BASE LOCK (2026-11-27, codex failed: "rename …/buildkit/proveo/base/ingest/…
+' startedat.tmp: no such file"): claudecode and codex built in one wave both
+' found base stale (a packages/lib edit) and rebuilt it into one BuildKit cache
+' dir at once. ensure (and the Needs path) now holds <cache root>/locks/<image>.lock
+' (flock; a no-op without it) around the check and the rebuild, and checks again
+' once it holds it, so the second build waits and finds base fresh
+' (TestConcurrentBuildsRebuildASharedStaleBaseOnce).
 ' --print sits on the three fleet verbs and, since 2026-11-17, on e2e, whose
 ' Go main plans every pass (_spec/_devops/release-gate.puml); lint, test and
 ' ci take none. NOT CHOSEN: --print everywhere (a Go wrapper per gate);

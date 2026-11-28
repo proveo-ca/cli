@@ -1,0 +1,116 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: a finished headless run's report reads in the right pane; its file:line references open the file there
+' covers: internal/dashboard/report.go
+' covers: internal/dashboard/report_test.go
+' covers: internal/dashboard/data.go
+' covers: internal/dashboard/cards.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/view.go
+' covers: internal/dashboard/filetree.go
+' covers: internal/dashboard/highlight.go
+' covers: internal/dashboard/handoff_test.go
+' covers: go.mod
+' covers: internal/dashboard/mouse.go
+' covers: internal/dashboard/mouse_test.go
+' covers: internal/dashboard/popover_test.go
+' covers: internal/dashboard/links.go
+' covers: internal/dashboard/links_test.go
+' covers: internal/dashboard/popover.go
+' covers: internal/dashboard/review.go
+'
+' "the review finished but it exited the sandbox; i cannot attach to see the
+' results. Now, sbx can output reports, perhaps this is what the sbx community
+' intends to happen. Judge this flow and recommend." (2026-11-26)
+' RESEARCHED 2026-11-26: sbx collects no output. Its schedules page: "Instruct
+' the task to save results to an external destination before it exits"; a
+' run's inspect shows state, exit code and timing only; its CI page fetches
+' the clone's commits and removes the sandbox. Proveo already does what sbx
+' asks: a plain run's report moves next to its transcript
+' (~/.proveo/logs/schedule/<job>/<stamp>.report.md) and Result.Report names it.
+' The gap was the dashboard: it never read Result.Report, so attach was the
+' only way in, and attach ends with the run.
+' CHOSEN: "↵ report, s follow up" and "glamour in-pane".
+' CARD: an ended run with a report leads with ↵ report, then s follow up (the
+' resume of ended-runs.puml), r retry, x clean up.
+' PANE: ↵ swaps the task cards for the report, rendered by glamour v2
+' (charm.land/glamour/v2) at the pane's width: identity colours for text,
+' headings, links and inline code; fenced code takes the chroma theme code
+' previews take (PROVEO_CODE_THEME), the palette's one exception.
+' REFERENCES: every `path:line` code span and every local image is a
+' reference. Before rendering, each gets an invisible marker (U+2063, its
+' index in U+2061/U+2062 binary, U+2063); the row a marker lands on is the
+' reference's row, then the markers go. Substring search failed: tables wrap
+' a cell's path across rows. n p walk them top to bottom; the selected row
+' gets ›; ↵ opens the file in the tree (exact path, else the first path
+' ending with it) at that line, marked N›; Esc from the file returns to the
+' report. A path outside the tree says "f lists every file".
+' IMAGES: Alacritty has no image protocol (alacritty#4763 open since 2021),
+' so local PNG, JPEG and GIF draw as half-block thumbnails (charmbracelet/x/
+' mosaic, 60 cells by 18 rows at most) under their line; o or ↵ hands the
+' full image to the OS viewer (open on macOS, xdg-open on Linux). o with no
+' image selected opens the report file itself.
+' MEASURED 2026-11-26: review #3951's report gave 16 references and #3995's 23,
+' each on its own row, tables included.
+' COPY (2026-11-27, "the Markdown renderer does not allow cursor highlight to
+' copy/paste"; chosen "In-pane selection + y"): the dashboard reports the mouse
+' (cell motion), so Alacritty selects only with Shift, across both panes, and
+' copies inline code's no-break spaces. A drag over the report marks whole
+' rows (▌ and the surface colour) and its release copies them; a click alone
+' copies nothing. v marks the row under › (else the top row), ↑↓ extend, y
+' copies, Esc clears first and closes second. y with no selection copies the
+' selected path:line; Y copies the report's Markdown source. Copied text has
+' no gutter, no SGR, plain spaces and the rows' common indent removed. It goes
+' out as OSC 52 (tea.SetClipboard) and through pbcopy on macOS, else wl-copy or
+' xclip, so a terminal without OSC 52 still gets it.
+' WHEEL (2026-11-27, "The mouse wheel seems to move the file-tree while the right
+' pane (file/report) is highlighted"): the wheel followed the keys' focus, and
+' over a report it fell through to the task list, whose next task swapped the
+' tree. Each draw records both panes' frames; the wheel scrolls the pane under
+' the pointer (tree, file, report or tasks), three rows a notch for text, and
+' follows the focus only off both panes. A click gives its pane the keys.
+' LINKS (2026-11-27, "Can links be copied to the clipboard when clicking on them?
+' e.g. in Task Details"): a click never reached the terminal's OSC 8 handling,
+' since the dashboard reports the mouse. Each draw scans its finished frame for
+' OSC 8 spans (ansi.DecodeSequence: the cells each covers and its target), so
+' Task Details links, card PR links, the plan and every glamour link count;
+' glamour links a wrapped address on every row with the whole URL. A left
+' click on a span copies the target (a file: link copies its path) before any
+' focus or selection; Task Details then says "click a link copies it".
+' CARD NUMBERS (2026-11-27, "Let the PR numbers e.g. #3951 become links in each card;
+' let a tooltip display for 2.4s with copied to clipboard"): a ghost's #N links
+' its PR; a task card's ticket label (#3995 from a PR or issue address, or a
+' Linear id with its issue's address) links its ticket; PR chips already did.
+' Every copy that lands raises a small card, ✓ Copied to clipboard, for 2.4 s
+' (tooltipFor): above the pointer that clicked or dragged, below it at the top
+' edge, at the right pane's foot for y and Y. A newer copy replaces it and its
+' own timer; the older timer leaves it. The footer still names what was copied.
+' Links look the same everywhere: brand cyan, underlined (tui-design-language).
+title Run reports — read the result, jump to its lines
+
+participant "ended card\n↵ report" as CARD <<app>>
+participant "report pane\nglamour · markers" as PANE <<app>>
+participant "file preview\nN› at the line" as FILE <<app>>
+participant "OS viewer\nopen · xdg-open" as OS <<host>>
+
+CARD -> PANE : ↵ (Result.Report)
+PANE -> PANE : n p select a reference
+PANE -> FILE : ↵ on path:line
+FILE --> PANE : Esc
+PANE -> OS : o, or ↵ on an image
+PANE --> CARD : Esc
+
+note over PANE
+  **The report is the result.**
+  sbx deletes the sandbox; the report
+  stays on the host, so reading it
+  needs no session.
+end note
+
+note over FILE
+  **A finding points at code.**
+  ↵ opens the PR's file at the line
+  the finding names, so the reviewer
+  checks it beside the verdict.
+end note
+@enduml

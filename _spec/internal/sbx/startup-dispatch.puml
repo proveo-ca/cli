@@ -21,6 +21,16 @@ skinparam noteTextAlignment left
 ' covers: e2e/startup_dispatch_test.go
 ' covers: e2e/seed_ready_test.go
 ' covers: internal/sbx/agents.go
+' covers: internal/backend/sandbox/kit_roundtrip_test.go
+' covers: internal/backend/sandbox/workload.go
+' MEASURED 2026-11-26: every `--new` clone run since 466c5e70 (11-24) launched a kit
+' with capabilities: [] and no seed, so proveo-await-seed never saw its marker
+' and the agent exited 1 at the gate (30s, then 120s). instanceCheckoutScript
+' opened on a blank line; yaml.v3 writes such a string as a |4 block that its
+' own parser rejects inside a nested sequence ("did not find expected '-'
+' indicator"), and asMap's round trip failed. The merge error was a warning and
+' nil'd the capabilities. The script now opens on its first command, a test
+' round-trips every startup hook, and a merge error fails the kit step.
 ' Notes here are capped at 5 lines x 50 columns; one idea per anchor.
 '
 ' ── AUTHORITATIVE SOURCE ────────────────────────────────────────────────────

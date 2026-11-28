@@ -15,7 +15,7 @@ func noEnv(string) string { return "" }
 
 func TestFleetMainRefusesAMissingVerbOrTarget(t *testing.T) {
 	t.Parallel()
-	for _, args := range [][]string{nil, {"build"}, {"deploy"}, {"ship", "all"}, {"-print=true", "build", "all", "extra"},
+	for _, args := range [][]string{nil, {"build"}, {"deploy"}, {"ship", "all"},
 		{"-cli", "test", "all"}, {"-cli", "test"}} {
 		var stdout, stderr bytes.Buffer
 		if code := run(args, noEnv, repoRoot, &stdout, &stderr); code != 2 {
@@ -122,5 +122,32 @@ func TestFleetMainDeployCLIRequiresExplicitVersion(t *testing.T) {
 	if code := run([]string{"-print", "-cli", "-cli-version=v0.3.2", "deploy", "all"}, noEnv, repoRoot, &stdout, &stderr); code != 0 ||
 		!strings.Contains(stdout.String(), "<commit>:refs/tags/v0.3.2\n") {
 		t.Errorf("run(deploy all --cli v0.3.2) = %d, printed\n%s", code, stdout.String())
+	}
+}
+
+func TestFleetMainBuildsSeveralTargetsInOneWavePlan(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"-print", "build", "codex-browser", "claudecode", "codex", "claudecode-browser"}, noEnv, repoRoot, &stdout, &stderr); code != 0 {
+		t.Fatalf("code %d: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"imagebuild claudecode --tag local", "imagebuild codex --tag local",
+		"imagebuild claudecode-browser --tag local", "imagebuild codex-browser --tag local"} {
+		if strings.Count(out, want+"\n") != 1 {
+			t.Errorf("the plan builds %q %d times, want once:\n%s", want, strings.Count(out, want+"\n"), out)
+		}
+	}
+	if strings.Index(out, "imagebuild claudecode --tag") > strings.Index(out, "imagebuild claudecode-browser --tag") {
+		t.Errorf("a variant builds before its harness:\n%s", out)
+	}
+	if strings.Contains(out, "imagebuild cursor") || strings.Contains(out, "imagebuild hermes") {
+		t.Errorf("targets nobody named were built:\n%s", out)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"-print=true", "build", "all", "extra"}, noEnv, repoRoot, &stdout, &stderr); code != 1 ||
+		!strings.Contains(stderr.String(), `unknown target "extra"`) || stdout.Len() != 0 {
+		t.Errorf("all with an unknown name: code %d, stderr %q, stdout %q", code, stderr.String(), stdout.String())
 	}
 }

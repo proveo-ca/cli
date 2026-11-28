@@ -2,6 +2,7 @@
 package sandbox
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/proveo-ca/proveo/internal/sbx"
 )
@@ -22,6 +24,7 @@ type Instance struct {
 	Job                                                                string
 	Legacy                                                             bool
 	CheckoutTip                                                        string
+	WorkBranch                                                         string // the branch the operator chose at start; empty for proveo/<name>
 	resident                                                           bool
 	dir                                                                string
 }
@@ -39,6 +42,7 @@ func (i *Instance) Isolated() bool { return i != nil && !i.Legacy }
 
 type InstanceRequest struct {
 	State, Target, Workspace, Repo, LegacyName, ID, Task string
+	Branch                                               string // the working branch a new instance takes; a branch origin has starts from its tip
 	Job                                                  string
 	New, Print                                           bool
 	Pick                                                 func([]string) (int, error)
@@ -200,6 +204,11 @@ func allocateInstance(q InstanceRequest) (*Instance, error) {
 		}
 		base = strings.TrimSpace(string(out))
 	}
+	if q.Branch != "" && q.Repo != "" && !q.Print {
+		if tip := remoteBranchTip(q.Repo, q.Branch); tip != "" {
+			base = tip
+		}
+	}
 	for range 8 {
 		var random [10]byte
 		_, _ = rand.Read(random[:])
@@ -207,7 +216,7 @@ func allocateInstance(q InstanceRequest) (*Instance, error) {
 		name := taskSandboxName(q.Target, q.Task, id[:10])
 		dir := instanceDir(q.State, name)
 		i := &Instance{ID: id, Name: name, Target: q.Target, Workspace: q.Workspace, Repo: q.Repo,
-			Task: q.Task, Job: q.Job, Base: base, Host: host, dir: dir}
+			Task: q.Task, Job: q.Job, Base: base, Host: host, WorkBranch: q.Branch, dir: dir}
 		if q.Print {
 			return i, nil
 		}
@@ -476,10 +485,78 @@ func (i *Instance) GuestWorkspace() string {
 	return i.Workspace
 }
 
-func (i *Instance) Branch() string { return "proveo/" + i.Name }
+// Branch is the instance's working branch: the one the operator chose at start, else proveo/<name>, which stays local.
+func (i *Instance) Branch() string {
+	if i.WorkBranch != "" {
+		return i.WorkBranch
+	}
+	return "proveo/" + i.Name
+}
 
 func (i *Instance) worktree() string { return filepath.Join(i.dir, "workspace") }
 func (i *Instance) bundleDir() string {
 	return filepath.Join(filepath.Dir(filepath.Dir(i.dir)), "instance-bases", i.Base)
 }
 func (i *Instance) exportDir(sid string) string { return filepath.Join(i.dir, "outputs", sid) }
+
+// JobInstance is the instance a job created, nil when it made none.
+func JobInstance(state, job string) (*Instance, error) {
+	entries, err := instanceEntries(state)
+	if err != nil {
+		return nil, err
+	}
+	for _, i := range entries {
+		if i.Job == job {
+			return i, nil
+		}
+	}
+	return nil, nil
+}
+
+// InstanceByID is the recorded instance with this ID, nil when none is.
+func InstanceByID(state, id string) (*Instance, error) {
+	entries, err := instanceEntries(state)
+	if err != nil {
+		return nil, err
+	}
+	for _, i := range entries {
+		if i.ID == id {
+			return i, nil
+		}
+	}
+	return nil, nil
+}
+
+// Forget removes the instance: its record under state and its mounts under home.
+func (i *Instance) Forget(home string) error {
+	if err := os.RemoveAll(i.Home(home)); err != nil {
+		return err
+	}
+	return os.RemoveAll(i.dir)
+}
+
+// remoteBranchTip fetches branch from origin and returns its commit, or "" when origin has no such branch.
+var remoteBranchTip = func(repo, branch string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	ref := "refs/remotes/origin/" + branch
+	if err := exec.CommandContext(ctx, "git", "-C", repo, "fetch", "--quiet", "--no-tags", "origin", "+refs/heads/"+branch+":"+ref).Run(); err != nil {
+		return ""
+	}
+	out, err := exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// ValidBranch refuses a name git would not take as a branch, or one proveo keeps for its own instance branches.
+func ValidBranch(name string) error {
+	if strings.HasPrefix(name, "proveo/") {
+		return fmt.Errorf("--branch %q: proveo/ is kept for instance branches that never leave this machine", name)
+	}
+	if err := exec.Command("git", "check-ref-format", "--branch", name).Run(); err != nil {
+		return fmt.Errorf("--branch %q is not a valid branch name", name)
+	}
+	return nil
+}

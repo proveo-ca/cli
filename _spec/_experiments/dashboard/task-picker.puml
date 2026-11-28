@@ -1,0 +1,102 @@
+@startuml
+!include https://raw.githubusercontent.com/proveo-ca/identity/main/proveo.puml
+' purpose: n opens a fuzzy picker over configurable task sources; the picked task's prompt opens the queued run
+' covers: internal/dashboard/tasksources.go
+' covers: internal/dashboard/task_sources.yml
+' covers: internal/dashboard/tasksources_test.go
+' covers: internal/choiceui/task_picker.go
+' covers: internal/choiceui/task_picker_test.go
+' covers: internal/dashboard/provider.go
+' covers: internal/dashboard/model.go
+' covers: internal/dashboard/view.go
+' covers: internal/dashboard/mouse.go
+' covers: internal/dashboard/layout_test.go
+' covers: internal/dashboard/highlight_test.go
+' covers: cmd/proveo/main.go
+' covers: cmd/proveo/queue_run.go
+' covers: cmd/proveo/queue_run_test.go
+' covers: internal/run/queue.go
+' covers: internal/run/queue_test.go
+' covers: internal/run/params.go
+' covers: internal/run/run.go
+' covers: e2e/dashboard_native_tmux_test.go
+'
+' "Tasks to do should be: 1. pending files in _plans/, 2. whatever matches the
+' git user and the gh (ci/cd pipeline) with an open PR unmerged and 3. if the
+' user has Linear, assigned (grab Linear status). Whenever new instance is
+' selected, a popup with a fuzzy search input on top with 3 sections should
+' display to select a task, then this will be used as the initial prompt."
+' Then: "proveo is now aware of task + ci/cd ... Make this configurable,
+' extensible. Not digged in code domains." (2026-11-27)
+' CHOSEN: plans "Not marked done"; prompt "Pointer, editable"; PRs "my open
+' PRs + status, but compress stacks into 1 single task card"; Linear token in
+' the workspace .env, "kept from sandboxes".
+' SOURCES ARE CONFIG: proveo's defaults are task_sources.yml (embedded, every
+' kind documented there); <proveo home>/dashboard.yml tasks.sources replaces
+' the list whole. Each source is a section: name, kind, prompt. Kinds:
+'   plans    dir, depth, extensions; hide_status words end a plan
+'   github   gh pr list --search <search> --state open; stacks folds PRs whose
+'            base is another's head into one task, ordered from the base up
+'   linear   viewer.assignedIssues minus hide_states types; token from
+'            token_var in the environment, else the workspace .env
+'   command  run (argv) prints a JSON array of {title, id, status, url, tone,
+'            prompt, task}; timeout bounds it: any other tracker plugs in here
+' A prompt fills {{field}}s from its task: id title status url, and path and
+' slug (plans) or branch prs blockers (github), or what a command prints; a
+' source's branch template fills the same fields. Field reference:
+'   all kinds ... {{id}} {{title}} {{status}} {{url}}
+'   plans ....... {{path}} (repository-relative) {{slug}} (file name, no extension)
+'   github ...... {{branch}} (a stack's top head) {{prs}} (a line per PR) {{blockers}}
+'   command ..... every field the command prints
+' linear hide_states take Linear's state types: triage, backlog, unstarted,
+' started, completed, canceled. A command's timeout defaults to 20s.
+' PICKER (choiceui.TaskPicker): Blank session first (the old n), then each
+' section; a section shows eight rows until a filter is typed ("+N more");
+' typing filters every section by fuzzy match (runes in order, runs and word
+' starts score higher). ↵ on a task opens its prompt, editable; ↵ again hands
+' the terminal to `proveo run --queue --prompt-file <tmp> --task <label>`;
+' esc goes back. Sources answer in the background; an answer is reused for a
+' minute. --prompt-file (hidden, --queue only) becomes the attended job's
+' opening prompt, which the session types once the agent is ready.
+' BRANCH (2026-11-27, "ask for a branch name, and default to the pure task management
+' name e.g. Linear's CONN-123"): the prompt step has a Branch field (tab moves
+' between prompt and branch; spaces become dashes), filled from the source's
+' branch template: {{slug}} for a plan, {{branch}} (the PR's head, a stack's top)
+' for github, {{id}} for Linear. Start passes --branch; the instance works on that
+' branch, from its tip on origin when origin has it (a PR's branch), else from
+' the checkout's base, and the hook pushes it. No branch keeps proveo/<instance>,
+' which never leaves the machine (git-sync-turn.puml). proveo/ names are refused.
+' HOST-ONLY: LINEAR_API_KEY is a personal token. credentials.HostOnlyVars drop
+' it from every staged .env (clone-workspace.puml); the merge home keeps the
+' host's own value. Before this, Task Details read Linear only from the
+' dashboard's own environment, which never had a key: proveo saw git and gh.
+' MEASURED 2026-11-27 in the pluvo monorepo: 46 plans with no status line, 6
+' open PRs (an 8-PR PLUV-1402 stack as one task: 7 ready · 1 conflicts), 54
+' assigned Linear issues; plans and Linear answer in about a second, gh in 2.5 s.
+title Task picker — configurable sources, one prompt per pick
+
+file "task_sources.yml\nproveo's defaults" as DEF <<app>>
+file "<proveo home>/dashboard.yml\ntasks.sources" as CFG <<host>>
+component "plans · github · linear\ncommand (any tracker)" as KINDS <<async>>
+component "TaskPicker\nfilter · sections · prompt" as PICK <<app>>
+component "proveo run --queue\n--prompt-file · --task" as RUN <<app>>
+
+DEF ARROW_OPTIONAL KINDS : unless replaced
+CFG ARROW_MAIN KINDS : replaces the list
+KINDS ARROW_MAIN PICK : one section each
+PICK ARROW_MAIN RUN : ↵ pick, ↵ start
+
+note right of CFG
+  **Sources are config, not code.**
+  A new tracker is a command source
+  that prints JSON; no proveo release
+  is needed to add one.
+end note
+
+note bottom of PICK
+  **The pick is a pointer.**
+  Its prompt names the plan, PRs or
+  issue; the agent reads the rest, and
+  the operator edits it first.
+end note
+@enduml

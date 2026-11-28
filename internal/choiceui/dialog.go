@@ -47,6 +47,9 @@ type dialog struct {
 	w, h     int
 	glyphs   GlyphTier
 	minW     int // the narrowest the card draws
+
+	help               [][]helpCell // a help card's rows under its title, in one or two columns
+	helpKeyW, helpColW int
 }
 
 // newDialog is a dialog whose safe answer is selected, drawn in the glyph tier PROVEO_GLYPHS names.
@@ -164,7 +167,7 @@ func (d dialog) card() *screen {
 	if d.held != "" {
 		held = fmt.Sprintf("%s — %s", d.held, d.now.Sub(d.heldAt).Round(time.Second))
 	}
-	w, h := 0, len(lines)+3
+	w, h := 0, len(lines)+3+len(d.help)
 	grow := func(x, cols int) { w = max(w, x+cols+modalRight) }
 	for _, text := range lines {
 		if text == d.title {
@@ -172,6 +175,9 @@ func (d dialog) card() *screen {
 		} else {
 			grow(modalBodyX, textWidth(text))
 		}
+	}
+	if len(d.help) > 0 {
+		grow(modalBodyX, d.helpWidth())
 	}
 	if held != "" {
 		grow(modalBodyX, textWidth(held))
@@ -200,6 +206,9 @@ func (d dialog) card() *screen {
 				c.put(modalBodyX, p.body, text)
 			}
 		})
+	}
+	for _, row := range d.help {
+		k.line(c, false, func() { d.putHelp(c, p, row) })
 	}
 	k.foot(c)
 	c.y++
@@ -279,6 +288,12 @@ func enterMark(t GlyphTier) string {
 // presses it, and what Esc and ctrl+c give.
 // SPEC: _spec/internal/choiceui/confirm-dialogs.puml
 func (d dialog) keyParts() []hintPart {
+	if len(d.help) > 0 {
+		return []hintPart{{"esc", "close", 0}, {"?", "close", 0}}
+	}
+	if len(d.buttons) == 1 {
+		return []hintPart{{enterMark(d.glyphs), "close", 0}, {"esc", "close", 0}}
+	}
 	move := "←→"
 	if plainGlyphs(d.glyphs) {
 		move = "left/right"
@@ -300,4 +315,9 @@ func (d dialog) Done() bool { return d.answer >= 0 }
 func dialogAnswer(m tea.Model) (d dialog, ok bool) {
 	d, ok = m.(dialog)
 	return d, ok && d.answer >= 0
+}
+
+// Button is a dialog's button drawn anywhere: its face, its key letter bold, the enter mark when selected.
+func Button(label string, key rune, selected bool, tier GlyphTier) string {
+	return dialog{glyphs: tier}.button(dialogButton{Label: label, Key: key}, selected)
 }
